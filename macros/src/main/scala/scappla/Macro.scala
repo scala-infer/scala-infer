@@ -7,13 +7,17 @@ import scala.reflect.api.Trees
 
 object Macro {
 
-  def backward[A, B](fn: A => B): (A, B) => A = macro backward_impl[A, B]
+  def backward[A, B](fn: A => B): (A, B) => A = macro Macro.backward_impl[A, B]
 
-  def backward_impl[A, B](c: Context)(fn: c.Expr[A => B])
+}
+
+class Macro(val c: Context) {
+
+  import c.universe._
+
+  def backward_impl[A, B](fn: c.Expr[A => B])
       (implicit aTag: c.WeakTypeTag[A], bTag: c.WeakTypeTag[B])
   : c.Expr[(A, B) => A] = {
-
-    import c.universe._
 
     val Function(List(ValDef(_, name, _, _)), funcBody) = fn.tree
     val TermName(strName) = name
@@ -22,7 +26,7 @@ object Macro {
 
       val transforms = mutable.ListBuffer.empty[(String, c.Tree)]
 
-      override def transform(tree: c.Tree) ={
+      override def transform(tree: c.Tree) = {
         tree match {
           case ValDef(_, TermName(valName), valTpe, valDefBody) =>
             val res = super.transform(tree)
@@ -38,7 +42,7 @@ object Macro {
                       Modifiers(),
                       dValName,
                       TypeTree(),
-                      calcGradient(c)(valDefBody, strName).toTree(c)
+                      calcGradient(c)(valDefBody, strName).toTree
                     )
                 )
               )
@@ -52,10 +56,10 @@ object Macro {
 
     val newBody = funcBody match {
       case Apply(_, _) =>
-        q"dy * ${calcGradient(c)(funcBody, strName).toTree(c)}"
+        q"dy * ${calcGradient(c)(funcBody, strName).toTree}"
       case Block(_, _) =>
         val Function(newParams, Block(newStats, newExpr)) = transformer.transform(
-            c.untypecheck(fn.tree)
+          c.untypecheck(fn.tree)
         )
         Block(
           newStats ++ transformer.transforms.map(_._2).toList,
@@ -64,7 +68,7 @@ object Macro {
             List(transformer.transforms.map(_._1).foldLeft(calcGradient(c)(newExpr, strName)) {
               case (acc, valName) =>
                 Add(acc, Multiply(Variable(s"_d_${valName}"), calcGradient(c)(newExpr, valName)))
-            }.toTree(c))
+            }.toTree)
           )
         )
     }
@@ -84,8 +88,6 @@ object Macro {
     import c.universe._
 
     println(s"Gradient to ${strName} of: ${showRaw(funcBody)}")
-
-    val tc = new TreeContext(c)
 
     // topologically sort components - leaf components first, top last
     val allComponents = mutable.ListBuffer.empty[Component]
@@ -128,7 +130,7 @@ object Macro {
     }
 
     // collect components and bootstrap the gradient
-    val topComponents = tc.extractComponents(funcBody)
+    val topComponents = extractComponents(funcBody)
     for {
       component <- topComponents
     } {
@@ -154,10 +156,6 @@ object Macro {
         .getOrElse(DoubleConstant(0.0))
   }
 
-}
-
-class TreeContext(c: Context) {
-
   def extractComponents(tree: Trees#Tree): List[Component] = {
     import c.universe._
     tree match {
@@ -182,114 +180,114 @@ class TreeContext(c: Context) {
       case q"scala.math.`package`.pow($a, $b)" => Power(getComponent(a), getComponent(b))
     }
   }
-}
 
-sealed trait Component {
-  def toTree(implicit c: Context): c.Tree
+  sealed trait Component {
+    def toTree: c.Tree
 
-  def backward(dout: Component): Seq[(Component, Component)]
-}
-
-trait UnaryComponent {
-  def value: Component
-}
-
-trait BinaryComponent {
-  def first: Component
-
-  def second: Component
-}
-
-case class Negate(value: Component) extends Component with UnaryComponent {
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    q"-${value.toTree}"
+    def backward(dout: Component): Seq[(Component, Component)]
   }
 
-  override def backward(dout: Component) = Seq(value -> Negate(dout))
-}
-
-case class Multiply(first: Component, second: Component) extends Component with BinaryComponent {
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    q"${first.toTree} * ${second.toTree}"
+  trait UnaryComponent {
+    def value: Component
   }
 
-  override def backward(dout: Component) =
-    Seq(
-      first -> Multiply(dout, second),
-      second -> Multiply(dout, first)
-    )
-}
+  trait BinaryComponent {
+    def first: Component
 
-case class Invert(value: Component) extends Component with UnaryComponent {
-
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    q"1.0 / ${value.toTree}"
+    def second: Component
   }
 
-  override def backward(dout: Component) =
-    Seq(
-      value -> Multiply(Negate(dout), Invert(Multiply(value, value)))
-    )
-}
+  case class Negate(value: Component) extends Component with UnaryComponent {
+    override def toTree: c.Tree = {
+      import c.universe._
+      q"-${value.toTree}"
+    }
 
-case class Add(first: Component, second: Component) extends Component with BinaryComponent {
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    q"${first.toTree} + ${second.toTree}"
+    override def backward(dout: Component) = Seq(value -> Negate(dout))
   }
 
-  override def backward(dout: Component) =
-    Seq(
-      first -> dout,
-      second -> dout
-    )
-}
+  case class Multiply(first: Component, second: Component) extends Component with BinaryComponent {
+    override def toTree: c.Tree = {
+      import c.universe._
+      q"${first.toTree} * ${second.toTree}"
+    }
 
-case class Power(first: Component, second: Component) extends Component with BinaryComponent {
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    q"Math.pow(${first.toTree}, ${second.toTree})"
+    override def backward(dout: Component) =
+      Seq(
+        first -> Multiply(dout, second),
+        second -> Multiply(dout, first)
+      )
   }
 
-  override def backward(dout: Component) =
-    Seq(
-      first -> Multiply(dout, Multiply(second, Power(first, Add(second, Negate(DoubleConstant(1.0)))))),
-      second -> Multiply(dout, Multiply(Log(first), Power(first, second)))
-    )
-}
+  case class Invert(value: Component) extends Component with UnaryComponent {
 
-case class Log(value: Component) extends Component with UnaryComponent {
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    q"Math.log(${value.toTree})"
+    override def toTree: c.Tree = {
+      import c.universe._
+      q"1.0 / ${value.toTree}"
+    }
+
+    override def backward(dout: Component) =
+      Seq(
+        value -> Multiply(Negate(dout), Invert(Multiply(value, value)))
+      )
   }
 
-  override def backward(dout: Component) =
-    Seq(
-      value -> Multiply(dout, Invert(value))
-    )
-}
+  case class Add(first: Component, second: Component) extends Component with BinaryComponent {
+    override def toTree: c.Tree = {
+      import c.universe._
+      q"${first.toTree} + ${second.toTree}"
+    }
 
-case class Variable(name: String) extends Component {
-
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    Ident(TermName(name))
+    override def backward(dout: Component) =
+      Seq(
+        first -> dout,
+        second -> dout
+      )
   }
 
-  override def backward(dout: Component) = Seq.empty
-}
+  case class Power(first: Component, second: Component) extends Component with BinaryComponent {
+    override def toTree: c.Tree = {
+      import c.universe._
+      q"Math.pow(${first.toTree}, ${second.toTree})"
+    }
 
-case class DoubleConstant(value: Double) extends Component {
-
-  override def toTree(implicit c: Context): c.Tree = {
-    import c.universe._
-    Literal(Constant(value))
+    override def backward(dout: Component) =
+      Seq(
+        first -> Multiply(dout, Multiply(second, Power(first, Add(second, Negate(DoubleConstant(1.0)))))),
+        second -> Multiply(dout, Multiply(Log(first), Power(first, second)))
+      )
   }
 
-  override def backward(dout: Component) = Seq.empty
-}
+  case class Log(value: Component) extends Component with UnaryComponent {
+    override def toTree: c.Tree = {
+      import c.universe._
+      q"Math.log(${value.toTree})"
+    }
 
+    override def backward(dout: Component) =
+      Seq(
+        value -> Multiply(dout, Invert(value))
+      )
+  }
+
+  case class Variable(name: String) extends Component {
+
+    override def toTree: c.Tree = {
+      import c.universe._
+      Ident(TermName(name))
+    }
+
+    override def backward(dout: Component) = Seq.empty
+  }
+
+  case class DoubleConstant(value: Double) extends Component {
+
+    override def toTree: c.Tree = {
+      import c.universe._
+      Literal(Constant(value))
+    }
+
+    override def backward(dout: Component) = Seq.empty
+  }
+
+}
