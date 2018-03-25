@@ -18,8 +18,78 @@ object Macro {
     val Function(List(ValDef(_, name, _, _)), funcBody) = fn.tree
     val TermName(strName) = name
 
+    val transformer = new Transformer {
+
+      val transforms = mutable.ListBuffer.empty[(String, c.Tree)]
+
+      override def transform(tree: c.Tree) ={
+        tree match {
+          case ValDef(_, TermName(valName), valTpe, valDefBody) =>
+            val res = super.transform(tree)
+            if (res.exists {
+              case Ident(term) if term == name => true
+              case _ => false
+            }) {
+              val dValName = TermName(s"_d_${valName}")
+              transforms.prepend(
+                (
+                    valName,
+                    ValDef(
+                      Modifiers(),
+                      dValName,
+                      TypeTree(),
+                      calcGradient(c)(valDefBody, strName).toTree(c)
+                    )
+                )
+              )
+            }
+            res
+          case _ =>
+            super.transform(tree)
+        }
+      }
+    }
+
+    val newBody = funcBody match {
+      case Apply(_, _) =>
+        q"dy * ${calcGradient(c)(funcBody, strName).toTree(c)}"
+      case Block(_, _) =>
+        val Function(newParams, Block(newStats, newExpr)) = transformer.transform(
+            c.untypecheck(fn.tree)
+        )
+        Block(
+          newStats ++ transformer.transforms.map(_._2).toList,
+          Apply(
+            Select(Ident(TermName("dy")), TermName("$times")),
+            List(transformer.transforms.map(_._1).foldLeft(calcGradient(c)(newExpr, strName)) {
+              case (acc, valName) =>
+                Add(acc, Multiply(Variable(s"_d_${valName}"), calcGradient(c)(newExpr, valName)))
+            }.toTree(c))
+          )
+        )
+    }
+    val result = Function(
+      List(
+        ValDef(Modifiers(Flag.PARAM), TermName("dy"), TypeTree(weakTypeOf[B]), EmptyTree),
+        ValDef(Modifiers(Flag.PARAM), TermName(strName), TypeTree(weakTypeOf[A]), EmptyTree)
+      ),
+      newBody
+    )
+
+    println(s"Result: ${showCode(result)}")
+    c.Expr[(A, B) => A](result)
+  }
+
+  def calcGradient(c: Context)(funcBody: c.Tree, strName: String) = {
+    import c.universe._
+
+    println(s"Gradient to ${strName} of: ${showRaw(funcBody)}")
+
+    val tc = new TreeContext(c)
+
     // topologically sort components - leaf components first, top last
     val allComponents = mutable.ListBuffer.empty[Component]
+
     def visitComponent(component: Component): Unit = {
       if (!allComponents.contains(component)) {
         component match {
@@ -50,6 +120,7 @@ object Macro {
     val gradients = mutable.HashMap
         .empty[Component, mutable.ListBuffer[Component]]
         .withDefault(_ => mutable.ListBuffer.empty[Component])
+
     def addGradients(backward: (Component, Component)): Unit = {
       val (key, value) = backward
       val newList = gradients(key) :+ value
@@ -57,8 +128,7 @@ object Macro {
     }
 
     // collect components and bootstrap the gradient
-    println()
-    val topComponents = extractComponents(funcBody)(c)
+    val topComponents = tc.extractComponents(funcBody)
     for {
       component <- topComponents
     } {
@@ -79,25 +149,16 @@ object Macro {
       }
     }
 
-    val gradientTree = gradients(Variable(strName)).reduce(Add).toTree(c)
-    println(s"Result: ${gradientTree}")
-
-    println(showRaw(fn))
-    val result = c.Expr[(A, B) => A](Function(
-      List(
-        ValDef(Modifiers(Flag.PARAM), TermName("dy"), TypeTree(weakTypeOf[B]), EmptyTree),
-        ValDef(Modifiers(Flag.PARAM), name, TypeTree(weakTypeOf[A]), EmptyTree)
-      ),
-      Block(
-        List(),
-        q"dy * $gradientTree"
-      )
-    ))
-    println("Result: " + showRaw(result))
-    result
+    gradients(Variable(strName))
+        .reduceOption(Add)
+        .getOrElse(DoubleConstant(0.0))
   }
 
-  def extractComponents(tree: Trees#Tree)(implicit c: Context): List[Component] = {
+}
+
+class TreeContext(c: Context) {
+
+  def extractComponents(tree: Trees#Tree): List[Component] = {
     import c.universe._
     tree match {
       case q"$nextTree + $arg" =>
@@ -108,7 +169,7 @@ object Macro {
     }
   }
 
-  def getComponent(tree: Trees#Tree)(implicit c: Context): Component = {
+  def getComponent(tree: Trees#Tree): Component = {
     import c.universe._
     tree match {
       case Ident(TermName(x)) => Variable(x)
@@ -121,7 +182,6 @@ object Macro {
       case q"scala.math.`package`.pow($a, $b)" => Power(getComponent(a), getComponent(b))
     }
   }
-
 }
 
 sealed trait Component {

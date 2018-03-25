@@ -7,6 +7,7 @@ scalaVersion := "2.11.8"
 lazy val macros = (project in file("macros")).settings(
   libraryDependencies ++= Seq(
     "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+    "org.scala-lang" % "scala-compiler" % scalaVersion.value,
     "org.scalatest" %% "scalatest" % "3.0.1" % "test"
   )
 )
