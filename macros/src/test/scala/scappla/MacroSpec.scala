@@ -1,6 +1,7 @@
 package scappla
 
 import org.scalatest.FlatSpec
+import scappla.Functions.{log, pow}
 
 class MacroSpec extends FlatSpec {
 
@@ -13,18 +14,18 @@ class MacroSpec extends FlatSpec {
     assert(bw(1.0, 0.5) == 1.75)
   }
 
-  it should "compute gradient of Math.pow for base" in {
+  it should "compute gradient of pow for base" in {
     val bw: (Double, Double) => Double =
-      Macro.backward[Double, Double](z => z + scala.math.pow(z, 3.0))
-    val exact: Double => Double = z => 1.0 + 3 * scala.math.pow(z, 2.0)
+      Macro.backward[Double, Double](z => z + pow(z, 3.0))
+    val exact: Double => Double = z => 1.0 + 3 * pow(z, 2.0)
     assert(bw(1.0, 0.5) == exact(0.5))
     assert(bw(1.0, 1.0) == exact(1.0))
   }
 
   it should "compute gradient of Math.pow for exponent" in {
     val bw: (Double, Double) => Double =
-      Macro.backward[Double, Double](z => z + scala.math.pow(2.0, z))
-    val exact: Double => Double = z => 1.0 + scala.math.log(2.0) * scala.math.pow(2.0, z)
+      Macro.backward[Double, Double](z => z + pow(2.0, z))
+    val exact: Double => Double = z => 1.0 + log(2.0) * pow(2.0, z)
     assert(bw(1.0, 0.5) == exact(0.5))
     assert(bw(1.0, 1.0) == exact(1.0))
   }

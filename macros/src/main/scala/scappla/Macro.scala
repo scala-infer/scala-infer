@@ -5,6 +5,53 @@ import scala.language.experimental.macros
 import scala.reflect.macros.blackbox.Context
 import scala.reflect.api.Trees
 
+trait TensorField[X, Y] extends (X => Y) {
+
+  // backwards propagate difference dy to dx
+  def grad(x: X, dy: Y): X
+}
+
+trait TensorField2[X, Y, Z] extends ((X, Y) => Z) {
+
+  // backwards propagate difference dy to dx
+  def grad1(x: X, y: Y, dz: Z): X
+
+  def grad2(x: X, y: Y, dz: Z): Y
+}
+
+object Functions {
+
+  object cos extends TensorField[Double, Double] {
+
+    override def apply(x: Double): Double =
+      scala.math.cos(x)
+
+    override def grad(x: Double, dy: Double): Double =
+      -dy * scala.math.sin(x)
+  }
+
+  object log extends TensorField[Double, Double] {
+
+    override def apply(x: Double): Double =
+      scala.math.log(x)
+
+    override def grad(x: Double, dy: Double): Double =
+      dy / x
+  }
+
+  object pow extends TensorField2[Double, Double, Double] {
+
+    override def apply(base: Double, exp: Double): Double =
+      scala.math.pow(base, exp)
+
+    override def grad1(base: Double, exp: Double, dz: Double): Double =
+      dz * exp * scala.math.pow(base, exp - 1)
+
+    override def grad2(base: Double, exp: Double, dz: Double): Double =
+      dz * scala.math.log(base) * scala.math.pow(base, exp)
+  }
+}
+
 object Macro {
 
   def backward[A, B](fn: A => B): (A, B) => A = macro Macro.backward_impl[A, B]
@@ -99,7 +146,7 @@ class Macro(val c: Context) {
             visitComponent(arg)
           case Invert(arg) =>
             visitComponent(arg)
-          case Log(arg) =>
+          case Op1(_, arg) =>
             visitComponent(arg)
 
           case Add(first, second) =>
@@ -108,9 +155,11 @@ class Macro(val c: Context) {
           case Multiply(first, second) =>
             visitComponent(first)
             visitComponent(second)
-          case Power(base, power) =>
+          case Op2(_, base, power) =>
             visitComponent(base)
             visitComponent(power)
+
+          case Op3(_, _, _, _) => ??? // Not supported - cannot take gradients of it
 
           case Variable(_) =>
           case DoubleConstant(_) =>
@@ -177,7 +226,8 @@ class Macro(val c: Context) {
       case q"$a + $b" => Add(getComponent(a), getComponent(b))
       case q"$a - $b" => Add(getComponent(a), Negate(getComponent(b)))
       case q"$a * $b" => Multiply(getComponent(a), getComponent(b))
-      case q"scala.math.`package`.pow($a, $b)" => Power(getComponent(a), getComponent(b))
+      case Apply(Select(fun, TermName("apply")), List(a)) => Op1(fun, getComponent(a))
+      case Apply(Select(fun, TermName("apply")), List(a, b)) => Op2(fun, getComponent(a), getComponent(b))
     }
   }
 
@@ -187,17 +237,7 @@ class Macro(val c: Context) {
     def backward(dout: Component): Seq[(Component, Component)]
   }
 
-  trait UnaryComponent {
-    def value: Component
-  }
-
-  trait BinaryComponent {
-    def first: Component
-
-    def second: Component
-  }
-
-  case class Negate(value: Component) extends Component with UnaryComponent {
+  case class Negate(value: Component) extends Component {
     override def toTree: c.Tree = {
       import c.universe._
       q"-${value.toTree}"
@@ -206,7 +246,7 @@ class Macro(val c: Context) {
     override def backward(dout: Component) = Seq(value -> Negate(dout))
   }
 
-  case class Multiply(first: Component, second: Component) extends Component with BinaryComponent {
+  case class Multiply(first: Component, second: Component) extends Component {
     override def toTree: c.Tree = {
       import c.universe._
       q"${first.toTree} * ${second.toTree}"
@@ -219,7 +259,7 @@ class Macro(val c: Context) {
       )
   }
 
-  case class Invert(value: Component) extends Component with UnaryComponent {
+  case class Invert(value: Component) extends Component {
 
     override def toTree: c.Tree = {
       import c.universe._
@@ -232,7 +272,7 @@ class Macro(val c: Context) {
       )
   }
 
-  case class Add(first: Component, second: Component) extends Component with BinaryComponent {
+  case class Add(first: Component, second: Component) extends Component {
     override def toTree: c.Tree = {
       import c.universe._
       q"${first.toTree} + ${second.toTree}"
@@ -245,29 +285,38 @@ class Macro(val c: Context) {
       )
   }
 
-  case class Power(first: Component, second: Component) extends Component with BinaryComponent {
+  case class Op1(fn: c.Tree, value: Component) extends Component {
     override def toTree: c.Tree = {
       import c.universe._
-      q"Math.pow(${first.toTree}, ${second.toTree})"
+      q"$fn(${value.toTree})"
     }
 
     override def backward(dout: Component) =
       Seq(
-        first -> Multiply(dout, Multiply(second, Power(first, Add(second, Negate(DoubleConstant(1.0)))))),
-        second -> Multiply(dout, Multiply(Log(first), Power(first, second)))
+        value -> Op2(Select(fn, TermName("grad")), value, dout)
       )
   }
 
-  case class Log(value: Component) extends Component with UnaryComponent {
+  case class Op2(fn: c.Tree, first: Component, second: Component) extends Component {
     override def toTree: c.Tree = {
       import c.universe._
-      q"Math.log(${value.toTree})"
+      q"$fn(${first.toTree}, ${second.toTree})"
     }
 
     override def backward(dout: Component) =
       Seq(
-        value -> Multiply(dout, Invert(value))
+        first -> Op3(Select(fn, TermName("grad1")), first, second, dout),
+        second -> Op3(Select(fn, TermName("grad2")), first, second, dout),
       )
+  }
+
+  case class Op3(fn: c.Tree, first: Component, second: Component, third: Component) extends Component {
+    override def toTree: c.Tree = {
+      import c.universe._
+      q"$fn(${first.toTree}, ${second.toTree}, ${third.toTree})"
+    }
+
+    override def backward(dout: Component): Seq[(Component, Component)] = ???
   }
 
   case class Variable(name: String) extends Component {
