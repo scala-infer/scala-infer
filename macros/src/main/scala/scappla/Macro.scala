@@ -1,8 +1,9 @@
 package scappla
 
+import scala.annotation.StaticAnnotation
 import scala.collection.mutable
 import scala.language.experimental.macros
-import scala.reflect.macros.blackbox.Context
+import scala.reflect.macros.whitebox.Context
 import scala.reflect.api.Trees
 
 trait TensorField[X, Y] extends (X => Y) {
@@ -52,21 +53,75 @@ object Functions {
   }
 }
 
-object Macro {
-
-  def backward[A, B](fn: A => B): (A, B) => A = macro Macro.backward_impl[A, B]
-
+class differentiate extends StaticAnnotation {
+  def macroTransform(annottees: Any*): Any = macro Macro.impl
 }
 
 class Macro(val c: Context) {
 
   import c.universe._
 
-  def backward_impl[A, B](fn: c.Expr[A => B])
-      (implicit aTag: c.WeakTypeTag[A], bTag: c.WeakTypeTag[B])
-  : c.Expr[(A, B) => A] = {
+  def impl(annottees: c.Expr[Any]*): c.Expr[Any] = {
+    val inputs = annottees.map(_.tree).toList
+    /*
+    for (input <- inputs) {
+      println(showRaw(input))
+      println()
+    }
+    */
+    inputs match {
+      case (method: DefDef) :: _ =>
+        val DefDef(mods, name, List(), List(List(ValDef(_, argName, valType, _))), tpt, body) = method
+        val result = ModuleDef(
+          Modifiers(),
+          name,
+          Template(
+            List(AppliedTypeTree(Select(Ident(TermName("scappla")), TypeName("TensorField")), List(valType, tpt))),
+            noSelfType,
+            List(
+              DefDef(
+                Modifiers(),
+                termNames.CONSTRUCTOR,
+                List(),
+                List(List()),
+                TypeTree(),
+                Block(List(Apply(Select(Super(This(typeNames.EMPTY), typeNames.EMPTY), termNames.CONSTRUCTOR), List())), Literal(Constant(())))
+              ),
+              DefDef(
+                Modifiers(),
+                TermName("apply"),
+                List(),
+                List(List(ValDef(Modifiers(), argName, valType, EmptyTree))),
+                tpt,
+                body
+              ),
+              DefDef(
+                Modifiers(),
+                TermName("grad"),
+                List(),
+                List(List(
+                  ValDef(Modifiers(), argName, valType, EmptyTree),
+                  ValDef(Modifiers(), TermName("dy"), tpt, EmptyTree)
+                )),
+                valType,
+                backward_impl(argName, valType, body, tpt)
+              )
+            )
+          )
+        )
+//        println(s"RESULT: ${showCode(result)}")
+//        val tree = ClassDef(mods, termName.toTypeName, tparams, Template())
+//        c.Expr[Any](Block(List(), Literal(Constant(()))))
+        c.Expr[Any](result)
 
-    val Function(List(ValDef(_, name, _, _)), funcBody) = fn.tree
+      case _ =>
+        (EmptyTree, inputs)
+        c.Expr[Any](Literal(Constant(())))
+    }
+  }
+
+  def backward_impl(name: TermName, valType: Tree, funcBody: Tree, resultType: Tree): c.Tree = {
+
     val TermName(strName) = name
 
     val transformer = new Transformer {
@@ -89,7 +144,7 @@ class Macro(val c: Context) {
                       Modifiers(),
                       dValName,
                       TypeTree(),
-                      calcGradient(c)(valDefBody, strName).toTree
+                      calcGradient(valDefBody, strName).toTree
                     )
                 )
               )
@@ -103,39 +158,28 @@ class Macro(val c: Context) {
 
     val newBody = funcBody match {
       case Apply(_, _) =>
-        q"dy * ${calcGradient(c)(funcBody, strName).toTree}"
+        q"dy * ${calcGradient(funcBody, strName).toTree}"
       case Block(_, _) =>
-        val Function(newParams, Block(newStats, newExpr)) = transformer.transform(
-          c.untypecheck(fn.tree)
+        val Block(newStats, newExpr) = transformer.transform(
+          c.untypecheck(funcBody)
         )
         Block(
           newStats ++ transformer.transforms.map(_._2).toList,
           Apply(
             Select(Ident(TermName("dy")), TermName("$times")),
-            List(transformer.transforms.map(_._1).foldLeft(calcGradient(c)(newExpr, strName)) {
+            List(transformer.transforms.map(_._1).foldLeft(calcGradient(newExpr, strName)) {
               case (acc, valName) =>
-                Add(acc, Multiply(Variable(s"_d_${valName}"), calcGradient(c)(newExpr, valName)))
+                Add(acc, Multiply(Variable(s"_d_${valName}"), calcGradient(newExpr, valName)))
             }.toTree)
           )
         )
     }
-    val result = Function(
-      List(
-        ValDef(Modifiers(Flag.PARAM), TermName("dy"), TypeTree(weakTypeOf[B]), EmptyTree),
-        ValDef(Modifiers(Flag.PARAM), TermName(strName), TypeTree(weakTypeOf[A]), EmptyTree)
-      ),
-      newBody
-    )
 
-    println(s"Result: ${showCode(result)}")
-    c.Expr[(A, B) => A](result)
+    println(s"Result: ${showCode(newBody)}")
+    newBody
   }
 
-  def calcGradient(c: Context)(funcBody: c.Tree, strName: String) = {
-    import c.universe._
-
-    println(s"Gradient to ${strName} of: ${showRaw(funcBody)}")
-
+  def calcGradient(funcBody: c.Tree, strName: String) = {
     // topologically sort components - leaf components first, top last
     val allComponents = mutable.ListBuffer.empty[Component]
 
@@ -228,6 +272,8 @@ class Macro(val c: Context) {
       case q"$a * $b" => Multiply(getComponent(a), getComponent(b))
       case Apply(Select(fun, TermName("apply")), List(a)) => Op1(fun, getComponent(a))
       case Apply(Select(fun, TermName("apply")), List(a, b)) => Op2(fun, getComponent(a), getComponent(b))
+      case Apply(fun, List(a)) => Op1(fun, getComponent(a))
+      case Apply(fun, List(a, b)) => Op2(fun, getComponent(a), getComponent(b))
     }
   }
 
