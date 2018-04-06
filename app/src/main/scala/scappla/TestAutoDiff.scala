@@ -1,6 +1,6 @@
 package scappla
 
-object TestMacro extends App {
+object TestAutoDiff extends App {
 
   // c = fn(a, b)
   // ((a, b), dc) => (da, db)

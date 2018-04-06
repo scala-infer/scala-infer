@@ -3,7 +3,7 @@ package scappla
 import org.scalatest.FlatSpec
 import scappla.Functions.{log, pow}
 
-class MacroSpec extends FlatSpec {
+class AutoDiffSpec extends FlatSpec {
 
   "The backward macro" should "compute the backward gradient of a polynomial" in {
     // c = fn(a, b)

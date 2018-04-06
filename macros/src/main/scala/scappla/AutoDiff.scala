@@ -63,10 +63,10 @@ object Functions {
 }
 
 class differentiate extends StaticAnnotation {
-  def macroTransform(annottees: Any*): Any = macro Macro.impl
+  def macroTransform(annottees: Any*): Any = macro AutoDiff.impl
 }
 
-class Macro(val c: Context) {
+class AutoDiff(val c: Context) {
 
   import c.universe._
 
