@@ -3,16 +3,16 @@ package scappla
 import scala.annotation.StaticAnnotation
 import scala.collection.mutable
 import scala.language.experimental.macros
-import scala.reflect.macros.whitebox.Context
 import scala.reflect.api.Trees
+import scala.reflect.macros.whitebox.Context
 
-trait TensorField[X, Y] extends (X => Y) {
+trait DFunction1[X, Y] extends (X => Y) {
 
   // backwards propagate difference dy to dx
   def grad(x: X, dy: Y): X
 }
 
-trait TensorField2[X, Y, Z] extends ((X, Y) => Z) {
+trait DFunction2[@specialized(Double) X, @specialized(Double) Y, @specialized(Double) Z] extends ((X, Y) => Z) {
 
   // backwards propagate difference dy to dx
   def grad1(x: X, y: Y, dz: Z): X
@@ -22,7 +22,7 @@ trait TensorField2[X, Y, Z] extends ((X, Y) => Z) {
 
 object Functions {
 
-  object cos extends TensorField[Double, Double] {
+  object cos extends DFunction1[Double, Double] {
 
     override def apply(x: Double): Double =
       scala.math.cos(x)
@@ -31,7 +31,7 @@ object Functions {
       -dy * scala.math.sin(x)
   }
 
-  object log extends TensorField[Double, Double] {
+  object log extends DFunction1[Double, Double] {
 
     override def apply(x: Double): Double =
       scala.math.log(x)
@@ -40,7 +40,16 @@ object Functions {
       dy / x
   }
 
-  object pow extends TensorField2[Double, Double, Double] {
+  object exp extends DFunction1[Double, Double] {
+
+    override def apply(x: Double): Double =
+      scala.math.exp(x)
+
+    override def grad(x: Double, dy: Double): Double =
+      dy * scala.math.exp(x)
+  }
+
+  object pow extends DFunction2[Double, Double, Double] {
 
     override def apply(base: Double, exp: Double): Double =
       scala.math.pow(base, exp)
@@ -76,7 +85,7 @@ class Macro(val c: Context) {
           Modifiers(),
           name,
           Template(
-            List(AppliedTypeTree(Select(Ident(TermName("scappla")), TypeName("TensorField")), List(valType, tpt))),
+            List(AppliedTypeTree(Select(Ident(TermName("scappla")), TypeName("DFunction1")), List(valType, tpt))),
             noSelfType,
             List(
               DefDef(
