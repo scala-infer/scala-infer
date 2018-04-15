@@ -81,7 +81,7 @@ object DValue {
     new DScalar(value)
   }
 
-  def log(x: Double): Double = ???
+  def log(x: Double): Double = scala.math.log(x)
 
   // returned value takes ownership of the reference passed on the stack
   def log(x: DValue[Double]) = new DValue[Double] {
@@ -97,6 +97,25 @@ object DValue {
     override def complete(): Unit = {
       x.dv(grad / x.v)
     }
+  }
+
+  def pow(base: Double, exp: Double): Double = scala.math.pow(base, exp)
+
+  def pow(base: DValue[Double], exp: DValue[Double]) = new DValue[Double] {
+
+    private var grad = 0.0
+
+    override lazy val v: Double = scala.math.pow(base.v, exp.v)
+
+    override def dv(dx: Double): Unit = {
+      grad += dx
+    }
+
+    override def complete(): Unit = {
+      base.dv(grad * exp.v * scala.math.pow(base.v, exp.v - 1))
+      exp.dv(grad * scala.math.log(base.v) * v)
+    }
+
   }
 
 }
@@ -161,26 +180,40 @@ class DValueTransformer(val c: whitebox.Context) {
 
   def flattenBody(ids: Seq[Int], funcBody: c.Tree): (List[(c.TermName, c.Tree)], Boolean) = {
     println(s"EXPANDING ${showRaw(funcBody)}")
+    def expand(idx: Int, v: c.Tree) = {
+      val (sbjStmts, sbjCom) = flattenBody(ids :+ idx, v)
+      if (sbjCom) {
+        val varname = sbjStmts.head._1
+        (Ident(varname), sbjStmts)
+      } else {
+        (v, List.empty)
+      }
+    }
     funcBody match {
       case q"$s.$method($o)" =>
-        val (sbjStmts, sbjCom) = flattenBody(ids :+ 0, s)
-        val (sbjVar, sbjDef) = if (sbjCom) {
-          val varname = sbjStmts.head._1
-          (Ident(varname), sbjStmts)
-        } else {
-          (s, List.empty)
-        }
-        val (objStmts, objCom) = flattenBody(ids :+ 1, o)
-        val (objVar, objDef) = if (objCom) {
-          val varname = objStmts.head._1
-          (Ident(varname), objStmts)
-        } else {
-          (o, List.empty)
-        }
+        val (sbjVar, sbjDef) = expand(0, s)
+        val (objVar, objDef) = expand(1, o)
         (
             List(
               (TermName("var$" + ids.mkString("$")), q"$sbjVar.$method($objVar)")
             ) ++ objDef ++ sbjDef,
+            true
+        )
+      case q"$fn($a, $b)" =>
+        val (aVar, aDef) = expand(0, a)
+        val (bVar, bDef) = expand(1, b)
+        (
+            List(
+              (TermName("var$" + ids.mkString("$")), q"$fn($aVar, $bVar)")
+            ) ++ aDef ++ bDef,
+            true
+        )
+      case q"$fn($o)" =>
+        val (objVar, objDef) = expand(0, o)
+        (
+            List(
+              (TermName("var$" + ids.mkString("$")), q"$fn($objVar)")
+            ) ++ objDef,
             true
         )
       case _ =>
