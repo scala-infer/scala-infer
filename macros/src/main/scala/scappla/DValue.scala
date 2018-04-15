@@ -141,7 +141,7 @@ class DValueTransformer(val c: whitebox.Context) {
 //      case (method: DefDef) :: _ =>
 //        val DefDef(mods, name, List(), List(List(ValDef(_, argName, valType, _))), tpt, body) = method
         println(s"RAW: ${showRaw(body)}")
-        val (_, valExpr) :: stmts = flattenBody(Seq(0), body)._1
+        val stmts = flattenBody(Seq(0), body)._1
         println(s"STMTS: ${stmts}")
         val result =
           q"""object $name {
@@ -152,14 +152,11 @@ class DValueTransformer(val c: whitebox.Context) {
 
                   ..${stmts.reverse.map{case (vName, vExpr) => q"val $vName=$vExpr"}}
 
-                  private val _v: DValue[$tpt] = $valExpr
+                  def v: $tpt = ${stmts.head._1}.v
 
-                  val v: $tpt = _v.v
-
-                  def dv(d: $tpt): Unit = _v.dv(d)
+                  def dv(d: $tpt): Unit = ${stmts.head._1}.dv(d)
 
                   override def complete() = {
-                    _v.complete()
                     ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
                   }
                 }
