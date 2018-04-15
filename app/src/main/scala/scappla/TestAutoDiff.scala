@@ -4,7 +4,7 @@ object TestAutoDiff extends App {
 
   // c = fn(a, b)
   // ((a, b), dc) => (da, db)
-  @differentiate
+  @autodiff
   def bw(z: Double): Double = z + z * z * z
 
   assert(bw.grad(1.0, 1.0) == 4.0)

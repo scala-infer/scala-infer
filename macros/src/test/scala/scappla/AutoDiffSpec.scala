@@ -8,7 +8,7 @@ class AutoDiffSpec extends FlatSpec {
   "The backward macro" should "compute the backward gradient of a polynomial" in {
     // c = fn(a, b)
     // ((a, b), dc) => (da, db)
-    @differentiate
+    @autodiff
     def fn(z: Double): Double = z + z * z * z
 
     assert(fn(1.0) == 2.0)
@@ -17,7 +17,7 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compute gradient of pow for base" in {
-    @differentiate
+    @autodiff
     def fn(z: Double): Double = z + pow(z, 3.0)
 
     val exact: Double => Double = z => 1.0 + 3 * pow(z, 2.0)
@@ -26,7 +26,7 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compute gradient of Math.pow for exponent" in {
-    @differentiate
+    @autodiff
     def fn(z: Double): Double =
       z + pow(2.0, z)
 
@@ -37,7 +37,7 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compute gradient with a block in body" in {
-    @differentiate
+    @autodiff
     def fn(z: Double): Double = {
       val x = z * z
       x
