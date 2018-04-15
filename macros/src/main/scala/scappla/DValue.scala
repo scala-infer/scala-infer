@@ -81,13 +81,21 @@ object DValue {
     new DScalar(value)
   }
 
+  def log(x: Double): Double = ???
+
   // returned value takes ownership of the reference passed on the stack
   def log(x: DValue[Double]) = new DValue[Double] {
+
+    private var grad = 0.0
 
     override lazy val v: Double = scala.math.log(x.v)
 
     override def dv(dx: Double): Unit = {
-      x.dv(dx / x.v)
+      grad += dx
+    }
+
+    override def complete(): Unit = {
+      x.dv(grad / x.v)
     }
   }
 
