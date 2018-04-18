@@ -150,7 +150,7 @@ class DValueTransformer(val c: whitebox.Context) {
 
                 class impl($argName: DValue[$valType]) extends DValue[$tpt] {
 
-                  ..${stmts.reverse.map{case (vName, vExpr) => q"val $vName=$vExpr"}}
+                  ..${stmts.reverse.map{case (vName, vExpr) => q"private val $vName=$vExpr"}}
 
                   def v: $tpt = ${stmts.head._1}.v
 
@@ -177,6 +177,7 @@ class DValueTransformer(val c: whitebox.Context) {
 
   def flattenBody(ids: Seq[Int], funcBody: c.Tree): (List[(c.TermName, c.Tree)], Boolean) = {
     println(s"EXPANDING ${showRaw(funcBody)}")
+
     def expand(idx: Int, v: c.Tree) = {
       val (sbjStmts, sbjCom) = flattenBody(ids :+ idx, v)
       if (sbjCom) {
@@ -186,6 +187,7 @@ class DValueTransformer(val c: whitebox.Context) {
         (v, List.empty)
       }
     }
+
     funcBody match {
       case q"$s.$method($o)" =>
         val (sbjVar, sbjDef) = expand(0, s)
@@ -213,8 +215,24 @@ class DValueTransformer(val c: whitebox.Context) {
             ) ++ objDef,
             true
         )
+      case q"{ ..$stmts }" if (stmts.size > 1) =>
+        (
+            stmts.zipWithIndex.flatMap { case (stmt, idx) =>
+              expand(idx, stmt)._2
+            },
+            true
+        )
+      case q"val $tname = $expr" =>
+        val (objVar, objDef) = expand(0, expr)
+        val defHead :: defTail = objDef
+        (
+            List(
+              (tname, q"${defHead._2}")
+            ) ++ defTail,
+            true
+        )
       case _ =>
-        (List((TermName("dummy"), funcBody)), false)
+        (List((TermName("var$" + ids.mkString("$")), funcBody)), false)
     }
   }
 

@@ -66,4 +66,20 @@ class DValueSpec extends FlatSpec {
   }
 
 
+  it should "compute gradient with a block in body" in {
+    @dvalue
+    def fn(z: Double): Double = {
+      val x = z * z * z
+      x
+    }
+
+    val variable = new DVariable(0.5)
+    val value: DValue[Double] = fn(variable)
+    value.dv(1.0)
+    value.complete()
+
+    assert(variable.grad == 0.75)
+  }
+
+
 }
