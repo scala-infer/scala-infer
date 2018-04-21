@@ -75,6 +75,8 @@ class DConstant(val v: Double) extends DValue[Double] {
 
 object DValue {
 
+  def ad[A, B](fn: A => B): DValue[A] => DValue[B] = macro DValueTransformer.defMacro[A, B]
+
   implicit def toConstant(value: Double) = new DConstant(value)
 
   implicit def toScalarOps(value: DValue[Double]): DScalar = {
@@ -99,58 +101,50 @@ object DValue {
     }
   }
 
-  def pow(base: Double, exp: Double): Double = scala.math.pow(base, exp)
+  object pow {
 
-  def pow(base: DValue[Double], exp: DValue[Double]) = new DValue[Double] {
+    def apply(base: Double, exp: Double): Double = scala.math.pow(base, exp)
 
-    private var grad = 0.0
+    def apply(base: DValue[Double], exp: DValue[Double]) = new DValue[Double] {
 
-    override lazy val v: Double = scala.math.pow(base.v, exp.v)
+      private var grad = 0.0
 
-    override def dv(dx: Double): Unit = {
-      grad += dx
+      override lazy val v: Double = scala.math.pow(base.v, exp.v)
+
+      override def dv(dx: Double): Unit = {
+        grad += dx
+      }
+
+      override def complete(): Unit = {
+        base.dv(grad * exp.v * scala.math.pow(base.v, exp.v - 1))
+        exp.dv(grad * scala.math.log(base.v) * v)
+      }
+
     }
-
-    override def complete(): Unit = {
-      base.dv(grad * exp.v * scala.math.pow(base.v, exp.v - 1))
-      exp.dv(grad * scala.math.log(base.v) * v)
-    }
-
   }
 
-}
-
-class dvalue extends StaticAnnotation {
-  def macroTransform(annottees: Any*): Any = macro DValueTransformer.impl
 }
 
 class DValueTransformer(val c: whitebox.Context) {
 
   import c.universe._
 
-  def impl(annottees: c.Expr[Any]*): c.Expr[Any] = {
-    val inputs = annottees.map(_.tree).toList
-    /*
-    for (input <- inputs) {
-      println(showRaw(input))
-      println()
-    }
-    */
-    inputs.head match {
-      case q"def $name($argName: $valType): $tpt = $body" =>
-//      case (method: DefDef) :: _ =>
-//        val DefDef(mods, name, List(), List(List(ValDef(_, argName, valType, _))), tpt, body) = method
+  def defMacro[A: WeakTypeTag, B: WeakTypeTag](fn: c.Expr[A => B]): c.Expr[DValue[A] => DValue[B]] = {
+    fn.tree match {
+      case q"($argName: $argType) => $body" =>
+        //      case (method: DefDef) :: _ =>
+        //        val DefDef(mods, name, List(), List(List(ValDef(_, argName, valType, _))), tpt, body) = method
         println(s"RAW: ${showRaw(body)}")
         val stmts = flattenBody(Seq(0), body)._1
+        val tpt = implicitly[WeakTypeTag[B]]
+        val valType = implicitly[WeakTypeTag[A]]
         println(s"STMTS: ${stmts}")
         val result =
-          q"""object $name {
+          q"""($argName: DValue[$valType]) => new DValue[$tpt] {
 
-                import _root_.scappla.DValue._
+                  import _root_.scappla.DValue._
 
-                class impl($argName: DValue[$valType]) extends DValue[$tpt] {
-
-                  ..${stmts.reverse.map{case (vName, vExpr) => q"private val $vName=$vExpr"}}
+                  ..${stmts.reverse.map{case (vName, vExpr) => q"private val $vName : DValue[Double] = $vExpr"}}
 
                   def v: $tpt = ${stmts.head._1}.v
 
@@ -159,51 +153,59 @@ class DValueTransformer(val c: whitebox.Context) {
                   override def complete() = {
                     ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
                   }
-                }
-
-                def apply($argName: DValue[$valType]) = new impl($argName)
              }"""
-        println(s"RESULT: ${showCode(result)}")
+        println(s"RESULT: ${showCode(result, printTypes=true)}")
         //                  def v: $tpt = { ..$stmts }
         //        val tree = ClassDef(mods, termName.toTypeName, tparams, Template())
         //        c.Expr[Any](Block(List(), Literal(Constant(()))))
-        c.Expr[Any](result)
+        c.Expr(result)
 
       case _ =>
-        (EmptyTree, inputs)
-        c.Expr[Any](Literal(Constant(())))
+        c.Expr(EmptyTree)
     }
   }
 
   def flattenBody(ids: Seq[Int], funcBody: c.Tree): (List[(c.TermName, c.Tree)], Boolean) = {
     println(s"EXPANDING ${showRaw(funcBody)}")
 
-    def expand(idx: Int, v: c.Tree) = {
+    def expand(idx: Int, v: c.Tree): (c.Tree, List[(c.TermName, c.Tree)]) = {
       val (sbjStmts, sbjCom) = flattenBody(ids :+ idx, v)
       if (sbjCom) {
         val varname = sbjStmts.head._1
         (Ident(varname), sbjStmts)
       } else {
-        (v, List.empty)
+        // the type of an argument may have changed (e.g. Double -> DValue[Double])
+        val clone = v match {
+          case Ident(TermName(name)) =>
+            Ident(TermName(name))
+          case _ => v
+        }
+        (clone, List.empty)
       }
     }
 
+    def mkVar(ids: Seq[Int]) =
+      TermName("var$" + ids.mkString("$"))
+
     funcBody match {
       case q"$s.$method($o)" =>
+        println(s"METHOD: ${showRaw(method)}")
+
         val (sbjVar, sbjDef) = expand(0, s)
         val (objVar, objDef) = expand(1, o)
         (
             List(
-              (TermName("var$" + ids.mkString("$")), q"$sbjVar.$method($objVar)")
+              (mkVar(ids), q"$sbjVar.$method($objVar)")
             ) ++ objDef ++ sbjDef,
             true
         )
       case q"$fn($a, $b)" =>
         val (aVar, aDef) = expand(0, a)
         val (bVar, bDef) = expand(1, b)
+        val Select(qualifier, name) = fn
         (
             List(
-              (TermName("var$" + ids.mkString("$")), q"$fn($aVar, $bVar)")
+              (mkVar(ids), q"${Select(qualifier,name)}($aVar, $bVar)")
             ) ++ aDef ++ bDef,
             true
         )
@@ -211,18 +213,39 @@ class DValueTransformer(val c: whitebox.Context) {
         val (objVar, objDef) = expand(0, o)
         (
             List(
-              (TermName("var$" + ids.mkString("$")), q"$fn($objVar)")
+              (mkVar(ids), q"$fn($objVar)")
             ) ++ objDef,
             true
         )
-      case q"{ ..$stmts }" if (stmts.size > 1) =>
+      case q"{ ..$defs }" if (defs.size > 1) =>
+        val stmts = defs.reverse.zipWithIndex.flatMap { case (stmt, idx) =>
+            expand(idx, stmt)._2
+        }
+        println(s"  RAW last: ${showCode(defs.last, printTypes = true)}")
+//        val tpt = defs.last.tpe
+        val tpt = funcBody.tpe
         (
-            stmts.zipWithIndex.flatMap { case (stmt, idx) =>
-              expand(idx, stmt)._2
-            },
+            List((mkVar(ids),
+                q"""new DValue[$tpt] {
+
+                  ..${stmts.reverse.map{
+                    case (vName, vExpr) =>
+                      q"private val $vName : DValue[Double]=$vExpr"
+                    }
+                  }
+
+                  def v: $tpt = ${stmts.head._1}.v
+
+                  def dv(d: $tpt): Unit = ${stmts.head._1}.dv(d)
+
+                  override def complete() = {
+                    ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
+                  }
+             }""")),
             true
         )
-      case q"val $tname = $expr" =>
+      case q"val $tname : $tpt = $expr" =>
+        println(s"  TYPEOF($tname) := $tpt")
         val (objVar, objDef) = expand(0, expr)
         val defHead :: defTail = objDef
         (
@@ -232,7 +255,7 @@ class DValueTransformer(val c: whitebox.Context) {
             true
         )
       case _ =>
-        (List((TermName("var$" + ids.mkString("$")), funcBody)), false)
+        (List((mkVar(ids), funcBody)), false)
     }
   }
 

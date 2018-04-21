@@ -1,26 +1,27 @@
 package scappla
 
+import scappla.DValue.{ad, pow}
+
 object TestAutoDiff extends App {
 
-  // c = fn(a, b)
-  // ((a, b), dc) => (da, db)
-  @autodiff
-  def bw(z: Double): Double = z + z * z * z
-
-  assert(bw.grad(1.0, 1.0) == 4.0)
-  assert(bw.grad(0.5, 1.0) == 1.75)
-
-  //    val bw: (Double, Double) => Double =
-  //    Macro.backward[Double, Double](z => z + z * z * z)
-
   /*
-  val bwblock = Macro.backward[Double, Double] { z =>
-      val x = {
-        val y = z * z
-        y
-      }
+  val bw = DValue.ad {
+    (z: Double) => {
+      val x = z + z * z * z
       x
     }
-    */
+  }
+
+  val z = new DVariable(2.0)
+  val bwz = bw(z)
+  bwz.dv(1.0)
+  bwz.complete()
+  assert(bwz.v == 10.0)
+  assert(z.grad == 13.0)
+  */
+
+  val fn = ad { (z: Double) =>
+    z + pow(2.0, z)
+  }
 
 }

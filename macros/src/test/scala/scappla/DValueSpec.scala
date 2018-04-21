@@ -6,9 +6,8 @@ class DValueSpec extends FlatSpec {
 
   import DValue._
 
-  "The dvalue macro" should "compute the backward gradient of a polynomial" in {
-    @dvalue
-    def fn(z: Double): Double = z + z * z * z
+  "The ad macro" should "compute the backward gradient of a polynomial" in {
+    val fn = ad { (z: Double) => z + z * z * z }
 
     val variable = new DVariable(2.0)
 
@@ -22,8 +21,7 @@ class DValueSpec extends FlatSpec {
   }
 
   it should "compute the backward gradient of the log" in {
-    @dvalue
-    def fn(z: Double): Double = z * log(z)
+    val fn = ad { (z: Double) => z * log(z) }
 
     val variable = new DVariable(2.0)
 
@@ -38,8 +36,7 @@ class DValueSpec extends FlatSpec {
   }
 
   it should "compute gradient of pow for base" in {
-    @dvalue
-    def fn(z: Double): Double = z + pow(z, 3.0)
+    val fn = ad { (z: Double) => z + pow(z, 3.0) }
 
     val variable = new DVariable(0.5)
     val value: DValue[Double] = fn(variable)
@@ -51,9 +48,9 @@ class DValueSpec extends FlatSpec {
   }
 
   it should "compute gradient of Math.pow for exponent" in {
-    @dvalue
-    def fn(z: Double): Double =
+    val fn = ad { (z: Double) =>
       z + pow(2.0, z)
+    }
 
     val variable = new DVariable(0.5)
     val value: DValue[Double] = fn(variable)
@@ -67,10 +64,11 @@ class DValueSpec extends FlatSpec {
 
 
   it should "compute gradient with a block in body" in {
-    @dvalue
-    def fn(z: Double): Double = {
-      val x = z * z * z
-      x
+    val fn = ad {
+      (z: Double) => {
+        val x = z * z * z
+        x
+      }
     }
 
     val variable = new DVariable(0.5)
