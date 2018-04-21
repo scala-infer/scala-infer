@@ -15,6 +15,20 @@ trait DValue[X] {
   def complete(): Unit = {}
 }
 
+trait DFunction1[From, To] {
+
+  def apply(in: From): To
+
+  def apply(in: DValue[From]): DValue[To]
+}
+
+trait DFunction2[From1, From2, To] {
+
+  def apply(in1: From1, in2: From2): To
+
+  def apply(in1: DValue[From1], in2: DValue[From2]): DValue[To]
+}
+
 class DScalar(self: DValue[Double]) {
 
   def unary_- = new DValue[Double] {
@@ -73,35 +87,32 @@ class DConstant(val v: Double) extends DValue[Double] {
   override def dv(v: Double): Unit = {}
 }
 
-object DValue {
+object Functions {
 
-  def ad[A, B](fn: A => B): DValue[A] => DValue[B] = macro DValueTransformer.defMacro[A, B]
+  def autodiff[A, B](fn: A => B): DValue[A] => DValue[B] = macro FunctionMacros.autodiff[A, B]
 
-  implicit def toConstant(value: Double) = new DConstant(value)
+  object log extends DFunction1[Double, Double] {
 
-  implicit def toScalarOps(value: DValue[Double]): DScalar = {
-    new DScalar(value)
-  }
+    def apply(x: Double): Double = scala.math.log(x)
 
-  def log(x: Double): Double = scala.math.log(x)
+    // returned value takes ownership of the reference passed on the stack
+    def apply(x: DValue[Double]): DValue[Double] = new DValue[Double] {
 
-  // returned value takes ownership of the reference passed on the stack
-  def log(x: DValue[Double]) = new DValue[Double] {
+      private var grad = 0.0
 
-    private var grad = 0.0
+      override lazy val v: Double = scala.math.log(x.v)
 
-    override lazy val v: Double = scala.math.log(x.v)
+      override def dv(dx: Double): Unit = {
+        grad += dx
+      }
 
-    override def dv(dx: Double): Unit = {
-      grad += dx
-    }
-
-    override def complete(): Unit = {
-      x.dv(grad / x.v)
+      override def complete(): Unit = {
+        x.dv(grad / x.v)
+      }
     }
   }
 
-  object pow {
+  object pow extends DFunction2[Double, Double, Double] {
 
     def apply(base: Double, exp: Double): Double = scala.math.pow(base, exp)
 
@@ -125,11 +136,20 @@ object DValue {
 
 }
 
-class DValueTransformer(val c: whitebox.Context) {
+object DValue {
+
+  implicit def toConstant(value: Double) = new DConstant(value)
+
+  implicit def toScalarOps(value: DValue[Double]): DScalar = {
+    new DScalar(value)
+  }
+}
+
+class FunctionMacros(val c: whitebox.Context) {
 
   import c.universe._
 
-  def defMacro[A: WeakTypeTag, B: WeakTypeTag](fn: c.Expr[A => B]): c.Expr[DValue[A] => DValue[B]] = {
+  def autodiff[A: WeakTypeTag, B: WeakTypeTag](fn: c.Expr[A => B]): c.Expr[DValue[A] => DValue[B]] = {
     fn.tree match {
       case q"($argName: $argType) => $body" =>
         //      case (method: DefDef) :: _ =>

@@ -4,10 +4,10 @@ import org.scalatest.FlatSpec
 
 class DValueSpec extends FlatSpec {
 
-  import DValue._
+  import Functions._
 
   "The ad macro" should "compute the backward gradient of a polynomial" in {
-    val fn = ad { (z: Double) => z + z * z * z }
+    val fn = autodiff { (z: Double) => z + z * z * z }
 
     val variable = new DVariable(2.0)
 
@@ -21,7 +21,7 @@ class DValueSpec extends FlatSpec {
   }
 
   it should "compute the backward gradient of the log" in {
-    val fn = ad { (z: Double) => z * log(z) }
+    val fn = autodiff { (z: Double) => z * log(z) }
 
     val variable = new DVariable(2.0)
 
@@ -36,7 +36,7 @@ class DValueSpec extends FlatSpec {
   }
 
   it should "compute gradient of pow for base" in {
-    val fn = ad { (z: Double) => z + pow(z, 3.0) }
+    val fn = autodiff { (z: Double) => z + pow(z, 3.0) }
 
     val variable = new DVariable(0.5)
     val value: DValue[Double] = fn(variable)
@@ -48,7 +48,7 @@ class DValueSpec extends FlatSpec {
   }
 
   it should "compute gradient of Math.pow for exponent" in {
-    val fn = ad { (z: Double) =>
+    val fn = autodiff { (z: Double) =>
       z + pow(2.0, z)
     }
 
@@ -64,7 +64,7 @@ class DValueSpec extends FlatSpec {
 
 
   it should "compute gradient with a block in body" in {
-    val fn = ad {
+    val fn = autodiff {
       (z: Double) => {
         val x = z * z * z
         x

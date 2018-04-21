@@ -1,8 +1,9 @@
 package scappla
 
-import scappla.DValue.{ad, pow}
+import Functions._
 
 object TestAutoDiff extends App {
+
 
   /*
   val bw = DValue.ad {
@@ -20,8 +21,9 @@ object TestAutoDiff extends App {
   assert(z.grad == 13.0)
   */
 
-  val fn = ad { (z: Double) =>
-    z + pow(2.0, z)
+  val fn = autodiff {
+    (z: Double) =>
+      z + pow(2.0, z)
   }
 
 }
