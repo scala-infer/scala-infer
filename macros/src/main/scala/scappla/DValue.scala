@@ -1,9 +1,8 @@
 package scappla
 
-import scala.annotation.StaticAnnotation
 import scala.language.experimental.macros
 import scala.reflect.api.Trees
-import scala.reflect.macros.whitebox
+import scala.reflect.macros.blackbox
 import scala.reflect.macros._
 
 trait DValue[X] {
@@ -15,16 +14,12 @@ trait DValue[X] {
   def complete(): Unit = {}
 }
 
-trait DFunction1[From, To] {
-
-  def apply(in: From): To
+trait DFunction1[From, To] extends ((From) => To) {
 
   def apply(in: DValue[From]): DValue[To]
 }
 
-trait DFunction2[From1, From2, To] {
-
-  def apply(in1: From1, in2: From2): To
+trait DFunction2[From1, From2, To] extends ((From1, From2) => To) {
 
   def apply(in1: DValue[From1], in2: DValue[From2]): DValue[To]
 }
@@ -89,7 +84,7 @@ class DConstant(val v: Double) extends DValue[Double] {
 
 object Functions {
 
-  def autodiff[A, B](fn: A => B): DValue[A] => DValue[B] = macro FunctionMacros.autodiff[A, B]
+  def autodiff[A, B](fn: A => B): DFunction1[A, B] = macro FunctionMacros.autodiff[A, B]
 
   object log extends DFunction1[Double, Double] {
 
@@ -145,11 +140,11 @@ object DValue {
   }
 }
 
-class FunctionMacros(val c: whitebox.Context) {
+class FunctionMacros(val c: blackbox.Context) {
 
   import c.universe._
 
-  def autodiff[A: WeakTypeTag, B: WeakTypeTag](fn: c.Expr[A => B]): c.Expr[DValue[A] => DValue[B]] = {
+  def autodiff[A: WeakTypeTag, B: WeakTypeTag](fn: c.Expr[A => B]): c.Expr[DFunction1[A, B]] = {
     fn.tree match {
       case q"($argName: $argType) => $body" =>
         //      case (method: DefDef) :: _ =>
@@ -159,12 +154,29 @@ class FunctionMacros(val c: whitebox.Context) {
         val tpt = implicitly[WeakTypeTag[B]]
         val valType = implicitly[WeakTypeTag[A]]
         println(s"STMTS: ${stmts}")
+
+        /*
+                        def apply($argName: $valType) = ${new Transformer {
+                    override def transform(tree: c.universe.Tree): c.universe.Tree = {
+                      super.transform(tree) match {
+                        case Ident(TermName(tname)) =>
+                          println(s"  TRANSFORMING ${tname}")
+                          Ident(TermName(tname))
+                        case t @ _ => t
+                      }
+                    }
+                  }.transform(body)}
+                     */
         val result =
-          q"""($argName: DValue[$valType]) => new DValue[$tpt] {
+          q"""new DFunction1[$valType, $tpt] {
+
+                def apply($argName: $valType) = ${c.parse(showCode(body))}
+
+                def apply($argName: DValue[$valType]) = new DValue[$tpt] {
 
                   import _root_.scappla.DValue._
 
-                  ..${stmts.reverse.map{case (vName, vExpr) => q"private val $vName : DValue[Double] = $vExpr"}}
+                  ..${stmts.reverse.map { case (vName, vExpr) => q"private val $vName : DValue[Double] = $vExpr" }}
 
                   def v: $tpt = ${stmts.head._1}.v
 
@@ -173,8 +185,9 @@ class FunctionMacros(val c: whitebox.Context) {
                   override def complete() = {
                     ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
                   }
+               }
              }"""
-        println(s"RESULT: ${showCode(result, printTypes=true)}")
+        println(s"RESULT: ${showRaw(result, printOwners=true, printPositions=true, printTypes = true)}")
         //                  def v: $tpt = { ..$stmts }
         //        val tree = ClassDef(mods, termName.toTypeName, tparams, Template())
         //        c.Expr[Any](Block(List(), Literal(Constant(()))))

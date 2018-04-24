@@ -62,7 +62,6 @@ class DValueSpec extends FlatSpec {
     assert(variable.grad == exact(0.5))
   }
 
-
   it should "compute gradient with a block in body" in {
     val fn = autodiff {
       (z: Double) => {
@@ -79,5 +78,20 @@ class DValueSpec extends FlatSpec {
     assert(variable.grad == 0.75)
   }
 
+  it should "compose gradients" in {
+    val square = autodiff {
+      (x: Double) => x * x
+    }
+    val plus_x = autodiff {
+      (x: Double) => x + square(x)
+    }
+
+    val variable = new DVariable(0.5)
+    val value: DValue[Double] = plus_x(variable)
+    value.dv(1.0)
+    value.complete()
+
+    assert(variable.grad == 2.0)
+  }
 
 }
