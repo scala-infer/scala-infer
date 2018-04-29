@@ -94,4 +94,67 @@ class DValueSpec extends FlatSpec {
     assert(variable.grad == 2.0)
   }
 
+  /*
+  it should "allow a model to be specified" in {
+
+    val sprinkle = infer {
+      (rain: Boolean) =>
+        if (rain) {
+          sample(Bernoulli(0.01).draw(Enumeration))
+        } else {
+          sample(Bernoulli(0.4).draw(Enumeration))
+        }
+    }
+
+    val model = infer {
+
+      val rain = sample(Bernoulli(0.2).draw(Enumeration))
+      val sprinkled = sample(sprinkle(rain))
+
+      val p_wet = (rain, sprinkled) match {
+        case (true, true) => 0.99
+        case (false, true) => 0.9
+        case (true,  false) => 0.8
+        case (false, false) => 0.0
+      }
+
+      // bind model to data / add observation
+      factor(Bernoulli(p_wet).score(true))
+
+      // return quantity we're interested in
+      rain
+    }
+
+    val n_rain = Range(0, 10000).map { _ =>
+      sample(model)
+    }.count(identity)
+
+    println(s"Expected number of rainy days: ${n_rain / 10000.0}")
+  }
+  */
+
+  it should "follow the monad pattern" in {
+    val px = 0.2
+    val py = 0.7
+    val success = for {
+      x <- Bernoulli(px).draw(Enumeration)
+      y <- Bernoulli(py).draw(Enumeration)
+    } yield (x, y)
+
+    val N = 10000
+    val n_success = (0 to N)
+        .map { _ => sample(success) }
+        .groupBy(identity)
+        .mapValues(_.size)
+
+    def expected(x: Boolean, y: Boolean) = {
+      (if (x) px else 1.0 - px) * (if (y) py else 1.0 - py)
+    }
+
+    for { ((x, y), count) <- n_success } {
+      val n = expected(x, y) * N
+      assert(math.abs(count - n) < 3 * math.sqrt(n))
+    }
+  }
+
 }
