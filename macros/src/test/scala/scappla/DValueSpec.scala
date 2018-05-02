@@ -133,12 +133,13 @@ class DValueSpec extends FlatSpec {
   }
   */
 
-  it should "follow the monad pattern" in {
+  it should "allow inference by enumeration" in {
     val px = 0.2
-    val py = 0.7
+    val pty = 0.7
+    val pfy = 0.8
     val success = for {
-      x <- Bernoulli(px).draw(Enumeration)
-      y <- Bernoulli(py).draw(Enumeration)
+      x <- Bernoulli(px).draw(new Enumeration())
+      y <- Bernoulli(if (x) pty else pfy).draw(new Enumeration())
     } yield (x, y)
 
     val N = 10000
@@ -148,13 +149,62 @@ class DValueSpec extends FlatSpec {
         .mapValues(_.size)
 
     def expected(x: Boolean, y: Boolean) = {
-      (if (x) px else 1.0 - px) * (if (y) py else 1.0 - py)
+      (if (x) px else 1.0 - px) *
+          (if (x) {
+            if (y) pty else 1.0 - pty
+          } else {
+            if (y) pfy else 1.0 - pfy
+          })
     }
 
-    for { ((x, y), count) <- n_success } {
+    for {((x, y), count) <- n_success} {
       val n = expected(x, y) * N
       assert(math.abs(count - n) < 3 * math.sqrt(n))
     }
+  }
+
+  it should "allow a model to be specified" in {
+
+    val si = Map(
+      true -> new Enumeration[Boolean],
+      false -> new Enumeration[Boolean]
+    )
+
+    val sprinkle = (rain: Boolean) =>
+      for {
+        s <- if (rain) {
+          Bernoulli(0.01).draw(si(true))
+        } else {
+          Bernoulli(0.4).draw(si(false))
+        }
+      } yield s
+
+
+    val hasRained = for {
+      rain <- Bernoulli(0.2).draw(new Enumeration())
+      sprinkled <- sprinkle(rain)
+      p_wet = (rain, sprinkled) match {
+        case (true, true) => 0.99
+        case (false, true) => 0.9
+        case (true, false) => 0.8
+        case (false, false) => 0.001
+      }
+
+      // bind model to data / add observation
+      _ <- addFactor(Bernoulli(p_wet).score(true))
+    } yield rain
+
+    val N = 100000
+    val n_rain = Range(0, N).map { _ =>
+      sample(hasRained)
+    }.count(identity)
+
+    // See Wikipedia
+    // P(rain = true | grass is wet) = 35.77 %
+
+    val p_expected = 0.3577
+    val n_expected = p_expected * N
+    assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
   }
 
 }
