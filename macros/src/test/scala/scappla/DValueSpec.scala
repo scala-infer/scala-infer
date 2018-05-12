@@ -15,7 +15,6 @@ class DValueSpec extends FlatSpec {
     assert(value.v == 10.0)
 
     value.dv(1.0)
-    value.complete()
 
     assert(variable.grad == 13.0)
   }
@@ -29,7 +28,6 @@ class DValueSpec extends FlatSpec {
     assert(value.v == 2.0 * scala.math.log(2.0))
 
     value.dv(1.0)
-    value.complete()
 
     assert(variable.grad == scala.math.log(2.0) + 1.0)
 
@@ -41,7 +39,6 @@ class DValueSpec extends FlatSpec {
     val variable = new DVariable(0.5)
     val value: DValue[Double] = fn(variable)
     value.dv(1.0)
-    value.complete()
 
     val exact: Double => Double = z => 1.0 + 3 * pow(z, 2.0)
     assert(variable.grad == exact(0.5))
@@ -55,7 +52,6 @@ class DValueSpec extends FlatSpec {
     val variable = new DVariable(0.5)
     val value: DValue[Double] = fn(variable)
     value.dv(1.0)
-    value.complete()
 
     val exact: Double => Double =
       z => 1.0 + log(2.0) * pow(2.0, z)
@@ -73,7 +69,6 @@ class DValueSpec extends FlatSpec {
     val variable = new DVariable(0.5)
     val value: DValue[Double] = fn(variable)
     value.dv(1.0)
-    value.complete()
 
     assert(variable.grad == 0.75)
   }
@@ -89,7 +84,6 @@ class DValueSpec extends FlatSpec {
     val variable = new DVariable(0.5)
     val value: DValue[Double] = plus_x(variable)
     value.dv(1.0)
-    value.complete()
 
     assert(variable.grad == 2.0)
   }
@@ -97,18 +91,18 @@ class DValueSpec extends FlatSpec {
   /*
   it should "allow a model to be specified" in {
 
-    val sprinkle = infer {
+    val sprinkle = infer[Boolean, Boolean] {
       (rain: Boolean) =>
         if (rain) {
-          sample(Bernoulli(0.01).draw(Enumeration))
+          sample(Bernoulli(0.01))
         } else {
-          sample(Bernoulli(0.4).draw(Enumeration))
+          sample(Bernoulli(0.4))
         }
     }
 
     val model = infer {
 
-      val rain = sample(Bernoulli(0.2).draw(Enumeration))
+      val rain = sample(Bernoulli(0.2))
       val sprinkled = sample(sprinkle(rain))
 
       val p_wet = (rain, sprinkled) match {
@@ -119,7 +113,7 @@ class DValueSpec extends FlatSpec {
       }
 
       // bind model to data / add observation
-      factor(Bernoulli(p_wet).score(true))
+      observe(Bernoulli(p_wet), true)
 
       // return quantity we're interested in
       rain
@@ -133,6 +127,101 @@ class DValueSpec extends FlatSpec {
   }
   */
 
+  it should "recover prior" in {
+    val inferred = new Distribution[Boolean] {
+
+      val post = new BBVI("post")
+
+      override def sample(): Variable[Boolean] = {
+        sampleVariable(Bernoulli(0.2), post)
+      }
+
+      override def score(a: Boolean): Score = ???
+    }
+
+    val N = 100
+    val n_hits = Range(0, N).map { _ =>
+      sample(inferred)
+    }.count(identity)
+
+    val p_expected = 0.2
+    val n_expected = p_expected * N
+    assert(math.abs(N * p_expected - n_hits) < 3 * math.sqrt(n_expected))
+  }
+
+  /*
+  it should "allow a model to be executed" in {
+    val inferred = new Distribution[Boolean] {
+
+      val rainGuide = new BBVI("rain")
+      val sprinkleInRainGuide = new BBVI("sir")
+      val sprinkleNoRainGuide = new BBVI("snr")
+
+      override def sample(): Variable[Boolean] = {
+        val rainVar = sampleVariable(Bernoulli(0.2), rainGuide)
+        val rain = rainVar.get
+
+        val sprinkledVar = if (rain)
+          sampleVariable(Bernoulli(0.01), sprinkleInRainGuide)
+        else
+          sampleVariable(Bernoulli(0.4), sprinkleNoRainGuide)
+        val sprinkled = sprinkledVar.get
+        rainVar.addRef(sprinkledVar.score)
+
+        val p_wet = (rain, sprinkled) match {
+          case (true, true) => 0.99
+          case (false, true) => 0.9
+          case (true,  false) => 0.8
+          case (false, false) => 0.001
+        }
+
+        val obScore = observeImpl(Bernoulli(p_wet), true).buffer
+        sprinkledVar.addRef(obScore)
+        rainVar.addRef(obScore)
+        new Variable[Boolean] {
+
+          import DValue._
+
+          override def get: Boolean =
+            rain
+
+          override def score: Score = {
+            rainVar.score + sprinkledVar.score + obScore
+          }
+
+          override def complete(): Unit = {
+            obScore.complete()
+            sprinkledVar.complete()
+            rainVar.complete()
+          }
+        }
+      }
+
+      override def score(a: Boolean): Score = ???
+    }
+
+    val N = 1000000
+    val startTime = System.currentTimeMillis()
+    val n_rain = Range(0, N).map { i =>
+//      println("")
+      if (i % 10000 == 0)
+        println(s"${inferred.rainGuide.p.v}")
+      sample(inferred)
+    }.count(identity)
+    val endTime = System.currentTimeMillis()
+    println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
+    println(s"  p(rain): ${inferred.rainGuide.p.v}")
+
+    // See Wikipedia
+    // P(rain = true | grass is wet) = 35.77 %
+
+    val p_expected = 0.3577
+    val n_expected = p_expected * N
+    assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
+  }
+  */
+
+  /*
   it should "allow inference by enumeration" in {
     val px = 0.2
     val pty = 0.7
@@ -162,28 +251,32 @@ class DValueSpec extends FlatSpec {
       assert(math.abs(count - n) < 3 * math.sqrt(n))
     }
   }
+  */
 
+
+  /*
   it should "allow a model to be specified" in {
 
-    val si = Map(
-      true -> new Enumeration[Boolean],
-      false -> new Enumeration[Boolean]
-    )
+    object guides {
+      val sprinkleWhenRain = Bernoulli(0.01)
+      val sprinkleWithoutRain = Bernoulli(0.4)
+      val rainPosterior = Bernoulli(0.2)
+    }
 
-    val sprinkle = (rain: Boolean) =>
-      for {
-        s <- if (rain) {
-          Bernoulli(0.01).draw(si(true))
+    val sprinkle: Variable[Boolean] => Variable[Boolean] =
+      (rain: Variable[Boolean]) => for {
+        s <- if (rain.get) {
+          sample[Boolean](Bernoulli(0.01), guides.sprinkleWhenRain)
         } else {
-          Bernoulli(0.4).draw(si(false))
+          sample[Boolean](Bernoulli(0.4), guides.sprinkleWithoutRain)
         }
       } yield s
 
-
     val hasRained = for {
-      rain <- Bernoulli(0.2).draw(new Enumeration())
-      sprinkled <- sprinkle(rain)
-      p_wet = (rain, sprinkled) match {
+      rain <- sample(Bernoulli(0.2), guides.rainPosterior)
+      sprinkledVar = sprinkle(rain)
+      sprinkled <- sprinkledVar
+      p_wet = (rain.get, sprinkled) match {
         case (true, true) => 0.99
         case (false, true) => 0.9
         case (true, false) => 0.8
@@ -191,7 +284,7 @@ class DValueSpec extends FlatSpec {
       }
 
       // bind model to data / add observation
-      _ <- addFactor(Bernoulli(p_wet).score(true))
+      Bernoulli(p_wet).observe(true)
     } yield rain
 
     val N = 100000
@@ -206,5 +299,6 @@ class DValueSpec extends FlatSpec {
     val n_expected = p_expected * N
     assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
   }
+  */
 
 }

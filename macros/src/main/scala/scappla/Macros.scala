@@ -38,13 +38,16 @@ class Macros(val c: blackbox.Context) {
 
                   import _root_.scappla.DValue._
 
-                  ..${stmts.reverse.map { case (vName, vExpr) => q"private val $vName = $vExpr" }}
+                  ..${stmts.reverse.map {
+                    case (vName, vExpr) =>
+                      q"private val $vName = $vExpr.buffer"
+                    }
+                  }
 
                   def v: $tpt = ${stmts.head._1}.v
 
-                  def dv(d: $tpt): Unit = ${stmts.head._1}.dv(d)
-
-                  override def complete() = {
+                  def dv(d: $tpt): Unit = {
+                    ${stmts.head._1}.dv(d)
                     ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
                   }
                }
@@ -125,15 +128,14 @@ class Macros(val c: blackbox.Context) {
 
                   ..${stmts.reverse.map{
                     case (vName, vExpr) =>
-                      q"private val $vName : DValue[Double]=$vExpr"
+                      q"private val $vName = $vExpr.buffer"
                     }
                   }
 
                   def v: $tpt = ${stmts.head._1}.v
 
-                  def dv(d: $tpt): Unit = ${stmts.head._1}.dv(d)
-
-                  override def complete() = {
+                  def dv(d: $tpt): Unit = {
+                    ${stmts.head._1}.dv(d)
                     ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
                   }
              }""")),

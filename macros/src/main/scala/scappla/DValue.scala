@@ -8,7 +8,34 @@ trait DValue[X] {
 
   def dv(v: X): Unit
 
-  def complete(): Unit = {}
+  def buffer(implicit num: Numeric[X]): Buffer[X] =
+    new Buffer[X](this)
+
+  // complete is only needed on buffers, where the same result is used multiple times
+  // when the same value is only needed once, no buffering / completion is needed
+//  @deprecated
+//  def complete(): Unit = {}
+}
+
+class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X] {
+
+  private var grad: X =
+    num.zero
+
+  override def v: X =
+    upstream.v
+
+  override def dv(v: X): Unit = {
+    grad = num.plus(grad, v)
+  }
+
+  def complete(): Unit = {
+    upstream.dv(grad)
+//    upstream.complete()
+  }
+
+  override def buffer(implicit num: Numeric[X]) =
+    throw new UnsupportedOperationException("Value is already buffered - owner is ill-defined")
 }
 
 trait DFunction1[From, To] extends ((From) => To) {
@@ -25,73 +52,54 @@ class DScalar(self: DValue[Double]) {
 
   def unary_- = new DValue[Double] {
 
-    override def v: Double = -self.v
+    override def v: Double =
+      -self.v
 
-    override def dv(v: Double): Unit = self.dv(-v)
+    override def dv(v: Double): Unit =
+      self.dv(-v)
   }
 
   def -(other: DValue[Double]) = new DValue[Double] {
 
-    private var grad = 0.0
-
-    override lazy val v: Double = self.v - other.v
+    override lazy val v: Double =
+      self.v - other.v
 
     override def dv(v: Double): Unit = {
-      grad += v
+      self.dv(v)
+      other.dv(-v)
     }
-
-    override def complete(): Unit = {
-      self.dv(grad)
-      other.dv(-grad)
-    }
-
   }
 
   def +(other: DValue[Double]) = new DValue[Double] {
 
-    private var grad = 0.0
-
-    override lazy val v: Double = self.v + other.v
+    override lazy val v: Double =
+      self.v + other.v
 
     override def dv(v: Double): Unit = {
-      grad += v
-    }
-
-    override def complete(): Unit = {
-      self.dv(grad)
-      other.dv(grad)
+      self.dv(v)
+      other.dv(v)
     }
   }
 
   def *(other: DValue[Double]) = new DValue[Double] {
 
-    private var grad = 0.0
-
-    override lazy val v: Double = self.v * other.v
+    override lazy val v: Double =
+      self.v * other.v
 
     override def dv(v: Double): Unit = {
-      grad += v
-    }
-
-    override def complete(): Unit = {
-      self.dv(grad * other.v)
-      other.dv(grad * self.v)
+      self.dv(v * other.v)
+      other.dv(v * self.v)
     }
   }
 
   def /(other: DValue[Double]) = new DValue[Double] {
 
-    private var grad = 0.0
-
-    override lazy val v: Double = self.v / other.v
+    override lazy val v: Double =
+      self.v / other.v
 
     override def dv(v: Double): Unit = {
-      grad += v
-    }
-
-    override def complete(): Unit = {
-      self.dv(grad / other.v)
-      other.dv(-grad * v / other.v)
+      self.dv(v / other.v)
+      other.dv(-v * this.v / other.v)
     }
   }
 
@@ -121,16 +129,11 @@ object Functions {
     // returned value takes ownership of the reference passed on the stack
     def apply(x: DValue[Double]): DValue[Double] = new DValue[Double] {
 
-      private var grad = 0.0
-
-      override lazy val v: Double = scala.math.log(x.v)
+      override lazy val v: Double =
+        scala.math.log(x.v)
 
       override def dv(dx: Double): Unit = {
-        grad += dx
-      }
-
-      override def complete(): Unit = {
-        x.dv(grad / x.v)
+        x.dv(dx / x.v)
       }
     }
   }
@@ -141,16 +144,11 @@ object Functions {
 
     override def apply(x: DValue[Double]): DValue[Double] = new DValue[Double] {
 
-      private var grad = 0.0
-
-      override lazy val v: Double = scala.math.exp(x.v)
+      override lazy val v: Double =
+        scala.math.exp(x.v)
 
       override def dv(dx: Double): Unit = {
-        grad += dx
-      }
-
-      override def complete(): Unit = {
-        x.dv(grad * v)
+        x.dv(dx * v)
       }
     }
 
@@ -162,19 +160,13 @@ object Functions {
 
     def apply(base: DValue[Double], exp: DValue[Double]) = new DValue[Double] {
 
-      private var grad = 0.0
-
-      override lazy val v: Double = scala.math.pow(base.v, exp.v)
+      override lazy val v: Double =
+        scala.math.pow(base.v, exp.v)
 
       override def dv(dx: Double): Unit = {
-        grad += dx
+        base.dv(dx * exp.v * scala.math.pow(base.v, exp.v - 1))
+        exp.dv(dx * scala.math.log(base.v) * v)
       }
-
-      override def complete(): Unit = {
-        base.dv(grad * exp.v * scala.math.pow(base.v, exp.v - 1))
-        exp.dv(grad * scala.math.log(base.v) * v)
-      }
-
     }
   }
 
