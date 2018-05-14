@@ -10,14 +10,11 @@ trait DValue[X] {
 
   def buffer(implicit num: Numeric[X]): Buffer[X] =
     new Buffer[X](this)
-
-  // complete is only needed on buffers, where the same result is used multiple times
-  // when the same value is only needed once, no buffering / completion is needed
-//  @deprecated
-//  def complete(): Unit = {}
 }
 
 class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X] {
+
+  private var refCount: Int = 1
 
   private var grad: X =
     num.zero
@@ -29,13 +26,24 @@ class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X]
     grad = num.plus(grad, v)
   }
 
-  def complete(): Unit = {
-    upstream.dv(grad)
-//    upstream.complete()
+  /**
+   * basic refcounting; when a function needs a buffer instead of a plain DValue
+   * (i.e. when it has potentially more than one use of the value), it further defers
+   * the backpropagation of the gradient.  When all references have completed, can the
+   * gradient be propagated further backwards.
+   */
+  override def buffer(implicit num: Numeric[X]) = {
+    refCount += 1
+    this
   }
 
-  override def buffer(implicit num: Numeric[X]) =
-    throw new UnsupportedOperationException("Value is already buffered - owner is ill-defined")
+  def complete(): Unit = {
+    refCount -= 1
+    if (refCount == 0) {
+      upstream.dv(grad)
+    }
+  }
+
 }
 
 trait DFunction1[From, To] extends ((From) => To) {
