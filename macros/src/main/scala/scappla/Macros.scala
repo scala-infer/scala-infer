@@ -12,10 +12,9 @@ class Macros(val c: blackbox.Context) {
         //      case (method: DefDef) :: _ =>
         //        val DefDef(mods, name, List(), List(List(ValDef(_, argName, valType, _))), tpt, body) = method
         println(s"RAW: ${showRaw(body)}")
-        val stmts = flattenBody(Seq(0), body)._1
+        val dvalBody = flattenBody(body)
         val tpt = implicitly[WeakTypeTag[B]]
         val valType = implicitly[WeakTypeTag[A]]
-        println(s"STMTS: ${stmts}")
 
         /*
                         def apply($argName: $valType) = ${new Transformer {
@@ -32,27 +31,14 @@ class Macros(val c: blackbox.Context) {
         val result =
           q"""new DFunction1[$valType, $tpt] {
 
+                import _root_.scappla.DValue._
+
                 def apply($argName: $valType) = ${c.parse(showCode(body))}
 
-                def apply($argName: DValue[$valType]) = new DValue[$tpt] {
-
-                  import _root_.scappla.DValue._
-
-                  ..${stmts.reverse.map {
-                    case (vName, vExpr) =>
-                      q"private val $vName = $vExpr.buffer"
-                    }
-                  }
-
-                  def v: $tpt = ${stmts.head._1}.v
-
-                  def dv(d: $tpt): Unit = {
-                    ${stmts.head._1}.dv(d)
-                    ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
-                  }
-               }
+                def apply($argName: DValue[$valType]) = $dvalBody
              }"""
-        println(s"RESULT: ${showRaw(result, printOwners=true, printPositions=true, printTypes = true)}")
+//        println(s"RESULT: ${showCode(result)}")
+//        println(s"RESULT: ${showRaw(result, printOwners=true, printPositions=true, printTypes = true)}")
         //                  def v: $tpt = { ..$stmts }
         //        val tree = ClassDef(mods, termName.toTypeName, tparams, Template())
         //        c.Expr[Any](Block(List(), Literal(Constant(()))))
@@ -63,74 +49,75 @@ class Macros(val c: blackbox.Context) {
     }
   }
 
-  def flattenBody(ids: Seq[Int], funcBody: c.Tree): (List[(c.TermName, c.Tree)], Boolean) = {
-    println(s"EXPANDING ${showRaw(funcBody)}")
+  def flattenBody(funcBody: c.Tree): c.Tree = {
+//    println(s"EXPANDING ${showRaw(funcBody)}")
 
-    def expand(idx: Int, v: c.Tree): (c.Tree, List[(c.TermName, c.Tree)]) = {
-      val (sbjStmts, sbjCom) = flattenBody(ids :+ idx, v)
-      if (sbjCom) {
-        val varname = sbjStmts.head._1
-        (Ident(varname), sbjStmts)
-      } else {
+
+    def expand(v: c.Tree): c.Tree = {
         // the type of an argument may have changed (e.g. Double -> DValue[Double])
-        val clone = v match {
+        v match {
           case Ident(TermName(name)) =>
+//            println(s"TERM: ${name}")
             Ident(TermName(name))
-          case _ => v
+
+          case q"$s.$method($o)" =>
+//            println(s"MATCHING ${showRaw(v)}")
+//            println(s"METHOD: ${showRaw(method)}")
+//            println(s" S: ${showRaw(s)}")
+//            println(s" O: ${showRaw(o)}")
+
+            val s_e = expand(s)
+            val o_e = expand(o)
+            q"$s_e.$method($o_e)"
+
+          case q"$fn($a, $b)" =>
+//            println(s"FUNCTION: ${showRaw(fn)}")
+            val Select(qualifier, name) = fn
+
+            val a_e = expand(a)
+            val b_e = expand(b)
+            q"${Select(qualifier, name)}($a_e, $b_e)"
+
+          case q"$fn($o)" =>
+//            println(s"FUNCTION: ${showRaw(fn)}")
+            val o_e = expand(o)
+            q"$fn($o_e)"
+
+          case _ =>
+//            println(s"UNMATCHED: ${showRaw(v)}")
+            v
         }
-        (clone, List.empty)
-      }
     }
 
     def mkVar(ids: Seq[Int]) =
       TermName("var$" + ids.mkString("$"))
 
     funcBody match {
-      case q"$s.$method($o)" =>
-        println(s"METHOD: ${showRaw(method)}")
 
-        val (sbjVar, sbjDef) = expand(0, s)
-        val (objVar, objDef) = expand(1, o)
-        (
-            List(
-              (mkVar(ids), q"$sbjVar.$method($objVar)")
-            ) ++ objDef ++ sbjDef,
-            true
-        )
-      case q"$fn($a, $b)" =>
-        val (aVar, aDef) = expand(0, a)
-        val (bVar, bDef) = expand(1, b)
-        val Select(qualifier, name) = fn
-        (
-            List(
-              (mkVar(ids), q"${Select(qualifier,name)}($aVar, $bVar)")
-            ) ++ aDef ++ bDef,
-            true
-        )
-      case q"$fn($o)" =>
-        val (objVar, objDef) = expand(0, o)
-        (
-            List(
-              (mkVar(ids), q"$fn($objVar)")
-            ) ++ objDef,
-            true
-        )
-      case q"{ ..$defs }" if (defs.size > 1) =>
-        val stmts = defs.reverse.zipWithIndex.flatMap { case (stmt, idx) =>
-            expand(idx, stmt)._2
+      case q"{ ..$defs }" if defs.size > 1 =>
+        val stmts = defs.reverse.flatMap {
+
+          case q"val $tname : $tpt = $expr" =>
+//            println(s"  TYPEOF($tname) := $tpt")
+            val expr_e = expand(expr)
+            Some((tname, expr_e))
+
+          case _ => None
         }
-        println(s"  RAW last: ${showCode(defs.last, printTypes = true)}")
-//        val tpt = defs.last.tpe
-        val tpt = funcBody.tpe
-        (
-            List((mkVar(ids),
-                q"""new DValue[$tpt] {
 
-                  ..${stmts.reverse.map{
-                    case (vName, vExpr) =>
-                      q"private val $vName = $vExpr.buffer"
-                    }
-                  }
+        //        println(s"  RAW last: ${showCode(defs.last, printTypes = true)}")
+        //        val tpt = defs.last.tpe
+        val tpt = funcBody.tpe
+        q"""new DValue[$tpt] {
+
+            import _root_.scappla.DValue._
+
+                  ..${
+          stmts.reverse.map {
+            case (vName, vExpr) =>
+              q"private val $vName = $vExpr.buffer"
+          }
+        }
 
                   def v: $tpt = ${stmts.head._1}.v
 
@@ -138,21 +125,10 @@ class Macros(val c: blackbox.Context) {
                     ${stmts.head._1}.dv(d)
                     ..${stmts.map { case (vName, _) => q"$vName.complete()" }}
                   }
-             }""")),
-            true
-        )
-      case q"val $tname : $tpt = $expr" =>
-        println(s"  TYPEOF($tname) := $tpt")
-        val (objVar, objDef) = expand(0, expr)
-        val defHead :: defTail = objDef
-        (
-            List(
-              (tname, q"${defHead._2}")
-            ) ++ defTail,
-            true
-        )
+             }"""
+
       case _ =>
-        (List((mkVar(ids), funcBody)), false)
+        expand(funcBody)
     }
   }
 
