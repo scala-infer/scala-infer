@@ -158,10 +158,6 @@ class DValueSpec extends FlatSpec {
   it should "allow a model to be executed" in {
     val inferred = new Model[Boolean] {
 
-      def H(p: Double) = p * log(p) + (1.0 - p) * log(1.0 - p)
-
-      val corr = 0.2 * H(0.01) + 0.8 * H(0.4)
-
       println("scores:")
       println(s"  log(0.01): ${log(0.01)}")
       println(s"  log(0.99): ${log(0.99)}")
@@ -170,9 +166,9 @@ class DValueSpec extends FlatSpec {
 
       val sgd = new SGD()
 
-      val rainGuide = ElboGuide(Bernoulli(sgd.param(0.2, 1.0)))
-      val sprinkleInRainGuide = ElboGuide(Bernoulli(sgd.param(0.01, 1.0)))
-      val sprinkleNoRainGuide = ElboGuide(Bernoulli(sgd.param(0.4, 1.0)))
+      val rainGuide = ElboGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+      val sprinkleInRainGuide = ElboGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+      val sprinkleNoRainGuide = ElboGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
       override def sample(): Variable[Boolean] = {
         val rainVar = rainGuide.bind(Bernoulli(0.2)).sample()
@@ -183,7 +179,7 @@ class DValueSpec extends FlatSpec {
         else
           sprinkleNoRainGuide.bind(Bernoulli(0.4)).sample()
         val sprinkled = sprinkledVar.get
-        rainVar.addObservation(sprinkledVar.modelScore)
+        rainVar.addVariable(sprinkledVar.modelScore, sprinkledVar.guideScore)
 
         val p_wet = (rain, sprinkled) match {
           case (true, true) => 0.99
@@ -192,9 +188,9 @@ class DValueSpec extends FlatSpec {
           case (false, false) => 0.001
         }
 
-//        val obScore = observeImpl(Bernoulli(p_wet), true).buffer
-//        sprinkledVar.addRef(obScore)
-//        rainVar.addRef(obScore)
+        val obScore = observeImpl(Bernoulli(p_wet), true).buffer
+        sprinkledVar.addObservation(obScore)
+        rainVar.addObservation(obScore)
         new Variable[Boolean] {
 
           import DValue._
@@ -203,7 +199,7 @@ class DValueSpec extends FlatSpec {
             rain
 
           override val modelScore: Score = {
-            rainVar.modelScore + sprinkledVar.modelScore // + obScore
+            rainVar.modelScore + sprinkledVar.modelScore + obScore
           }
 
           override val guideScore: Score = {
@@ -219,7 +215,7 @@ class DValueSpec extends FlatSpec {
           }
 
           override def complete(): Unit = {
-//            obScore.complete()
+            obScore.complete()
             sprinkledVar.complete()
             rainVar.complete()
           }
@@ -227,7 +223,7 @@ class DValueSpec extends FlatSpec {
       }
     }
 
-    val N = 100
+    val N = 10000
     val startTime = System.currentTimeMillis()
     val n_rain = Range(0, N).map { i =>
 //      println("")
