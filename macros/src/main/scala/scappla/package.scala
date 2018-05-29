@@ -12,228 +12,253 @@ package object scappla {
   def autodiff[A, B](fn: A => B): DFunction1[A, B] =
   macro Macros.autodiff[A, B]
 
-  //@formatter:off
+  // API
   /**
-    * The model is defined using the probability monad.  This follows the writer monad
-    * pattern, such that an inference algorithm has access to a (noisy) estimate of the
-    * posterior.
-    *
-    *   infer {
-    *     val x = sample(variable)
-    *     func(x)
-    *   }
-    *
-    * gets rewritten to:
-    *
-    *   variable.map { x =>
-    *     func(x)
-    *   }
-    *
-    * With multiple samplings:
-    *
-    *   infer {
-    *     val x = sample(varX)
-    *     val y = sample(varY)
-    *     func(x, y)
-    *   }
-    *
-    * becomes:
-    *
-    *   varX.flatMap { x =>
-    *     varY.map { y =>
-    *       func(x, y)
-    *     }
-    *   }
-    **/
-  //@formatter:on
+   * The outermost "sample" is public - it drives the inference.  Each sample that's obtained
+   * is used to further optimize the inferred distribution.  This can be by means of Monte Carlo,
+   * or Variational Inference.
+   */
+  def sample[X](model: Model[X]): X = {
+    val variable = model.sample()
+    val value = variable.get
 
-  /*
-  def infer[X](fn: => X): Variable[X] =
-    macro Macros.infer[X]
-
-  def infer[Y, X](fn: Y => X): Y => Variable[X] =
-    macro Macros.infer[X]
-  */
-
-  def sample[X](variable: Variable[X]): X =
-    variable.sample()._1
-
-  def factor(score: Score): Unit = {}
-
-  // probability monad - collects scores for inference
-  // Is used internally for bookkeeping purposes, should not be used in client code
-  trait Variable[A] {
-    self =>
-
-    def sample(): (A, Score)
-
-    def map[B](fn: A => B): Variable[B] = () => {
-      val (a, score) = self.sample()
-      (fn(a), score)
-    }
-
-    def flatMap[B](fn: A => Variable[B]): Variable[B] = () => {
-      val (a, aScore) = self.sample()
-      val (b, bScore) = fn(a).sample()
-      (b, aScore + bScore)
-    }
+    // prepare for next sample - update approximation
+    variable.complete()
+    value
   }
 
-  def addFactor(score: Score): Variable[Unit] = {
-    () => (Unit, score)
+  /*
+  def infer[X](fn: => X): Distribution[X] =
+    macro Macros.infer[X]
+
+  def infer[Y, X](fn: Y => X): Y => Distribution[X] =
+    macro Macros.infer[X]
+    */
+
+  def observe[A](distribution: Distribution[A], value: A): Unit = {}
+
+  // IMPLEMENTATION
+
+  def observeImpl[A](distribution: Distribution[A], value: A): Score = {
+    distribution.score(value)
+  }
+
+  def sampleImpl[A](distribution: Model[A]): Variable[A] = {
+    distribution.sample()
+  }
+
+  trait Sample[A] {
+
+    def get: A
+
+    def score: Score
   }
 
   trait Distribution[A] {
 
-    def draw(inference: Inference[A]): Variable[A]
+    def sample(): Sample[A]
 
     def score(a: A): Score
-
-    def support: Seq[A]
   }
 
-  trait Inference[A] {
+  trait Optimizer {
 
-    def infer(d: Distribution[A], v: Variable[A]): Variable[A]
+    def param[X: Fractional](initial: X, lr: X): DValue[X]
   }
 
-  case class NonInference[A]() extends Inference[A] {
-    override def infer(d: Distribution[A], v: Variable[A]): Variable[A] = {
-      v
+  class SGD() extends Optimizer {
+
+    override def param[X: Fractional](initial: X, lr: X): DValue[X] = {
+      val num = implicitly[Fractional[X]]
+      new DValue[X] {
+
+        private var iter: Int = 0
+
+        private var value: X = initial
+
+        override def v: X = value
+
+        override def dv(dv: X): Unit = {
+          iter += 1
+          value = num.plus(value, num.div(num.times(dv, lr), num.fromInt(iter)))
+//          println(s"    SGD $iter: $value ($dv)")
+        }
+      }
     }
   }
 
-  class Enumeration[A]() extends Inference[A] {
+  trait Variable[A] {
 
-    override def infer(dist: Distribution[A], prior: Variable[A]): Variable[A] =
-      new Variable[A]() {
+    def get: A
 
-        // running average of free energy for different choices of A
-        // these approximations to the posterior inform the drawing process
-        // NOTE: these actually depend on the history, i.e. ancestral draws
-        // - this history-less approximation is the "mean-field"
-        private val Zs: mutable.Map[A, (Int, Double)] =
-          mutable.HashMap.empty.withDefaultValue((0, 0.0))
+    /**
+      * Score (log probability) of the variable in the model.  This is equal to the log
+      * of the prior probability that the variable takes the value returned by "get".
+      */
+    def modelScore: Score
 
-        override def sample(): (A, Score) = {
-          val values = dist.support.map { v =>
-            (v, dist.score(v))
-          }
-          sampleWithFree(values)
-        }
+    /**
+      * Score (log probability) of the variable in the guide.  Equal to the log of the
+      * approximate posterior probability that the variable has the value returned by "get".
+      */
+    def guideScore: Score
 
-        override def flatMap[B](fn: A => Variable[B]): Variable[B] = {
-          val values = dist.support.map { v =>
-            (v, fn(v))
-          }
-          () => {
-            val samples = values.map { case (a, varB) =>
-              val scoreA = dist.score(a)
-              val (b, scoreB) = varB.sample()
-              val (n, z) = Zs(a)
-              if (n > 0)
-                Zs(a) = (n + 1, z + math.log1p(math.exp(scoreB.v - z)) - math.log1p(1.0 / n))
-              else
-                Zs(a) = (1, scoreB.v)
-              ((b, scoreB, z), scoreA + z)
-            }
-            val ((b, scoreB, z), totalZ) = sampleWithFree(samples)
-            (b, totalZ - z + scoreB)
-          }
-        }
+    /**
+     * Registers a "score" that depends on the value of the variable.  This can be used
+     * to compose the Markov Blanket for the variable.  By having the subset of scores in the blanket,
+     * Rao-Blackwellization can be carried out to reduce the variance of the gradient estimate.
+     * <p>
+     * This method just adds a score to the (generative) model, i.e. it corresponds to an observation.
+     */
+    def addObservation(score: Score): Unit
 
-        // draw a sample, with the free energy as the score
-        private def sampleWithFree[X](values: Seq[(X, DValue[Double])]) = {
-          // sample from softmax
-          val probs = values
-              .map { case (b, scoreA) =>
-                (b, exp(scoreA))
-              }
-          val total = probs.map {
-            _._2
-          }.sum
+    /**
+      * Registers a "score" that depends on the value of the variable.  This can be used
+      * to compose the Markov Blanket for the variable.  By having the subset of scores in the blanket,
+      * Rao-Blackwellization can be carried out to reduce the variance of the gradient estimate.
+      * <p>
+      * This method is intended for adding downstream variables - both model and guide scores
+      * are needed.
+      */
+    def addVariable(modelScore: Score, guideScore: Score): Unit
 
-          var draw = Random.nextDouble() * total.v
-          var remaining = probs.toList
-          while (remaining.head._2.v < draw) {
-            draw = draw - remaining.head._2.v
-            remaining = remaining.tail
-          }
-
-          val head = remaining.headOption.getOrElse(probs.head)
-          (head._1, total)
-        }
-
-      }
+    /**
+      * When the value of the variable is retrieved and it can no longer be
+      * exposed to any new dependencies, it should be completed.  In the case of the
+      * outer "sample", this means updating the inferred distributions.
+      */
+    def complete(): Unit
   }
 
-  /*
-  trait Optimizer[A] {
+  object Variable {
 
-    def applyGradient(gradient: A): Unit
-  }
-
-  case class Variational[A: Numeric](guide: Variable[A], optimizer: Optimizer[A]) extends Inference[A] {
-
-    override def infer(d: Distribution[A], prior: Variable[A]): Variable[A] =
+    implicit def toConstant[A](value: A): Variable[A] =
       new Variable[A] {
 
-        override def sample(): (A, Score) =
-          prior.sample()
+        override def get: A = value
 
-        override def flatMap[B](fn: A => Variable[B]): Variable[B] = {
-          new Variable[B] {
+        override def modelScore: Score = 0.0
 
-            override def sample(): (B, Score) = {
-              val (a, scoreGuide) = guide.sample()
-              val scorePrior = d.score(a)
-              val varB = fn(a)
-              val (b, scoreB) = varB.sample()
-              (b, onComplete(scorePrior + scoreB, _ => {
-                scoreGuide.complete()
-              }))
-            }
-          }
-        }
+        override def guideScore: Score = 0.0
+
+        override def complete(): Unit = {}
+
+        override def addObservation(score: Score): Unit = ???
+
+        override def addVariable(modelScore: Score, guideScore: Score): Unit = ???
       }
   }
-  */
 
-  case class Bernoulli(p: DValue[Double]) extends Distribution[Boolean] {
-    self =>
+  trait Model[A] {
 
-    // sample from prior, i.e. based on p
-    override def draw(inference: Inference[Boolean]): Variable[Boolean] =
-      inference.infer(this, () => {
-        val value = Random.nextDouble() < p.v
-        (value, self.score(value))
-      })
-
-    override def score(value: Boolean): Score =
-      if (value) log(p) else log(-p + 1.0)
-
-    override def support: Seq[Boolean] =
-      Seq(true, false)
+    def sample(): Variable[A]
   }
 
-  /*
-  case class Normal(mu: DValue[Double], sigma: DValue[Double]) extends Distribution[Double] {
-    self =>
+  case class ElboGuide[A](guide: Distribution[A]) {
 
-    override def draw(inference: Inference[Double]): Variable[Double] = {
-      inference.infer(this, () => {
-        val value = mu.v + sigma.v * Random.nextGaussian()
-        (value, self.score(value))
-      })
+    var iter = 0
+
+    // control variate
+    // Since a constant delta between score_p and score_q has an expectation value of zero,
+    // the average value can be subtracted in order to reduce the variance.
+    var weight: Double = 0.0
+    var offset: Double = 0.0
+
+    def bind(model: Distribution[A]): Model[A] = new Model[A] {
+
+      // samples the guide (= the approximation to the posterior)
+      // use BBVI (with Rao Blackwellization)
+      def sample(): Variable[A] = new Variable[A] {
+
+        private val sample = guide.sample()
+        private var modelScores = Set.empty[Score]
+        private var guideScores = Set.empty[Score]
+
+        override val get: A = {
+          sample.get
+        }
+
+        override val modelScore: Buffer[Double] = {
+          model.score(get).buffer
+        }
+
+        override val guideScore: Buffer[Double] = {
+          guide.score(get).buffer
+        }
+
+        override def addObservation(score: Score): Unit = {
+          modelScores += score
+        }
+
+        override def addVariable(modelScore: Score, guideScore: Score): Unit = {
+          modelScores += modelScore
+          guideScores += guideScore
+        }
+
+        // compute ELBO and backprop gradients
+        override def complete(): Unit = {
+          val logp: DValue[Double] = modelScore + modelScores.sum
+          val logq: DValue[Double] = guideScore + guideScores.sum
+          update(guideScore, logp, logq)
+          modelScore.complete()
+          guideScore.complete()
+        }
+
+      }
     }
 
-    override def score(a: Double): Score = {
-      val delta = (mu - a) / sigma
-      -log(sigma) - delta * delta / 2.0
+    /**
+      * Backprop using BBVI - the guide (prior) score gradient is backpropagated
+      * with as weight the Rao-Blackwellized delta between the model and guide
+      * (full) score.  The average difference is used as the control variate, to reduce
+      * variance of the gradient.
+      */
+    private def update(s: Score, logp: Score, logq: Score) = {
+      iter += 1
+      val rho = math.pow(iter, -0.5)
+
+      val delta = logp.v - logq.v
+
+      weight = (1.0 - rho) * weight + rho
+      offset = (1.0 - rho) * offset + rho * delta
+      val control = if (weight < 1e-12) {
+        0.0
+      }
+      else {
+        offset / weight
+      }
+
+      println(s" BBVI delta: ${delta}, control: ${control}  ($iter)")
+
+      s.dv(delta - control)
     }
 
-    override def support: Seq[Double] = ???
   }
-  */
+
+  case class Bernoulli(p: Variable[DValue[Double]]) extends Distribution[Boolean] {
+
+    override def sample(): Sample[Boolean] = {
+      val value =  Random.nextDouble() < p.get.v
+      println(s"Sample: $value (${p.get.v})")
+      new Sample[Boolean] {
+
+        override val get: Boolean =
+          value
+
+        override val score: Score =
+          Bernoulli.this.score(get)
+      }
+    }
+
+    override def score(value: Boolean): Score = {
+      if (value) log(p.get) else log(-p.get + 1.0)
+    }
+
+  }
+
+  object Bernoulli {
+
+    def apply(p: Double): Bernoulli = Bernoulli(DValue.toConstant(p))
+  }
 
 }
