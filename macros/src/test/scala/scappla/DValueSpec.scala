@@ -128,45 +128,62 @@ class DValueSpec extends FlatSpec {
   */
 
   it should "recover prior" in {
-    val inferred = new Distribution[Boolean] {
+    val inferred = new Model[Boolean] {
 
-      val post = new BBVI("post")
+      val optimizer = new SGD()
+      // p = 1 / (1 + exp(-x)) => x = -log(1 / p - 1)
+      val p_guide = sigmoid(optimizer.param[Double](0.0, 10.0))
+//      val p_guide = optimizer.param[Double](0.4)
+      val guide = ElboGuide(Bernoulli(p_guide))
 
       override def sample(): Variable[Boolean] = {
-        sampleVariable(Bernoulli(0.2), post)
+        guide.bind(Bernoulli(0.2)).sample()
       }
-
-      override def score(a: Boolean): Score = ???
     }
 
-    val N = 100
+    val N = 10000
+    Range(0, N).foreach { _ =>
+      sample(inferred)
+    }
     val n_hits = Range(0, N).map { _ =>
       sample(inferred)
     }.count(identity)
 
     val p_expected = 0.2
     val n_expected = p_expected * N
+    println(s"N hits: ${n_hits} (expected: ${n_expected}); p_guide: ${inferred.p_guide.v}")
     assert(math.abs(N * p_expected - n_hits) < 3 * math.sqrt(n_expected))
   }
 
-  /*
   it should "allow a model to be executed" in {
-    val inferred = new Distribution[Boolean] {
+    val inferred = new Model[Boolean] {
 
-      val rainGuide = new BBVI("rain")
-      val sprinkleInRainGuide = new BBVI("sir")
-      val sprinkleNoRainGuide = new BBVI("snr")
+      def H(p: Double) = p * log(p) + (1.0 - p) * log(1.0 - p)
+
+      val corr = 0.2 * H(0.01) + 0.8 * H(0.4)
+
+      println("scores:")
+      println(s"  log(0.01): ${log(0.01)}")
+      println(s"  log(0.99): ${log(0.99)}")
+      println(s"  log(0.4): ${log(0.4)}")
+      println(s"  log(0.6): ${log(0.6)}")
+
+      val sgd = new SGD()
+
+      val rainGuide = ElboGuide(Bernoulli(sgd.param(0.2, 1.0)))
+      val sprinkleInRainGuide = ElboGuide(Bernoulli(sgd.param(0.01, 1.0)))
+      val sprinkleNoRainGuide = ElboGuide(Bernoulli(sgd.param(0.4, 1.0)))
 
       override def sample(): Variable[Boolean] = {
-        val rainVar = sampleVariable(Bernoulli(0.2), rainGuide)
+        val rainVar = rainGuide.bind(Bernoulli(0.2)).sample()
         val rain = rainVar.get
 
         val sprinkledVar = if (rain)
-          sampleVariable(Bernoulli(0.01), sprinkleInRainGuide)
+          sprinkleInRainGuide.bind(Bernoulli(0.01)).sample()
         else
-          sampleVariable(Bernoulli(0.4), sprinkleNoRainGuide)
+          sprinkleNoRainGuide.bind(Bernoulli(0.4)).sample()
         val sprinkled = sprinkledVar.get
-        rainVar.addRef(sprinkledVar.score)
+        rainVar.addObservation(sprinkledVar.modelScore)
 
         val p_wet = (rain, sprinkled) match {
           case (true, true) => 0.99
@@ -175,42 +192,59 @@ class DValueSpec extends FlatSpec {
           case (false, false) => 0.001
         }
 
-        val obScore = observeImpl(Bernoulli(p_wet), true).buffer
-        sprinkledVar.addRef(obScore)
-        rainVar.addRef(obScore)
+//        val obScore = observeImpl(Bernoulli(p_wet), true).buffer
+//        sprinkledVar.addRef(obScore)
+//        rainVar.addRef(obScore)
         new Variable[Boolean] {
 
           import DValue._
 
-          override def get: Boolean =
+          override val get: Boolean =
             rain
 
-          override def score: Score = {
-            rainVar.score + sprinkledVar.score + obScore
+          override val modelScore: Score = {
+            rainVar.modelScore + sprinkledVar.modelScore // + obScore
+          }
+
+          override val guideScore: Score = {
+            rainVar.guideScore + sprinkledVar.guideScore
+          }
+
+          override def addObservation(score: Score): Unit = {
+            rainVar.addObservation(score)
+          }
+
+          override def addVariable(modelScore: Score, guideScore: Score): Unit = {
+            rainVar.addVariable(modelScore, guideScore)
           }
 
           override def complete(): Unit = {
-            obScore.complete()
+//            obScore.complete()
             sprinkledVar.complete()
             rainVar.complete()
           }
         }
       }
-
-      override def score(a: Boolean): Score = ???
     }
 
-    val N = 1000000
+    val N = 100
     val startTime = System.currentTimeMillis()
     val n_rain = Range(0, N).map { i =>
 //      println("")
-      if (i % 10000 == 0)
-        println(s"${inferred.rainGuide.p.v}")
+//      def toStr(guide: Bernoulli): String = {
+//        s"${guide.p.v} (${guide.offset / guide.weight})"
+//      }
+//      if (i % 1 == 0) {
+//        println(s"$i:")
+//        println(s"  rain: ${toStr(inferred.rainGuide)}")
+//        println(s"  sir: ${toStr(inferred.sprinkleInRainGuide)}")
+//        println(s"  snr: ${toStr(inferred.sprinkleNoRainGuide)}")
+//      }
       sample(inferred)
     }.count(identity)
     val endTime = System.currentTimeMillis()
     println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
-    println(s"  p(rain): ${inferred.rainGuide.p.v}")
+//    println(s"  p(rain): ${inferred.rainGuide.p.v}")
 
     // See Wikipedia
     // P(rain = true | grass is wet) = 35.77 %
@@ -219,7 +253,6 @@ class DValueSpec extends FlatSpec {
     val n_expected = p_expected * N
     assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
   }
-  */
 
   /*
   it should "allow inference by enumeration" in {

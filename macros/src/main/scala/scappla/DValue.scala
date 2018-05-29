@@ -46,6 +46,28 @@ class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X]
 
 }
 
+abstract class LazyDValue[X](private var value: X) extends DValue[X] {
+
+  private var isset: Boolean = false
+
+  final override def v = {
+    if (!isset) {
+      value = _v
+      isset = true
+    }
+    value
+  }
+
+  final override def dv(dx: X) = {
+    _dv(dx)
+    isset = false
+  }
+
+  protected def _v: X
+
+  protected def _dv(dx: X): Unit
+}
+
 trait DFunction1[From, To] extends ((From) => To) {
 
   def apply(in: DValue[From]): DValue[To]
@@ -67,45 +89,45 @@ class DScalar(self: DValue[Double]) {
       self.dv(-v)
   }
 
-  def -(other: DValue[Double]) = new DValue[Double] {
+  def -(other: DValue[Double]) = new LazyDValue[Double](0.0) {
 
-    override lazy val v: Double =
+    override def _v: Double =
       self.v - other.v
 
-    override def dv(v: Double): Unit = {
+    override def _dv(v: Double): Unit = {
       self.dv(v)
       other.dv(-v)
     }
   }
 
-  def +(other: DValue[Double]) = new DValue[Double] {
+  def +(other: DValue[Double]) = new LazyDValue[Double](0.0) {
 
-    override lazy val v: Double =
+    override def _v: Double =
       self.v + other.v
 
-    override def dv(v: Double): Unit = {
+    override def _dv(v: Double): Unit = {
       self.dv(v)
       other.dv(v)
     }
   }
 
-  def *(other: DValue[Double]) = new DValue[Double] {
+  def *(other: DValue[Double]) = new LazyDValue[Double](0.0) {
 
-    override lazy val v: Double =
+    override def _v: Double =
       self.v * other.v
 
-    override def dv(v: Double): Unit = {
+    override def _dv(v: Double): Unit = {
       self.dv(v * other.v)
       other.dv(v * self.v)
     }
   }
 
-  def /(other: DValue[Double]) = new DValue[Double] {
+  def /(other: DValue[Double]) = new LazyDValue[Double](0.0) {
 
-    override lazy val v: Double =
+    override def _v: Double =
       self.v / other.v
 
-    override def dv(v: Double): Unit = {
+    override def _dv(v: Double): Unit = {
       self.dv(v / other.v)
       other.dv(-v * this.v / other.v)
     }
@@ -135,12 +157,12 @@ object Functions {
     def apply(x: Double): Double = scala.math.log(x)
 
     // returned value takes ownership of the reference passed on the stack
-    def apply(x: DValue[Double]): DValue[Double] = new DValue[Double] {
+    def apply(x: DValue[Double]): DValue[Double] = new LazyDValue[Double](0.0) {
 
-      override lazy val v: Double =
+      override def _v: Double =
         scala.math.log(x.v)
 
-      override def dv(dx: Double): Unit = {
+      override def _dv(dx: Double): Unit = {
         x.dv(dx / x.v)
       }
     }
@@ -150,29 +172,40 @@ object Functions {
 
     override def apply(x: Double): Double = scala.math.exp(x)
 
-    override def apply(x: DValue[Double]): DValue[Double] = new DValue[Double] {
+    override def apply(x: DValue[Double]): DValue[Double] = new LazyDValue[Double](0.0) {
 
-      override lazy val v: Double =
+      override def _v: Double =
         scala.math.exp(x.v)
 
-      override def dv(dx: Double): Unit = {
+      override def _dv(dx: Double): Unit = {
         x.dv(dx * v)
       }
     }
 
   }
 
+  object sigmoid extends DFunction1[Double, Double] {
+
+    import DValue._
+
+    override def apply(x: Double): Double = 1.0 / (1.0 + math.exp(-x))
+
+    override def apply(x: DValue[Double]): DValue[Double] =
+      toConstant(1.0) / (exp(-x) + toConstant(1.0))
+  }
+
   object pow extends DFunction2[Double, Double, Double] {
 
     def apply(base: Double, exp: Double): Double = scala.math.pow(base, exp)
 
-    def apply(base: DValue[Double], exp: DValue[Double]) = new DValue[Double] {
+    def apply(base: DValue[Double], exp: DValue[Double]) = new LazyDValue[Double](0.0) {
 
-      override lazy val v: Double =
+      override def _v: Double =
         scala.math.pow(base.v, exp.v)
 
-      override def dv(dx: Double): Unit = {
-        base.dv(dx * exp.v * scala.math.pow(base.v, exp.v - 1))
+      override def _dv(dx: Double): Unit = {
+        val ev = exp.v
+        base.dv(dx * ev * scala.math.pow(base.v, ev - 1))
         exp.dv(dx * scala.math.log(base.v) * v)
       }
     }
