@@ -2,6 +2,8 @@ package scappla
 
 import org.scalatest.FlatSpec
 
+import scala.util.Random
+
 class DValueSpec extends FlatSpec {
 
   import Functions._
@@ -134,10 +136,10 @@ class DValueSpec extends FlatSpec {
       // p = 1 / (1 + exp(-x)) => x = -log(1 / p - 1)
       val p_guide = sigmoid(optimizer.param[Double](0.0, 10.0))
 //      val p_guide = optimizer.param[Double](0.4)
-      val guide = ElboGuide(Bernoulli(p_guide))
+      val guide = BBVIGuide(Bernoulli(p_guide))
 
       override def sample(): Variable[Boolean] = {
-        guide.bind(Bernoulli(0.2)).sample()
+        guide.sample(Bernoulli(0.2))
       }
     }
 
@@ -155,31 +157,38 @@ class DValueSpec extends FlatSpec {
     assert(math.abs(N * p_expected - n_hits) < 3 * math.sqrt(n_expected))
   }
 
-  it should "allow a model to be executed" in {
-    val inferred = new Model[Boolean] {
+  it should "allow a discrete model to be executed" in {
 
-      println("scores:")
-      println(s"  log(0.01): ${log(0.01)}")
-      println(s"  log(0.99): ${log(0.99)}")
-      println(s"  log(0.4): ${log(0.4)}")
-      println(s"  log(0.6): ${log(0.6)}")
+    val sprinkle = new Model1[Boolean, Boolean] {
+
+      val sgd = new SGD()
+      val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+      val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+
+      override def sample(rainVar: Variable[Boolean]) = {
+        val rain = rainVar.get
+        val sprinkledVar = if (rain)
+          sprinkleInRainGuide.sample(Bernoulli(0.01))
+        else
+          sprinkleNoRainGuide.sample(Bernoulli(0.4))
+        rainVar.addVariable(sprinkledVar.modelScore, sprinkledVar.guideScore)
+
+        sprinkledVar
+      }
+    }
+
+    val inferred = new Model[Boolean] {
 
       val sgd = new SGD()
 
-      val rainGuide = ElboGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
-      val sprinkleInRainGuide = ElboGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
-      val sprinkleNoRainGuide = ElboGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+      val rainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
       override def sample(): Variable[Boolean] = {
-        val rainVar = rainGuide.bind(Bernoulli(0.2)).sample()
+        val rainVar = rainGuide.sample(Bernoulli(0.2))
         val rain = rainVar.get
 
-        val sprinkledVar = if (rain)
-          sprinkleInRainGuide.bind(Bernoulli(0.01)).sample()
-        else
-          sprinkleNoRainGuide.bind(Bernoulli(0.4)).sample()
+        val sprinkledVar = sprinkle.sample(rainVar)
         val sprinkled = sprinkledVar.get
-        rainVar.addVariable(sprinkledVar.modelScore, sprinkledVar.guideScore)
 
         val p_wet = (rain, sprinkled) match {
           case (true, true) => 0.99
@@ -188,9 +197,9 @@ class DValueSpec extends FlatSpec {
           case (false, false) => 0.001
         }
 
-        val obScore = observeImpl(Bernoulli(p_wet), true).buffer
-        sprinkledVar.addObservation(obScore)
-        rainVar.addObservation(obScore)
+        val observation = observeImpl(Bernoulli(p_wet), true)
+        sprinkledVar.addObservation(observation.score)
+        rainVar.addObservation(observation.score)
         new Variable[Boolean] {
 
           import DValue._
@@ -199,7 +208,7 @@ class DValueSpec extends FlatSpec {
             rain
 
           override val modelScore: Score = {
-            rainVar.modelScore + sprinkledVar.modelScore + obScore
+            rainVar.modelScore + sprinkledVar.modelScore + observation.score
           }
 
           override val guideScore: Score = {
@@ -215,7 +224,7 @@ class DValueSpec extends FlatSpec {
           }
 
           override def complete(): Unit = {
-            obScore.complete()
+            observation.complete()
             sprinkledVar.complete()
             rainVar.complete()
           }
@@ -223,31 +232,89 @@ class DValueSpec extends FlatSpec {
       }
     }
 
+    for { _ <- 0 to 10000 } {
+      sample(inferred)
+    }
+
     val N = 10000
     val startTime = System.currentTimeMillis()
     val n_rain = Range(0, N).map { i =>
-//      println("")
-//      def toStr(guide: Bernoulli): String = {
-//        s"${guide.p.v} (${guide.offset / guide.weight})"
-//      }
-//      if (i % 1 == 0) {
-//        println(s"$i:")
-//        println(s"  rain: ${toStr(inferred.rainGuide)}")
-//        println(s"  sir: ${toStr(inferred.sprinkleInRainGuide)}")
-//        println(s"  snr: ${toStr(inferred.sprinkleNoRainGuide)}")
-//      }
       sample(inferred)
     }.count(identity)
     val endTime = System.currentTimeMillis()
     println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
-//    println(s"  p(rain): ${inferred.rainGuide.p.v}")
 
     // See Wikipedia
     // P(rain = true | grass is wet) = 35.77 %
-
     val p_expected = 0.3577
     val n_expected = p_expected * N
     assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
+  }
+
+  it should "use the reparametrization gradient" in {
+
+    val data = (0 until 100).map { i =>
+      (i.toDouble, 3.0 * i.toDouble + 1.0 + Random.nextGaussian() * 0.2)
+    }
+
+    val inferred = new Model[DValue[Double]] {
+
+      val sgd = new SGD()
+
+      val muGuide = ReparamGuide(Normal(
+        sgd.param(0.0, 1.0),
+        exp(sgd.param(0.0, 1.0))
+      ))
+
+      override def sample(): Variable[DValue[Double]] = new Variable[DValue[Double]] {
+
+        import DValue._
+
+        val muVar = muGuide.sample(Normal(0.0, 1.0))
+
+        private val sigma: Variable[DValue[Double]] = Variable.toConstant(DValue.toConstant(1.0))
+        private val observation : Observation = observeImpl(Normal(muVar, sigma), DValue.toConstant(2.0))
+
+        override def get: DValue[Double] =
+          muVar.get
+
+        override def modelScore: Score =
+          muVar.modelScore + observation.score
+
+        override def guideScore: Score =
+          muVar.guideScore
+
+        override def addObservation(score: Score): Unit =
+          muVar.addObservation(score)
+
+        override def addVariable(modelScore: Score, guideScore: Score): Unit =
+          muVar.addVariable(modelScore, guideScore)
+
+        override def complete(): Unit = {
+          observation.complete()
+          muVar.complete()
+        }
+      }
+    }
+
+    // warm up
+    Range(0, 10000).foreach { i =>
+      sample(inferred)
+    }
+
+    val N = 10000
+    val startTime = System.currentTimeMillis()
+    val (total_x, total_xx) = Range(0, N).map { i =>
+      sample(inferred).v
+    }.foldLeft((0.0, 0.0)) { case ((sum_x, sum_xx), x) =>
+      (sum_x + x, sum_xx + x * x)
+    }
+    val avg_mu = total_x / N
+    val var_mu = total_xx / N - avg_mu * avg_mu
+    val endTime = System.currentTimeMillis()
+    println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
+
+    println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)}")
   }
 
   /*

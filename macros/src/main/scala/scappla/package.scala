@@ -27,6 +27,12 @@ package object scappla {
     value
   }
 
+  /**
+    * Sampling in an infer block.
+    */
+  def sample[X](dist: Distribution[X]): X =
+    dist.sample().get
+
   /*
   def infer[X](fn: => X): Distribution[X] =
     macro Macros.infer[X]
@@ -39,9 +45,18 @@ package object scappla {
 
   // IMPLEMENTATION
 
-  def observeImpl[A](distribution: Distribution[A], value: A): Score = {
-    distribution.score(value)
-  }
+  def observeImpl[A](distribution: Distribution[A], value: A): Observation =
+    new Observation {
+
+      val score: Buffer[Double] =
+        distribution.observe(value).buffer
+
+      override def complete(): Unit = {
+        score.dv(1.0)
+//        println("completing observation score")
+        score.complete()
+      }
+    }
 
   def sampleImpl[A](distribution: Model[A]): Variable[A] = {
     distribution.sample()
@@ -52,13 +67,20 @@ package object scappla {
     def get: A
 
     def score: Score
+
+    def complete(): Unit
   }
 
   trait Distribution[A] {
 
     def sample(): Sample[A]
 
-    def score(a: A): Score
+    def observe(a: A): Score
+  }
+
+  trait DDistribution[A] extends Distribution[DValue[A]] {
+
+    def reparam_score(a: DValue[A]): Score
   }
 
   trait Optimizer {
@@ -70,6 +92,7 @@ package object scappla {
 
     override def param[X: Fractional](initial: X, lr: X): DValue[X] = {
       val num = implicitly[Fractional[X]]
+      import num._
       new DValue[X] {
 
         private var iter: Int = 0
@@ -80,8 +103,9 @@ package object scappla {
 
         override def dv(dv: X): Unit = {
           iter += 1
-          value = num.plus(value, num.div(num.times(dv, lr), num.fromInt(iter)))
+          value = value + dv * lr / num.fromInt(iter)
 //          println(s"    SGD $iter: $value ($dv)")
+//          new Exception().printStackTrace()
         }
       }
     }
@@ -149,12 +173,31 @@ package object scappla {
       }
   }
 
+  trait Observation {
+
+    def score: Score
+
+    def complete(): Unit
+  }
+
   trait Model[A] {
 
     def sample(): Variable[A]
   }
 
-  case class ElboGuide[A](guide: Distribution[A]) {
+  trait Model1[X, A] {
+    self =>
+
+    def apply(in: X): Model[A] =
+      () => self.sample(in)
+
+    def apply(in: Variable[X]): Model[A] =
+      () => self.sample(in)
+
+    def sample(in: Variable[X]): Variable[A]
+  }
+
+  case class BBVIGuide[A](guide: Distribution[A]) {
 
     var iter = 0
 
@@ -164,47 +207,45 @@ package object scappla {
     var weight: Double = 0.0
     var offset: Double = 0.0
 
-    def bind(model: Distribution[A]): Model[A] = new Model[A] {
+    // samples the guide (= the approximation to the posterior)
+    // use BBVI (with Rao Blackwellization)
+    def sample(model: Distribution[A]): Variable[A] = new Variable[A] {
 
-      // samples the guide (= the approximation to the posterior)
-      // use BBVI (with Rao Blackwellization)
-      def sample(): Variable[A] = new Variable[A] {
+      private val sample = guide.sample()
+      private var modelScores = Set.empty[Score]
+      private var guideScores = Set.empty[Score]
 
-        private val sample = guide.sample()
-        private var modelScores = Set.empty[Score]
-        private var guideScores = Set.empty[Score]
-
-        override val get: A = {
-          sample.get
-        }
-
-        override val modelScore: Buffer[Double] = {
-          model.score(get).buffer
-        }
-
-        override val guideScore: Buffer[Double] = {
-          guide.score(get).buffer
-        }
-
-        override def addObservation(score: Score): Unit = {
-          modelScores += score
-        }
-
-        override def addVariable(modelScore: Score, guideScore: Score): Unit = {
-          modelScores += modelScore
-          guideScores += guideScore
-        }
-
-        // compute ELBO and backprop gradients
-        override def complete(): Unit = {
-          val logp: DValue[Double] = modelScore + modelScores.sum
-          val logq: DValue[Double] = guideScore + guideScores.sum
-          update(guideScore, logp, logq)
-          modelScore.complete()
-          guideScore.complete()
-        }
-
+      override val get: A = {
+        sample.get
       }
+
+      override val modelScore: Buffer[Double] = {
+        model.observe(get).buffer
+      }
+
+      override val guideScore: Buffer[Double] = {
+        guide.observe(get).buffer
+      }
+
+      override def addObservation(score: Score): Unit = {
+        modelScores += score
+      }
+
+      override def addVariable(modelScore: Score, guideScore: Score): Unit = {
+        modelScores += modelScore
+        guideScores += guideScore
+      }
+
+      // compute ELBO and backprop gradients
+      override def complete(): Unit = {
+        val logp: DValue[Double] = modelScore + modelScores.sum
+        val logq: DValue[Double] = guideScore + guideScores.sum
+        modelScore.dv(1.0)
+        update(guideScore, logp, logq)
+        modelScore.complete()
+        guideScore.complete()
+      }
+
     }
 
     /**
@@ -228,7 +269,7 @@ package object scappla {
         offset / weight
       }
 
-      println(s" BBVI delta: ${delta}, control: ${control}  ($iter)")
+//      println(s" BBVI delta: ${delta}, control: ${control}  ($iter)")
 
       s.dv(delta - control)
     }
@@ -239,18 +280,20 @@ package object scappla {
 
     override def sample(): Sample[Boolean] = {
       val value =  Random.nextDouble() < p.get.v
-      println(s"Sample: $value (${p.get.v})")
+//      println(s"Sample: $value (${p.get.v})")
       new Sample[Boolean] {
 
         override val get: Boolean =
           value
 
         override val score: Score =
-          Bernoulli.this.score(get)
+          Bernoulli.this.observe(get)
+
+        override def complete(): Unit = {}
       }
     }
 
-    override def score(value: Boolean): Score = {
+    override def observe(value: Boolean): Score = {
       if (value) log(p.get) else log(-p.get + 1.0)
     }
 
@@ -258,7 +301,73 @@ package object scappla {
 
   object Bernoulli {
 
-    def apply(p: Double): Bernoulli = Bernoulli(DValue.toConstant(p))
+    def apply(p: Double): Bernoulli =
+      Bernoulli(DValue.toConstant(p))
+  }
+
+  case class ReparamGuide[A](guide: DDistribution[A]) {
+
+    def sample(model: DDistribution[A]): Variable[DValue[A]] = new Variable[DValue[A]] {
+
+      private val s = guide.sample()
+
+      override val get: DValue[A] =
+        s.get
+
+      override val modelScore: Buffer[Double] = {
+        model.observe(get).buffer
+      }
+
+      override val guideScore: Buffer[Double] = {
+        guide.reparam_score(get).buffer
+      }
+
+      override def addObservation(score: Score): Unit = {}
+
+      override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
+
+      override def complete(): Unit = {
+        modelScore.dv(1.0)
+//        println("completing model score")
+        modelScore.complete()
+        guideScore.dv(-1.0)
+//        println("completing guide score")
+        guideScore.complete()
+        s.complete()
+      }
+    }
+
+  }
+
+  case class Normal(mu: Variable[DValue[Double]], sigma: Variable[DValue[Double]]) extends DDistribution[Double] {
+    dist =>
+
+    override def sample(): Sample[DValue[Double]] = new Sample[DValue[Double]] {
+
+      private val x = mu.get + sigma.get * Random.nextGaussian()
+//      println(s"  x: ${x.v} (${mu.get.v}, ${sigma.get.v})")
+//      new Exception().printStackTrace()
+
+      override val get: Buffer[Double] = x.buffer
+
+      override def score: Score = dist.observe(get)
+
+      override def complete(): Unit = get.complete()
+    }
+
+    override def observe(x: DValue[Double]): Score = {
+      -log(sigma.get) - pow((x - mu.get) / sigma.get, 2.0) / 2.0
+    }
+
+    override def reparam_score(x: DValue[Double]): Score = {
+      -log(sigma.get.const) - pow((x - mu.get.const) / sigma.get.const, 2.0) / 2.0
+    }
+  }
+
+  object Normal {
+
+    def apply(mu: Double, sigma: Double): Normal =
+      Normal(DValue.toConstant(mu), DValue.toConstant(sigma))
   }
 
 }
