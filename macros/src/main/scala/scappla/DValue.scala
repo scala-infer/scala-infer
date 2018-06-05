@@ -10,6 +10,9 @@ trait DValue[X] {
 
   def buffer(implicit num: Numeric[X]): Buffer[X] =
     new Buffer[X](this)
+
+  def const: Constant[X] =
+    new Constant[X](this)
 }
 
 class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X] {
@@ -46,11 +49,18 @@ class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X]
 
 }
 
+class Constant[X](upstream: DValue[X]) extends DValue[X] {
+
+  override def v: X = upstream.v
+
+  override def dv(v: X): Unit = {}
+}
+
 abstract class LazyDValue[X](private var value: X) extends DValue[X] {
 
   private var isset: Boolean = false
 
-  final override def v = {
+  final override def v: X = {
     if (!isset) {
       value = _v
       isset = true
@@ -58,7 +68,7 @@ abstract class LazyDValue[X](private var value: X) extends DValue[X] {
     value
   }
 
-  final override def dv(dx: X) = {
+  final override def dv(dx: X): Unit = {
     _dv(dx)
     isset = false
   }
@@ -68,7 +78,7 @@ abstract class LazyDValue[X](private var value: X) extends DValue[X] {
   protected def _dv(dx: X): Unit
 }
 
-trait DFunction1[From, To] extends ((From) => To) {
+trait DFunction1[From, To] extends (From => To) {
 
   def apply(in: DValue[From]): DValue[To]
 }
@@ -223,13 +233,15 @@ object DValue {
 
   implicit val scalarOrdering: Ordering[DValue[Double]] = Ordering.by(_.v)
 
-  implicit val scalarNumeric: Numeric[DValue[Double]] = new Numeric[DValue[Double]] {
+  implicit val scalarNumeric: Fractional[DValue[Double]] = new Fractional[DValue[Double]] {
 
     override def plus(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) + y
 
     override def minus(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) - y
 
     override def times(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) * y
+
+    override def div(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) / y
 
     override def negate(x: DValue[Double]): DValue[Double] = -toScalarOps(x)
 
@@ -246,5 +258,6 @@ object DValue {
     override def compare(x: DValue[Double], y: DValue[Double]): Int = {
       x.v.compareTo(y.v)
     }
+
   }
 }
