@@ -34,12 +34,12 @@ package object scappla {
     dist.sample().get
 
   /*
-  def infer[X](fn: => X): Distribution[X] =
+  def infer[X](fn: => X): Model[X] =
     macro Macros.infer[X]
+  */
 
-  def infer[Y, X](fn: Y => X): Y => Distribution[X] =
-    macro Macros.infer[X]
-    */
+  def infer[Y, X](fn: Y => X): scappla.Model1[Y, X] =
+    macro Macros.infer1[Y, X]
 
   def observe[A](distribution: Distribution[A], value: A): Unit = {}
 

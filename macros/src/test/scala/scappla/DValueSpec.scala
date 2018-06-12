@@ -90,7 +90,6 @@ class DValueSpec extends FlatSpec {
     assert(variable.grad == 2.0)
   }
 
-  /*
   it should "allow a model to be specified" in {
 
     val sprinkle = infer[Boolean, Boolean] {
@@ -102,6 +101,9 @@ class DValueSpec extends FlatSpec {
         }
     }
 
+    sprinkle.sample(true)
+
+    /*
     val model = infer {
 
       val rain = sample(Bernoulli(0.2))
@@ -126,8 +128,8 @@ class DValueSpec extends FlatSpec {
     }.count(identity)
 
     println(s"Expected number of rainy days: ${n_rain / 10000.0}")
+    */
   }
-  */
 
   it should "recover prior" in {
     val inferred = new Model[Boolean] {
