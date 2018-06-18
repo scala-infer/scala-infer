@@ -186,63 +186,89 @@ class Macros(val c: blackbox.Context) {
 
     def flattenBody(body: c.Tree, argName: c.TermName): c.Tree = {
 
+      def cleanup(v: c.Tree): c.Tree = {
+        // the type of an argument may have changed (e.g. Double -> DValue[Double])
+        v match {
+          case Ident(TermName(name)) =>
+//            println(s"TERM: ${name}")
+            Ident(TermName(name))
+
+          case q"$s.$method($o)" =>
+//            println(s"MATCHING ${showRaw(v)}")
+//            println(s"METHOD: ${showRaw(method)}")
+//            println(s" S: ${showRaw(s)}")
+//            println(s" O: ${showRaw(o)}")
+
+            val s_e = cleanup(s)
+            val o_e = cleanup(o)
+            q"$s_e.$method($o_e)"
+
+          case q"$fn($a, $b)" =>
+//            println(s"FUNCTION: ${showRaw(fn)}")
+            val Select(qualifier, name) = fn
+
+            val a_e = cleanup(a)
+            val b_e = cleanup(b)
+            q"${Select(qualifier, name)}($a_e, $b_e)"
+
+          case q"$fn($o)" =>
+//            println(s"FUNCTION: ${showRaw(fn)}")
+            val o_e = cleanup(o)
+            q"$fn($o_e)"
+
+          case _ =>
+//            println(s"UNMATCHED: ${showRaw(v)}")
+            v
+        }
+      }
+
+
       val mapping = scala.collection.mutable.HashMap[c.TermName, c.Tree]()
+
+      case class Var(model: c.Tree, guide: c.Tree)
 
       body match {
         case q"{ ..$defs }" if defs.size >= 1 =>
-          val guides = scala.collection.mutable.HashMap[c.Tree, c.Tree]()
-          val result = defs.last match {
+          val guides = scala.collection.mutable.HashMap[c.Tree, Var]()
+          val resultTree = defs.last match {
             case q"if ($c) { $t } else { $a }" =>
               val newT = t match {
-                case q"scappla.this.`package`.sample[$tDist]($dist)" =>
+                case q"scappla.this.`package`.sample[$tDist]($prior, $posterior)" =>
                   println(s"MATCHING ${showRaw(tDist.tpe)}")
-                  val prior = tDist.tpe match {
-                    case tpe if tpe =:= typeOf[Boolean] =>
-                      q"Bernoulli(0.5)"
-                  }
-                  val guide = q"scappla.BBVIGuide[$tDist]($prior)"
-                  guides += q"t" -> guide
-                  q"t.sample($dist)"
+                  val guide = q"scappla.BBVIGuide[$tDist]($posterior)"
+                  guides += q"t" -> Var(prior, guide)
+                  q"t.sample($prior)"
               }
               val newA = a match {
-                case q"scappla.this.`package`.sample[$aDist]($dist)" =>
+                case q"scappla.this.`package`.sample[$aDist]($prior, $posterior)" =>
                   println(s"MATCHING ${showRaw(aDist.tpe)}")
-                  val prior = aDist.tpe match {
-                    case tpe if tpe =:= typeOf[Boolean] =>
-                      q"Bernoulli(0.5)"
-                  }
-                  val guide = q"scappla.BBVIGuide[$aDist]($prior)"
-                  guides += q"a" -> guide
-                  q"a.sample($dist)"
+                  val guide = q"scappla.BBVIGuide[$aDist]($posterior)"
+                  guides += q"a" -> Var(prior, guide)
+                  q"a.sample($prior)"
               }
-              q"if ($c) { $newT } else { $newA }"
+              val newC = cleanup(c)
+              q"if ($newC) { $newT } else { $newA }"
           }
-          q"""new Model1[$yType, $xType]{
+          val stmts = (for { (name, v) <- guides.toSeq }
+                       yield {
+                         val b = q"private val $name = ${v.guide}"
+                         b match {
+                           case Block(List(valDef), _) => valDef
+                         }
+                       }
+          ) :+ q"""def sample(${mkVar(Seq(0))}: Variable[$yType]): Variable[$xType] = {
 
-             val sgd = new SGD()
-
-             ..${for { (name, guide) <- guides } yield q"val $name = $guide" }
-
-             def sample(${mkVar(Seq(0))}: Variable[$yType]): Variable[$xType] = new Variable[$xType] {
-
-               private val ${argName} = ${mkVar(Seq(0))}.get
+               val ${argName} = ${mkVar(Seq(0))}.get
+               val result = $resultTree
+               ${mkVar(Seq(0))}.addVariable(result.modelScore, result.guideScore)
 
                println("ARGUMENT: " + $argName)
+               println(s"RESULT: $${result}")
 
-               def get = ${argName}
-
-               def modelScore = ???
-
-               def guideScore = ???
-
-               def addObservation(score: scappla.Score) = {}
-
-               def addVariable(modelScore: scappla.Score, guideScore: scappla.Score) = {}
-
-               def complete(): Unit = {}
-             }
-
-           }"""
+               result
+             }"""
+          println(s"RAW CODE: ${showRaw(stmts.head)}")
+          q"""new Model1[$yType, $xType] { ..$stmts }"""
 
             /*
           ..${

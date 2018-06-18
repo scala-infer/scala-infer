@@ -92,15 +92,18 @@ class DValueSpec extends FlatSpec {
 
   it should "allow a model to be specified" in {
 
+    val sgd = new SGD()
+    val inRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+    val noRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+
     val sprinkle = infer[Boolean, Boolean] {
       (rain: Boolean) =>
         if (rain) {
-          sample(Bernoulli(0.01))
+          sample(Bernoulli(0.01), inRain)
         } else {
-          sample(Bernoulli(0.4))
+          sample(Bernoulli(0.4), noRain)
         }
     }
-
     sprinkle.sample(true)
 
     /*
@@ -161,11 +164,13 @@ class DValueSpec extends FlatSpec {
 
   it should "allow a discrete model to be executed" in {
 
-    val sprinkle = new Model1[Boolean, Boolean] {
+    val sgd = new SGD()
+    val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+    val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
-      val sgd = new SGD()
-      val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
-      val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+    val rainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+
+    val sprinkle = new Model1[Boolean, Boolean] {
 
       override def sample(rainVar: Variable[Boolean]) = {
         val rain = rainVar.get
@@ -180,10 +185,6 @@ class DValueSpec extends FlatSpec {
     }
 
     val inferred = new Model[Boolean] {
-
-      val sgd = new SGD()
-
-      val rainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
       override def sample(): Variable[Boolean] = {
         val rainVar = rainGuide.sample(Bernoulli(0.2))
