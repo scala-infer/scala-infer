@@ -12,7 +12,7 @@ trait DValue[X] {
     new Buffer[X](this)
 
   def const: Constant[X] =
-    new Constant[X](this)
+    new Constant[X](this.v)
 }
 
 class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X] {
@@ -49,9 +49,9 @@ class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X]
 
 }
 
-class Constant[X](upstream: DValue[X]) extends DValue[X] {
+class Constant[X](upstream: X) extends DValue[X] {
 
-  override def v: X = upstream.v
+  override def v: X = upstream
 
   override def dv(v: X): Unit = {}
 }

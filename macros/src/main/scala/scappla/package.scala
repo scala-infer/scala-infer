@@ -2,6 +2,7 @@ import scala.util.Random
 import scala.language.experimental.macros
 import scappla.DValue._
 import scappla.Functions._
+import com.typesafe.scalalogging._
 
 import scala.collection.mutable
 
@@ -29,9 +30,10 @@ package object scappla {
 
   /**
     * Sampling in an infer block.
+    * This implimentation will be overridden by a macro.
     */
-  def sample[X](dist: Distribution[X]): X =
-    dist.sample().get
+  def sample[X](prior: Distribution[X], posterior: Distribution[X]): X =
+    posterior.sample().get
 
   /*
   def infer[X](fn: => X): Model[X] =
@@ -154,7 +156,7 @@ package object scappla {
     def complete(): Unit
   }
 
-  object Variable {
+  object Variable extends LazyLogging {
 
     implicit def toConstant[A](value: A): Variable[A] =
       new Variable[A] {
@@ -167,9 +169,11 @@ package object scappla {
 
         override def complete(): Unit = {}
 
-        override def addObservation(score: Score): Unit = ???
+        override def addObservation(score: Score): Unit =
+          logger.warn("Adding observation to a constant variable")
 
-        override def addVariable(modelScore: Score, guideScore: Score): Unit = ???
+        override def addVariable(modelScore: Score, guideScore: Score): Unit =
+          logger.warn("Adding dependant variable to a constant variable")
       }
   }
 
@@ -197,7 +201,7 @@ package object scappla {
     def sample(in: Variable[X]): Variable[A]
   }
 
-  case class BBVIGuide[A](guide: Distribution[A]) {
+  case class BBVIGuide[A](posterior: Distribution[A]) {
 
     var iter = 0
 
@@ -209,9 +213,9 @@ package object scappla {
 
     // samples the guide (= the approximation to the posterior)
     // use BBVI (with Rao Blackwellization)
-    def sample(model: Distribution[A]): Variable[A] = new Variable[A] {
+    def sample(prior: Distribution[A]): Variable[A] = new Variable[A] {
 
-      private val sample = guide.sample()
+      private val sample = posterior.sample()
       private var modelScores = Set.empty[Score]
       private var guideScores = Set.empty[Score]
 
@@ -220,11 +224,11 @@ package object scappla {
       }
 
       override val modelScore: Buffer[Double] = {
-        model.observe(get).buffer
+        prior.observe(get).buffer
       }
 
       override val guideScore: Buffer[Double] = {
-        guide.observe(get).buffer
+        posterior.observe(get).buffer
       }
 
       override def addObservation(score: Score): Unit = {
