@@ -104,12 +104,12 @@ class DValueSpec extends FlatSpec {
           sample(Bernoulli(0.4), noRain)
         }
     }
-    sprinkle.sample(true)
 
-    /*
-    val model = infer {
+    val rainPost = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
 
-      val rain = sample(Bernoulli(0.2))
+    val model = infer[Boolean] {
+
+      val rain = sample(Bernoulli(0.2), rainPost)
       val sprinkled = sample(sprinkle(rain))
 
       val p_wet = (rain, sprinkled) match {
@@ -131,7 +131,6 @@ class DValueSpec extends FlatSpec {
     }.count(identity)
 
     println(s"Expected number of rainy days: ${n_rain / 10000.0}")
-    */
   }
 
   it should "recover prior" in {

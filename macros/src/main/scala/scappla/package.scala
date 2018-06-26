@@ -35,10 +35,8 @@ package object scappla {
   def sample[X](prior: Distribution[X], posterior: Distribution[X]): X =
     posterior.sample().get
 
-  /*
-  def infer[X](fn: => X): Model[X] =
+  def infer[X](fn: X): scappla.Model[X] =
     macro Macros.infer[X]
-  */
 
   def infer[Y, X](fn: Y => X): scappla.Model1[Y, X] =
     macro Macros.infer1[Y, X]
