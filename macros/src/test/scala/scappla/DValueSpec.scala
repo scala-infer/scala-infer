@@ -96,8 +96,8 @@ class DValueSpec extends FlatSpec {
     val inRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
     val noRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
 
-    val sprinkle = infer[Boolean, Boolean] {
-      (rain: Boolean) =>
+    val sprinkle = infer {
+      rain: Boolean =>
         if (rain) {
           sample(Bernoulli(0.01), inRain)
         } else {
