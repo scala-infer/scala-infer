@@ -88,61 +88,70 @@ trait DFunction2[From1, From2, To] extends ((From1, From2) => To) {
   def apply(in1: DValue[From1], in2: DValue[From2]): DValue[To]
 }
 
+case class DNeg(up: DValue[Double]) extends DValue[Double] {
+
+  override def v: Double =
+    -up.v
+
+  override def dv(v: Double): Unit =
+    up.dv(-v)
+}
+
+case class DSub(from: DValue[Double], what: DValue[Double]) extends LazyDValue[Double](0.0) {
+
+  override def _v: Double =
+    from.v - what.v
+
+  override def _dv(v: Double): Unit = {
+    from.dv(v)
+    what.dv(-v)
+  }
+}
+
+case class DAdd(a: DValue[Double], b: DValue[Double]) extends LazyDValue[Double](0.0) {
+
+  override def _v: Double =
+    a.v + b.v
+
+  override def _dv(v: Double): Unit = {
+    a.dv(v)
+    b.dv(v)
+  }
+}
+
+case class DMul(a: DValue[Double], b: DValue[Double]) extends LazyDValue[Double](0.0) {
+
+  override def _v: Double =
+    a.v * b.v
+
+  override def _dv(v: Double): Unit = {
+    a.dv(v * b.v)
+    b.dv(v * a.v)
+  }
+}
+
+case class DDiv(num: DValue[Double], denom: DValue[Double]) extends LazyDValue[Double](0.0) {
+
+  override def _v: Double =
+    num.v / denom.v
+
+  override def _dv(v: Double): Unit = {
+    num.dv(v / denom.v)
+    denom.dv(-v * this.v / denom.v)
+  }
+}
+
 class DScalar(self: DValue[Double]) {
 
-  def unary_- = new DValue[Double] {
+  def unary_- = DNeg(self)
 
-    override def v: Double =
-      -self.v
+  def -(other: DValue[Double]) = DSub(self, other)
 
-    override def dv(v: Double): Unit =
-      self.dv(-v)
-  }
+  def +(other: DValue[Double]) = DAdd(self, other)
 
-  def -(other: DValue[Double]) = new LazyDValue[Double](0.0) {
+  def *(other: DValue[Double]) = DMul(self, other)
 
-    override def _v: Double =
-      self.v - other.v
-
-    override def _dv(v: Double): Unit = {
-      self.dv(v)
-      other.dv(-v)
-    }
-  }
-
-  def +(other: DValue[Double]) = new LazyDValue[Double](0.0) {
-
-    override def _v: Double =
-      self.v + other.v
-
-    override def _dv(v: Double): Unit = {
-      self.dv(v)
-      other.dv(v)
-    }
-  }
-
-  def *(other: DValue[Double]) = new LazyDValue[Double](0.0) {
-
-    override def _v: Double =
-      self.v * other.v
-
-    override def _dv(v: Double): Unit = {
-      self.dv(v * other.v)
-      other.dv(v * self.v)
-    }
-  }
-
-  def /(other: DValue[Double]) = new LazyDValue[Double](0.0) {
-
-    override def _v: Double =
-      self.v / other.v
-
-    override def _dv(v: Double): Unit = {
-      self.dv(v / other.v)
-      other.dv(-v * this.v / other.v)
-    }
-  }
-
+  def /(other: DValue[Double]) = DDiv(self, other)
 }
 
 class DVariable(var v: Double) extends DValue[Double] {
@@ -235,15 +244,15 @@ object DValue {
 
   implicit val scalarNumeric: Fractional[DValue[Double]] = new Fractional[DValue[Double]] {
 
-    override def plus(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) + y
+    override def plus(x: DValue[Double], y: DValue[Double]): DValue[Double] = DAdd(x, y)
 
-    override def minus(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) - y
+    override def minus(x: DValue[Double], y: DValue[Double]): DValue[Double] = DSub(x, y)
 
-    override def times(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) * y
+    override def times(x: DValue[Double], y: DValue[Double]): DValue[Double] = DMul(x, y)
 
-    override def div(x: DValue[Double], y: DValue[Double]): DValue[Double] = toScalarOps(x) / y
+    override def div(x: DValue[Double], y: DValue[Double]): DValue[Double] = DDiv(x, y)
 
-    override def negate(x: DValue[Double]): DValue[Double] = -toScalarOps(x)
+    override def negate(x: DValue[Double]): DValue[Double] = DNeg(x)
 
     override def fromInt(x: Int): DValue[Double] = toConstant(x)
 
