@@ -183,6 +183,151 @@ class Macros(val c: blackbox.Context) {
   def mkVar(ids: Seq[Int]) =
     TermName("var$" + ids.mkString("$"))
 
+  class RVVisitor {
+
+    private val vars = scala.collection.mutable.HashMap[TermName, TermName]()
+    private val obs = scala.collection.mutable.HashMap[TermName, Seq[TermName]]()
+    val guides = scala.collection.mutable.HashMap[TermName, c.Tree]()
+
+    def visit(tree: c.Tree): Seq[c.Tree] = {
+      tree match {
+
+        case q"val $tname : $tpt = scappla.this.`package`.sample[$tDist]($prior, $posterior)" =>
+          val guideVar = TermName(c.freshName())
+          val tVarName = TermName(c.freshName())
+          println(s"MATCHING ${showRaw(tDist.tpe)}")
+          val guide = q"scappla.BBVIGuide[$tDist]($posterior)"
+          guides += guideVar -> guide
+          vars += tname -> tVarName
+          println(s"  CASTING ${showRaw(q"$tname")}")
+          Seq(
+            q"val ${tVarName} = ${guideVar}.sample($prior)",
+            q"val $tname: $tpt = ${tVarName}.get"
+          )
+
+        case q"val $tname : $tpt = scappla.this.`package`.sample[$tDist]($model)" =>
+          val tVarName = TermName(c.freshName())
+          vars += tname -> tVarName
+          println(s"MATCHING ${showRaw(tDist.tpe)}")
+          Seq(
+            q"val ${tVarName} = ${cleaner(model)}.sample()",
+            q"val $tname: $tpt = ${tVarName}.get"
+          )
+
+        // observe needs to produce (resultVar, dependentVars..)
+        case q"scappla.this.`package`.observe[$tDist]($oDist, $o)" =>
+          val obName = TermName(c.freshName())
+          val result = q"val $obName : scappla.Observation = scappla.observeImpl[$tDist](${cleaner(oDist)}, $o)"
+          // FIXME: determine actual dependencies from oDist expression
+          obs += obName -> vars.keySet.toSeq
+          println(s" OBSERVE ${showRaw(result)}")
+          result +: vars.values.toSeq.map { v =>
+            q"$v.addObservation($obName.score)"
+          }
+
+        case q"val $tname : $tpt = $expr" =>
+          Seq(
+            q"val ${tname} = ${cleaner(expr)}"
+          )
+
+        // need to ensure that last expression is an RV
+        case _ => Seq(cleaner(tree))
+      }
+
+    }
+
+    def build(last: TermName, rType: c.Type): c.Tree = {
+      val lastVar = vars(last)
+      q"""new Variable[$rType] {
+
+          import scappla.DValue._
+
+          val get: $rType = ${last}
+
+          val modelScore: Score = {
+              ${(obs.keys.map { t =>
+                  q"$t.score"
+                } ++ vars.values.map { t =>
+                  q"$t.modelScore"
+                }).foldLeft(q"DValue.toConstant(0.0)") {
+                  (cur, o) => q"DAdd($cur, $o)"
+                }
+              }
+          }
+
+          val guideScore: Score = {
+              ${vars.values.map { t =>
+                  q"$t.guideScore"
+                }.foldLeft(q"DValue.toConstant(0.0)") {
+                  (cur, o) => q"DAdd($cur, $o)"
+                }
+              }
+          }
+
+          def addObservation(score: Score) =
+            ${lastVar}.addObservation(score)
+
+          def addVariable(modelScore: Score, guideScore: Score) =
+            ${lastVar}.addVariable(modelScore, guideScore)
+
+          def complete() = {
+              ..${(obs.keys ++ vars.values.toSeq.reverse).map { t =>
+                  q"$t.complete()"
+                }
+              }
+          }
+      }"""
+    }
+
+    def cleaner(v: c.Tree): c.Tree = {
+      // the type of an argument may have changed (e.g. Double -> DValue[Double])
+      v match {
+        case Ident(TermName(name)) =>
+          val tname = TermName(name)
+          println(s"TERM: ${name}")
+          Ident(vars.get(tname)
+              .getOrElse({
+                println(s"   NOT FOUND")
+                tname })
+          )
+
+        case q"$s.$method($o)" =>
+          //            println(s"MATCHING ${showRaw(v)}")
+          println(s"METHOD: ${showRaw(v)}")
+          //            println(s" S: ${showRaw(s)}")
+          //            println(s" O: ${showRaw(o)}")
+
+          val s_e = cleaner(s)
+          val o_e = cleaner(o)
+          q"$s_e.$method($o_e)"
+
+        case q"$fn($a, $b)" =>
+          println(s"FUNCTION: ${showRaw(fn)}")
+          //        val Select(qualifier, name) = fn
+
+          val a_e = cleaner(a)
+          val b_e = cleaner(b)
+          //       q"${Select(qualifier, name)}($a_e, $b_e)"
+          q"$fn($a_e, $b_e)"
+
+        case q"$fn($o)" =>
+          println(s"FUNCTION: ${showRaw(fn)}")
+          val o_e = cleaner(o)
+          q"$fn($o_e)"
+
+        case q"$a match { case ..$cases }" =>
+          val a_e = cleanup(Map.empty)(a)
+          val cases_e = cases.map{ c => cleaner(c) }
+          q"$a_e match { case ..$cases_e }"
+
+        case _ =>
+          println(s"UNMATCHED: ${showRaw(v)}")
+          v
+      }
+    }
+
+  }
+
   def infer[X: WeakTypeTag](fn: c.Expr[X]): c.Expr[scappla.Model[X]] = {
     println(s"  INFER: ${showRaw(fn)}")
     val xType = implicitly[WeakTypeTag[X]]
@@ -190,6 +335,19 @@ class Macros(val c: blackbox.Context) {
     def flattenBody(body: c.Tree): c.Tree = {
       body match {
         case q"{ ..$stmts }" =>
+          val visitor = new RVVisitor()
+          val setup :+ last = stmts
+          val (prelim, lastName) = last match {
+            case Ident(TermName(name)) =>
+              (setup, TermName(name))
+            case _ =>
+              val lastName = TermName(c.freshName())
+              (setup :+ q"val ${lastName} = ${last}", lastName)
+          }
+          val newSetup = prelim.flatMap(t => visitor.visit(t))
+          val newLast = visitor.build(lastName, body.tpe)
+
+          /*
           val casts = scala.collection.mutable.HashMap[String, c.Tree]()
           val cleaner = cleanup(casts) _
           val newVars = for { stmt <- stmts } yield {
@@ -223,11 +381,13 @@ class Macros(val c: blackbox.Context) {
                   q"val $tname: $tpt = ${tVarName}.get"
                 )
 
-              case q"scappla.this.`package`.observe($oDist, $o)" =>
-                val obName = c.freshName()
-                Seq(
-                  q"val $obName = scappla.observeImpl($oDist, $o)"
-                )
+              case q"scappla.this.`package`.observe[$tDist]($oDist, $o)" =>
+                val obName = Ident(c.freshName())
+                val result = q"val $obName : scappla.Observation = scappla.observeImpl[$tDist](${cleaner(oDist)}, $o)" match {
+                      case Block(List(valDef), _) => valDef
+                  }
+                println(s" OBSERVE ${showRaw(result)}")
+                Seq(result)
 
               case q"val $tname : $tpt = $expr" =>
                 Seq(
@@ -239,10 +399,15 @@ class Macros(val c: blackbox.Context) {
               case _ => Seq(cleaner(stmt))
             }
           }
+          */
           q"""new Model[$xType] {
 
+                ..${visitor.guides.map { case (guideVar, guide) =>
+                    q"val ${guideVar} = ${guide}"
+                }}
+
                 def sample() = {
-                  ..${newVars.flatten}
+                  ..${newSetup :+ newLast}
                 }
               }"""
           // q"""new Model[$xType] { def sample() = null }"""

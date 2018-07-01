@@ -88,7 +88,7 @@ package object scappla {
     def param[X: Fractional](initial: X, lr: X): DValue[X]
   }
 
-  class SGD() extends Optimizer {
+  class SGD(val debug: Boolean = false) extends Optimizer {
 
     override def param[X: Fractional](initial: X, lr: X): DValue[X] = {
       val num = implicitly[Fractional[X]]
@@ -104,8 +104,10 @@ package object scappla {
         override def dv(dv: X): Unit = {
           iter += 1
           value = value + dv * lr / num.fromInt(iter)
-//          println(s"    SGD $iter: $value ($dv)")
+          if (debug) {
+            println(s"    SGD $iter: $value ($dv)")
 //          new Exception().printStackTrace()
+          }
         }
       }
     }
