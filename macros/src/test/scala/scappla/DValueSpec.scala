@@ -126,7 +126,8 @@ class DValueSpec extends FlatSpec {
       rain
     }
 
-    val N = 10000
+    //val N = 10000
+    val N = 5
     // burn in
     for { _ <- 0 to N } {
       sample(model)
@@ -184,15 +185,24 @@ class DValueSpec extends FlatSpec {
 
     val sprinkle = new Model1[Boolean, Boolean] {
 
-      override def sample(rainVar: Variable[Boolean]) = {
-        val rain = rainVar.get
-        val sprinkledVar = if (rain)
-          sprinkleInRainGuide.sample(Bernoulli(0.01))
-        else
-          sprinkleNoRainGuide.sample(Bernoulli(0.4))
-        rainVar.addVariable(sprinkledVar.modelScore, sprinkledVar.guideScore)
+      override def apply(rain: Boolean): Model[Boolean] = new Model[Boolean] {
 
-        sprinkledVar
+        private var rainVar: Variable[_] = null
+
+        override def withDeps(rainVar: Variable[_]) = {
+          this.rainVar = rainVar
+          this
+        }
+
+        override def sample() = {
+          val sprinkledVar = if (rain)
+            sprinkleInRainGuide.sample(Bernoulli(0.01))
+          else
+            sprinkleNoRainGuide.sample(Bernoulli(0.4))
+          rainVar.addVariable(sprinkledVar.modelScore, sprinkledVar.guideScore)
+
+          sprinkledVar
+        }
       }
     }
 
@@ -202,7 +212,7 @@ class DValueSpec extends FlatSpec {
         val rainVar = rainGuide.sample(Bernoulli(0.2))
         val rain = rainVar.get
 
-        val sprinkledVar = sprinkle.sample(rainVar)
+        val sprinkledVar = sprinkle(rain).withDeps(rainVar).sample()
         val sprinkled = sprinkledVar.get
 
         val p_wet = (rain, sprinkled) match {

@@ -137,10 +137,10 @@ class Macros(val c: blackbox.Context) {
 
   class RVVisitor(body: c.Tree, args: Map[TermName, TermName] = Map.empty) {
 
-    private val vars = scala.collection.mutable.HashMap[TermName, TermName]()
-    for {  (arg, v) <- args } vars += arg -> v
+    private val vars = scala.collection.mutable.HashMap[TermName, Set[TermName]]()
+    for { (arg, v) <- args } vars += arg -> Set(v)
 
-    private val obs = scala.collection.mutable.HashMap[TermName, Seq[TermName]]()
+    private val obs = scala.collection.mutable.HashSet[TermName]()
     val guides = scala.collection.mutable.HashMap[TermName, c.Tree]()
 
     val stmts = body match {
@@ -153,9 +153,91 @@ class Macros(val c: blackbox.Context) {
             val lastName = TermName(c.freshName())
             (setup :+ q"val ${lastName} = ${last}", lastName)
         }
-        val newSetup = prelim.flatMap(t => visit(t))
+        val newSetup = prelim.flatMap(toANF).flatMap(t => visit(t))
         val newLast = build(lastName, body.tpe)
         newSetup :+ newLast
+    }
+
+    def toANF(tree: c.Tree): Seq[c.Tree] = {
+
+      def expand(expr: c.Tree, doVar: Boolean = false)(fn: c.Tree => Seq[c.Tree]): Seq[c.Tree] = {
+        expr match {
+          case Ident(TermName(name)) =>
+            fn(Ident(TermName(name)))
+
+          case Literal(value) =>
+            println(s"   LITERAL ${showRaw(expr)}")
+            fn(expr)
+
+          case _ =>
+            val varName = TermName(c.freshName())
+            val stmts :+ last = toANF(expr)
+            if (doVar || stmts.size > 0) {
+              (stmts :+ q"val $varName = $last") ++ fn(Ident(varName))
+            } else {
+              fn(last)
+            }
+        }
+      }
+
+      println(s"MAMTCHINIG ${showRaw(tree)}")
+      tree match {
+        case q"{ ..$stmts }" if stmts.size > 1 =>
+         stmts.flatMap(t => toANF(t))
+
+        case q"if ($cond) $tExpr else $fExpr" =>
+          expand(cond, true) { condName =>
+            Seq(q"if ($condName) ${inl(toANF(tExpr))} else ${inl(toANF(fExpr))}")
+          }
+
+        case q"$expr match { case ..$cases }" =>
+          val mappedCases = cases.map { c =>
+            val cq"$when => $result" = c
+            cq"$when => ${inl(toANF(result))}"
+          }
+          expand(expr, true) { matchName =>
+            Seq(q"$matchName match { case ..${mappedCases} }")
+          }
+
+        case q"$s.$method($o)" =>
+          expand(s) { sName =>
+            expand(o) { oName =>
+              Seq(q"$sName.$method($oName)")
+            }
+          }
+
+        case q"$fn($a, $b)" =>
+          expand(a) { aName =>
+            expand(b) { bName =>
+              Seq(q"$fn($aName, ${bName})")
+            }
+          }
+
+        case q"$fn($o)" =>
+          println(s"  FN MATCH ${showRaw(fn)}")
+          expand(o, true) { oName =>
+            Seq(q"$fn(${oName})")
+          }
+
+        case q"val $name = $expr" =>
+          val stmts :+ last = toANF(expr)
+          stmts :+ q"val $name = $last"
+
+        case Ident(TermName(name)) =>
+          Seq(Ident(TermName(name)))
+
+        case _ =>
+          Seq(tree)
+
+      }
+    }
+
+    def inl(exprs: Seq[c.Tree]) = {
+      if (exprs.size == 1) {
+        exprs.head
+      } else {
+        q"{ ..$exprs }"
+      }
     }
 
     def visit(tree: c.Tree): Seq[c.Tree] = {
@@ -167,7 +249,7 @@ class Macros(val c: blackbox.Context) {
           println(s"MATCHING ${showRaw(tDist.tpe)}")
           val guide = q"scappla.BBVIGuide[$tDist]($posterior)"
           guides += guideVar -> guide
-          vars += tname -> tVarName
+          vars += tname -> Set(tVarName)
           println(s"  CASTING ${showRaw(q"$tname")}")
           Seq(
             q"val ${tVarName} = ${guideVar}.sample($prior)",
@@ -176,21 +258,30 @@ class Macros(val c: blackbox.Context) {
 
         case q"val $tname : $tpt = scappla.this.`package`.sample[$tDist]($model)" =>
           val tVarName = TermName(c.freshName())
-          vars += tname -> tVarName
-          println(s"MATCHING ${showRaw(tDist.tpe)}")
+          vars += tname -> Set(tVarName)
+          var Ident(TermName(modelTName)) = model
+          val deps = vars.getOrElse(TermName(modelTName), Set.empty)
+          println(s"MATCHING ${showRaw(model)}")
+          val Ident(TermName(varName)) = model
+          println(s"     DEPS: ${vars(TermName(varName))}")
           Seq(
-            q"val ${tVarName} = ${cleaner(model)}.sample()",
+            q"""val ${tVarName} = ${model}
+               .withDeps(new Dependencies(..${deps}))
+               .sample()""",
             q"val $tname: $tpt = ${tVarName}.get"
           )
 
         // observe needs to produce (resultVar, dependentVars..)
         case q"scappla.this.`package`.observe[$tDist]($oDist, $o)" =>
           val obName = TermName(c.freshName())
-          val result = q"val $obName : scappla.Observation = scappla.observeImpl[$tDist](${cleaner(oDist)}, $o)"
-          // FIXME: determine actual dependencies from oDist expression
-          obs += obName -> vars.keySet.toSeq
+          val result = q"val $obName : scappla.Observation = scappla.observeImpl[$tDist](${oDist}, $o)"
+          obs += obName
+          val deps = findVars(oDist)
+          // println(s"  VARIABLES in oDist: ${deps} => ${vars(deps.head) }")
           println(s" OBSERVE ${showRaw(result)}")
-          result +: vars.values.toSeq.map { v =>
+          result +: deps.flatMap { d =>
+            vars.getOrElse(d, Set.empty)
+          }.toSeq.map { v =>
             q"$v.addObservation($obName.score)"
           }
 
@@ -207,37 +298,63 @@ class Macros(val c: blackbox.Context) {
                   guides += fGuideVar -> fGuide
 
                   val resVar = TermName(c.freshName())
-                  vars += tname -> resVar
+                  vars += tname -> Set(resVar)
                   Seq(
-                    q"""val $resVar = if (${cleaner(cond, false)})
+                    q"""val $resVar = if ($cond)
                         $tGuideVar.sample($tPrior)
                      else
                         $fGuideVar.sample($fPrior)
                      """,
                     q"val $tname = $resVar.get"
-                  ) ++ vars.values.filterNot(_ == resVar).map { varName =>
+                  ) ++ vars.values.toSet.flatten.filterNot(_ == resVar).map { varName =>
                     q"$varName.addVariable($resVar.modelScore, $resVar.guideScore)"
                   }
               }
             case _ =>
               Seq(
-                q"val $tname = ${cleaner(q"if ($cond) $tExpr else $fExpr")}"
+                q"val $tname = if ($cond) $tExpr else $fExpr"
               )
           }
 
-        case q"val $tname : $tpt = $expr" =>
+        case q"val $tname = $expr" =>
+          println(s"   VALDEF ${showRaw(expr.tpe)} : ${showRaw(expr)}")
+          val exprVars = findVars(expr)
+          val deps = exprVars.flatMap { ev =>
+            vars.getOrElse(ev, Set.empty)
+          }
+          if (deps.nonEmpty) {
+            vars += tname -> deps
+          }
           Seq(
-            q"val ${tname} = ${cleaner(expr)}"
+            q"val ${tname} = ${expr}"
           )
 
         // need to ensure that last expression is an RV
-        case _ => Seq(cleaner(tree))
+        case _ => Seq(tree)
       }
 
     }
 
+    def findVars(tree: c.Tree): Set[TermName] = {
+      tree match {
+        case Ident(TermName(name)) =>
+          Set(TermName(name))
+
+        case q"$fn($x)" =>
+          findVars(x)
+
+        case q"$fn($a, $b)" =>
+          findVars(a) ++ findVars(b)
+
+        case q"$a match { case ..$cases }" =>
+          findVars(a)
+
+        case _ => Set.empty
+      }
+    }
+
     def build(last: TermName, rType: c.Type): c.Tree = {
-      val lastVar = vars(last)
+      val lastVars = vars(last)
       q"""new Variable[$rType] {
 
           import scappla.DValue._
@@ -245,93 +362,41 @@ class Macros(val c: blackbox.Context) {
           val get: $rType = ${last}
 
           val modelScore: Score = {
-              ${(obs.keys.map { t =>
-                  q"$t.score"
-                } ++ vars.values.map { t =>
-                  q"$t.modelScore"
-                }).foldLeft(q"DValue.toConstant(0.0)") {
-                  (cur, o) => q"DAdd($cur, $o)"
-                }
+              ${(obs.map { t =>
+                  q"$t.score": c.Tree
+                } ++ vars.values.toSet.flatten.toSeq.map { t =>
+                  q"$t.modelScore" : c.Tree
+                }).reduceOption { (a, b) => q"DAdd($a, $b)" }
+                .getOrElse(q"DValue.toConstant(0.0)")
               }
           }
 
           val guideScore: Score = {
-              ${vars.values.map { t =>
-                  q"$t.guideScore"
-                }.foldLeft(q"DValue.toConstant(0.0)") {
-                  (cur, o) => q"DAdd($cur, $o)"
-                }
+              ${vars.values.toSet.flatten.toSeq.map { t =>
+                  q"$t.guideScore": c.Tree
+                }.reduceOption { (a, b) => q"DAdd($a, $b)" }
+                .getOrElse(q"DValue.toConstant(0.0)")
               }
           }
 
-          def addObservation(score: Score) =
-            ${lastVar}.addObservation(score)
+          def addObservation(score: Score) = {
+             ..${lastVars.toSeq.map { lv => q"$lv.addObservation(score)" }}
+          }
 
-          def addVariable(modelScore: Score, guideScore: Score) =
-            ${lastVar}.addVariable(modelScore, guideScore)
+          def addVariable(modelScore: Score, guideScore: Score) = {
+             ..${lastVars.toSeq.map { lv => q"$lv.addVariable(modelScore, guideScore)" }}
+          }
 
           def complete() = {
-              ..${(obs.keys ++ vars.filterNot {
+              ..${(obs ++ vars.filterNot {
                     case (k, _) => args.contains(k)
-                  }.values.toSeq.reverse)
+                  }.values.toSet.flatten.toSeq.reverse)
                     .map { t =>
                       q"$t.complete()"
                     }
               }
           }
       }"""
-    }
-
-    def cleaner(v: c.Tree, deref: Boolean = true): c.Tree = {
-      // the type of an argument may have changed (e.g. Double -> DValue[Double])
-      v match {
-        case Ident(TermName(name)) =>
-          val tname = TermName(name)
-          println(s"TERM: ${name}")
-          if (deref) {
-            Ident(vars.get(tname)
-                .getOrElse({
-                  println(s"   NOT FOUND")
-                  tname })
-            )
-          } else {
-            Ident(tname)
-          }
-
-        case q"$s.$method($o)" =>
-          //            println(s"MATCHING ${showRaw(v)}")
-          println(s"METHOD: ${showRaw(v)}")
-          //            println(s" S: ${showRaw(s)}")
-          //            println(s" O: ${showRaw(o)}")
-
-          val s_e = cleaner(s, deref)
-          val o_e = cleaner(o, deref)
-          q"$s_e.$method($o_e)"
-
-        case q"$fn($a, $b)" =>
-          println(s"FUNCTION: ${showRaw(fn)}")
-          //        val Select(qualifier, name) = fn
-
-          val a_e = cleaner(a, deref)
-          val b_e = cleaner(b, deref)
-          //       q"${Select(qualifier, name)}($a_e, $b_e)"
-          q"$fn($a_e, $b_e)"
-
-        case q"$fn($o)" =>
-          println(s"FUNCTION: ${showRaw(fn)}")
-          val o_e = cleaner(o, deref)
-          q"$fn($o_e)"
-
-        case q"$a match { case ..$cases }" =>
-          // val a_e = cleanup(Map.empty)(a)
-          val a_e = cleaner(a, false)
-          val cases_e = cases.map{ c => cleaner(c, deref) }
-          q"$a_e match { case ..$cases_e }"
-
-        case _ =>
-          println(s"UNMATCHED: ${showRaw(v)}")
-          v
-      }
     }
 
   }
@@ -365,7 +430,7 @@ class Macros(val c: blackbox.Context) {
 
     fn.tree match {
       case q"($argName: $argType) => $body" =>
-        val varArgName = TermName(c.freshName())
+        val varArgName = TermName("_upstreamArg")
 
         val visitor = new RVVisitor(body, Map(argName -> varArgName))
         val newBody =
@@ -376,9 +441,17 @@ class Macros(val c: blackbox.Context) {
                 q"val ${guideVar} = ${guide}"
             }}
 
-          def sample($varArgName: Variable[$yType]) = {
-            ..${
-              q"val $argName = $varArgName.get" +: visitor.stmts
+          def apply($argName: $argType) = new Model[$xType] {
+
+            private var $varArgName: Variable[_] = null
+
+            override def withDeps(deps: Variable[_]): Model[$xType] = {
+              $varArgName = deps
+              this
+            }
+
+            def sample() = {
+              ..${visitor.stmts}
             }
           }
         }"""
