@@ -156,6 +156,28 @@ package object scappla {
     def complete(): Unit
   }
 
+  class Dependencies(upstream: Variable[_]*) extends Variable[Any] {
+
+    def get =
+      throw new UnsupportedOperationException("No get support on Dependencies")
+
+    val modelScore = 0.0
+
+    val guideScore = 0.0
+
+    override def addObservation(score: Score): Unit = {
+      for { v <- upstream } v.addObservation(score)
+    }
+
+    override def addVariable(modelScore: Score, guideScore: Score): Unit = {
+      for { v <- upstream } {
+        v.addVariable(modelScore, guideScore)
+      }
+    }
+
+    override def complete(): Unit = {}
+  }
+
   object Variable extends LazyLogging {
 
     implicit def toConstant[A](value: A): Variable[A] =
@@ -187,18 +209,14 @@ package object scappla {
   trait Model[A] {
 
     def sample(): Variable[A]
+
+    def withDeps(deps: Variable[_]): Model[A] = this
   }
 
   trait Model1[X, A] {
     self =>
 
-    def apply(in: X): Model[A] =
-      () => self.sample(in)
-
-    def apply(in: Variable[X]): Model[A] =
-      () => self.sample(in)
-
-    def sample(in: Variable[X]): Variable[A]
+    def apply(in: X): Model[A]
   }
 
   case class BBVIGuide[A](posterior: Distribution[A]) {
@@ -280,10 +298,10 @@ package object scappla {
 
   }
 
-  case class Bernoulli(p: Variable[DValue[Double]]) extends Distribution[Boolean] {
+  case class Bernoulli(p: DValue[Double]) extends Distribution[Boolean] {
 
     override def sample(): Sample[Boolean] = {
-      val value =  Random.nextDouble() < p.get.v
+      val value =  Random.nextDouble() < p.v
 //      println(s"Sample: $value (${p.get.v})")
       new Sample[Boolean] {
 
@@ -298,7 +316,7 @@ package object scappla {
     }
 
     override def observe(value: Boolean): Score = {
-      if (value) log(p.get) else log(-p.get + 1.0)
+      if (value) log(p) else log(-p + 1.0)
     }
 
   }
