@@ -126,8 +126,7 @@ class DValueSpec extends FlatSpec {
       rain
     }
 
-    //val N = 10000
-    val N = 5
+    val N = 10000
     // burn in
     for { _ <- 0 to N } {
       sample(model)
@@ -341,85 +340,5 @@ class DValueSpec extends FlatSpec {
 
     println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)}")
   }
-
-  /*
-  it should "allow inference by enumeration" in {
-    val px = 0.2
-    val pty = 0.7
-    val pfy = 0.8
-    val success = for {
-      x <- Bernoulli(px).draw(new Enumeration())
-      y <- Bernoulli(if (x) pty else pfy).draw(new Enumeration())
-    } yield (x, y)
-
-    val N = 10000
-    val n_success = (0 to N)
-        .map { _ => sample(success) }
-        .groupBy(identity)
-        .mapValues(_.size)
-
-    def expected(x: Boolean, y: Boolean) = {
-      (if (x) px else 1.0 - px) *
-          (if (x) {
-            if (y) pty else 1.0 - pty
-          } else {
-            if (y) pfy else 1.0 - pfy
-          })
-    }
-
-    for {((x, y), count) <- n_success} {
-      val n = expected(x, y) * N
-      assert(math.abs(count - n) < 3 * math.sqrt(n))
-    }
-  }
-  */
-
-
-  /*
-  it should "allow a model to be specified" in {
-
-    object guides {
-      val sprinkleWhenRain = Bernoulli(0.01)
-      val sprinkleWithoutRain = Bernoulli(0.4)
-      val rainPosterior = Bernoulli(0.2)
-    }
-
-    val sprinkle: Variable[Boolean] => Variable[Boolean] =
-      (rain: Variable[Boolean]) => for {
-        s <- if (rain.get) {
-          sample[Boolean](Bernoulli(0.01), guides.sprinkleWhenRain)
-        } else {
-          sample[Boolean](Bernoulli(0.4), guides.sprinkleWithoutRain)
-        }
-      } yield s
-
-    val hasRained = for {
-      rain <- sample(Bernoulli(0.2), guides.rainPosterior)
-      sprinkledVar = sprinkle(rain)
-      sprinkled <- sprinkledVar
-      p_wet = (rain.get, sprinkled) match {
-        case (true, true) => 0.99
-        case (false, true) => 0.9
-        case (true, false) => 0.8
-        case (false, false) => 0.001
-      }
-
-      // bind model to data / add observation
-      Bernoulli(p_wet).observe(true)
-    } yield rain
-
-    val N = 100000
-    val n_rain = Range(0, N).map { _ =>
-      sample(hasRained)
-    }.count(identity)
-
-    // See Wikipedia
-    // P(rain = true | grass is wet) = 35.77 %
-
-    val p_expected = 0.3577
-    val n_expected = p_expected * N
-    assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
-  }
-  */
 
 }
