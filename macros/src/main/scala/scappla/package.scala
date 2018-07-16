@@ -361,14 +361,12 @@ package object scappla {
 
   }
 
-  case class Normal(mu: Variable[DValue[Double]], sigma: Variable[DValue[Double]]) extends DDistribution[Double] {
+  case class Normal(mu: DValue[Double], sigma: DValue[Double]) extends DDistribution[Double] {
     dist =>
 
     override def sample(): Sample[DValue[Double]] = new Sample[DValue[Double]] {
 
-      private val x = mu.get + sigma.get * Random.nextGaussian()
-//      println(s"  x: ${x.v} (${mu.get.v}, ${sigma.get.v})")
-//      new Exception().printStackTrace()
+      private val x = mu + sigma * Random.nextGaussian()
 
       override val get: Buffer[Double] = x.buffer
 
@@ -378,11 +376,11 @@ package object scappla {
     }
 
     override def observe(x: DValue[Double]): Score = {
-      -log(sigma.get) - pow((x - mu.get) / sigma.get, 2.0) / 2.0
+      -log(sigma) - pow((x - mu) / sigma, 2.0) / 2.0
     }
 
     override def reparam_score(x: DValue[Double]): Score = {
-      -log(sigma.get.const) - pow((x - mu.get.const) / sigma.get.const, 2.0) / 2.0
+      -log(sigma.const) - pow((x - mu.const) / sigma.const, 2.0) / 2.0
     }
   }
 

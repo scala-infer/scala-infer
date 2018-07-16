@@ -275,6 +275,34 @@ class DValueSpec extends FlatSpec {
     assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
   }
 
+  it should "reparametrize doubles" in {
+    val sgd = new SGD()
+    val muGuide = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+
+    val model = infer {
+      val mu = sample(Normal(0.0, 1.0), muGuide)
+
+      observe(Normal(mu, DValue.toConstant(1.0)), DValue.toConstant(2.0))
+
+      mu
+    }
+
+    // warm up
+    Range(0, 10000).foreach { i =>
+      sample(model)
+    }
+
+    val N = 10000
+    val (total_x, total_xx) = Range(0, N).map { i =>
+      sample(model).v
+    }.foldLeft((0.0, 0.0)) { case ((sum_x, sum_xx), x) =>
+        (sum_x + x, sum_xx + x * x)
+    }
+    val avg_mu = total_x / N
+    val var_mu = total_xx / N - avg_mu * avg_mu
+    println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)}")
+  }
+
   it should "use the reparametrization gradient" in {
 
     val data = (0 until 100).map { i =>
@@ -296,8 +324,8 @@ class DValueSpec extends FlatSpec {
 
         val muVar = muGuide.sample(Normal(0.0, 1.0))
 
-        private val sigma: Variable[DValue[Double]] = Variable.toConstant(DValue.toConstant(1.0))
-        private val observation : Observation = observeImpl(Normal(muVar, sigma), DValue.toConstant(2.0))
+        private val sigma: DValue[Double] = DValue.toConstant(1.0)
+        private val observation : Observation = observeImpl(Normal(muVar.get, sigma), DValue.toConstant(2.0))
 
         override def get: DValue[Double] =
           muVar.get

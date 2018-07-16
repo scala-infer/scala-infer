@@ -246,8 +246,14 @@ class Macros(val c: blackbox.Context) {
         case q"val $tname : $tpt = scappla.this.`package`.sample[$tDist]($prior, $posterior)" =>
           val guideVar = TermName(c.freshName())
           val tVarName = TermName(c.freshName())
-          println(s"MATCHING ${showRaw(tDist.tpe)}")
-          val guide = q"scappla.BBVIGuide[$tDist]($posterior)"
+          println(s"MATCHING ${showRaw(tDist.tpe)} (${showCode(tDist)})")
+          val guide = tDist.tpe match {
+            case tpe if tpe =:= typeOf[DValue[Double]] =>
+              q"scappla.ReparamGuide($posterior)"
+
+            case _ =>
+              q"scappla.BBVIGuide[$tDist]($posterior)"
+          }
           guides += guideVar -> guide
           vars += tname -> Set(tVarName)
           println(s"  CASTING ${showRaw(q"$tname")}")
