@@ -234,8 +234,6 @@ package object scappla {
     def sample(prior: Distribution[A]): Variable[A] = new Variable[A] {
 
       private val sample = posterior.sample()
-      private var modelScores = Set.empty[Score]
-      private var guideScores = Set.empty[Score]
 
       override val get: A = {
         sample.get
@@ -249,21 +247,27 @@ package object scappla {
         posterior.observe(get).buffer
       }
 
+      private var logp: Score = modelScore
+      private var logq: Score = guideScore
+
       override def addObservation(score: Score): Unit = {
-        modelScores += score
+        logp += score
       }
 
       override def addVariable(modelScore: Score, guideScore: Score): Unit = {
-        modelScores += modelScore
-        guideScores += guideScore
+        logp += modelScore
+        logq += guideScore
       }
 
       // compute ELBO and backprop gradients
       override def complete(): Unit = {
-        val logp: DValue[Double] = modelScore + modelScores.sum
-        val logq: DValue[Double] = guideScore + guideScores.sum
+        // backprop gradients to decoder
         modelScore.dv(1.0)
+
+        // backprop gradients to encoder
         update(guideScore, logp, logq)
+
+        // evaluate optimizer
         modelScore.complete()
         guideScore.complete()
       }
@@ -327,21 +331,21 @@ package object scappla {
       Bernoulli(DValue.toConstant(p))
   }
 
-  case class ReparamGuide[A](guide: DDistribution[A]) {
+  case class ReparamGuide[A](posterior: DDistribution[A]) {
 
-    def sample(model: DDistribution[A]): Variable[DValue[A]] = new Variable[DValue[A]] {
+    def sample(prior: DDistribution[A]): Variable[DValue[A]] = new Variable[DValue[A]] {
 
-      private val s = guide.sample()
+      private val sample = posterior.sample()
 
       override val get: DValue[A] =
-        s.get
+        sample.get
 
       override val modelScore: Buffer[Double] = {
-        model.observe(get).buffer
+        prior.observe(get).buffer
       }
 
       override val guideScore: Buffer[Double] = {
-        guide.reparam_score(get).buffer
+        posterior.reparam_score(get).buffer
       }
 
       override def addObservation(score: Score): Unit = {}
@@ -355,7 +359,7 @@ package object scappla {
         guideScore.dv(-1.0)
 //        println("completing guide score")
         guideScore.complete()
-        s.complete()
+        sample.complete()
       }
     }
 

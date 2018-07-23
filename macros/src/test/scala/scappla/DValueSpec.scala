@@ -303,6 +303,48 @@ class DValueSpec extends FlatSpec {
     println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)}")
   }
 
+  /*
+  it should "allow linear regression to be specified" in {
+    import DValue._
+
+    val data = {
+      val alpha = 1.0
+      val sigma = 1.0
+      val beta = (1.0, 2.5)
+
+      for {_ <- 0 until 100} yield {
+        val X = (Random.nextGaussian(), 0.2 * Random.nextGaussian())
+        val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + Random.nextGaussian() * sigma
+        (X, Y)
+      }
+    }
+
+    val sgd = new SGD()
+    val aPost  = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val sPost  = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+
+    val model = infer {
+      val a   = sample(Normal(0.0, 1.0), aPost)
+      val b1  = sample(Normal(0.0, 1.0), b1Post)
+      val b2  = sample(Normal(0.0, 1.0), b2Post)
+      val err = exp(sample(Normal(0.0, 1.0), sPost))
+
+      for { ((x1, x2), y) <- data } {
+        observe(Normal(a + b1 * x1 + b2 * x2, err), y: DValue[Double])
+      }
+
+      (a, b1, b2, err)
+    }
+
+    // warm up
+    Range(0, 10).foreach { i =>
+      sample(model)
+    }
+  }
+  */
+
   it should "use the reparametrization gradient" in {
 
     val data = (0 until 100).map { i =>

@@ -137,6 +137,8 @@ class Macros(val c: blackbox.Context) {
 
   class RVVisitor(body: c.Tree, args: Map[TermName, TermName] = Map.empty) {
 
+    println(s"VISITING ${showCode(body)}")
+
     private val vars = scala.collection.mutable.HashMap[TermName, Set[TermName]]()
     for { (arg, v) <- args } vars += arg -> Set(v)
 
@@ -180,6 +182,22 @@ class Macros(val c: blackbox.Context) {
         }
       }
 
+      def reIdentPat(expr: c.Tree): c.Tree = {
+        println(s"   REMAPPING ${showRaw(expr)}")
+        expr match {
+          case pq"$tName @ $pat" =>
+            println(s"     TERM ${showRaw(tName)}")
+            val TermName(name) = tName
+            pq"${TermName(name)} @ $pat"
+
+          case pq"$ref(..$pats)" =>
+            pq"$ref(..${pats.map{pat => reIdentPat(pat)}})"
+
+          case _ =>
+            expr
+        }
+      }
+
       println(s"MAMTCHINIG ${showRaw(tree)}")
       tree match {
         case q"{ ..$stmts }" if stmts.size > 1 =>
@@ -193,7 +211,7 @@ class Macros(val c: blackbox.Context) {
         case q"$expr match { case ..$cases }" =>
           val mappedCases = cases.map { c =>
             val cq"$when => $result" = c
-            cq"$when => ${inl(toANF(result))}"
+            cq"${reIdentPat(when)} => ${inl(toANF(result))}"
           }
           expand(expr, true) { matchName =>
             Seq(q"$matchName match { case ..${mappedCases} }")
@@ -206,18 +224,30 @@ class Macros(val c: blackbox.Context) {
             }
           }
 
+        /*
         case q"$fn($a, $b)" =>
           expand(a) { aName =>
             expand(b) { bName =>
               Seq(q"$fn($aName, ${bName})")
             }
           }
+         */
 
         case q"$fn($o)" =>
-          println(s"  FN MATCH ${showRaw(fn)}")
           expand(o, true) { oName =>
             Seq(q"$fn(${oName})")
           }
+
+        case q"$fn(..$args)" =>
+          println(s"  FN MATCH ${showRaw(fn)}")
+          val res = args.map { arg =>
+            expand(arg) { aName =>
+              Seq(aName)
+            }
+          }
+          val defs = res.flatMap { _.dropRight(1) }
+          val newArgs = res.map { _.last }
+          defs :+ q"$fn(..$newArgs)"
 
         case q"val $name = $expr" =>
           val stmts :+ last = toANF(expr)
@@ -226,7 +256,27 @@ class Macros(val c: blackbox.Context) {
         case Ident(TermName(name)) =>
           Seq(Ident(TermName(name)))
 
+        case q"(..$args) => $fn" =>
+          Seq(q"""(..${args.map { arg => arg match {
+                         case ValDef(mods, TermName(name), tpt, expr) =>
+                           println(s"    FN VALDEF ${showRaw(arg)}")
+                           ValDef(mods, TermName(name), tpt, expr)
+
+                         case _ =>
+                           println(s"    FN ARG ${showRaw(arg)}")
+                           arg
+                     } }}) => {
+                ..${expand(fn) { fName => Seq(fName) }}
+              }
+            """)
+
+        case q"$expr: $tpt" =>
+          expand(expr) { eName =>
+            Seq(eName)
+          }
+
         case _ =>
+          println(s"  SKIPPING ${showCode(tree)}")
           Seq(tree)
 
       }
@@ -246,6 +296,7 @@ class Macros(val c: blackbox.Context) {
         case q"val $tname : $tpt = scappla.this.`package`.sample[$tDist]($prior, $posterior)" =>
           val guideVar = TermName(c.freshName())
           val tVarName = TermName(c.freshName())
+          val TermName(name) = tname
           println(s"MATCHING ${showRaw(tDist.tpe)} (${showCode(tDist)})")
           val guide = tDist.tpe match {
             case tpe if tpe =:= typeOf[DValue[Double]] =>
@@ -259,7 +310,7 @@ class Macros(val c: blackbox.Context) {
           println(s"  CASTING ${showRaw(q"$tname")}")
           Seq(
             q"val ${tVarName} = ${guideVar}.sample($prior)",
-            q"val $tname: $tpt = ${tVarName}.get"
+            q"val ${TermName(name)}: $tpt = ${tVarName}.get"
           )
 
         case q"val $tname : $tpt = scappla.this.`package`.sample[$tDist]($model)" =>
@@ -346,11 +397,8 @@ class Macros(val c: blackbox.Context) {
         case Ident(TermName(name)) =>
           Set(TermName(name))
 
-        case q"$fn($x)" =>
-          findVars(x)
-
-        case q"$fn($a, $b)" =>
-          findVars(a) ++ findVars(b)
+        case q"$fn(..$args)" =>
+          args.toSet.flatMap(arg => findVars(arg))
 
         case q"$a match { case ..$cases }" =>
           findVars(a)
