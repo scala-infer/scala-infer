@@ -303,7 +303,6 @@ class DValueSpec extends FlatSpec {
     println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)}")
   }
 
-  /*
   it should "allow linear regression to be specified" in {
     import DValue._
 
@@ -331,7 +330,8 @@ class DValueSpec extends FlatSpec {
       val b2  = sample(Normal(0.0, 1.0), b2Post)
       val err = exp(sample(Normal(0.0, 1.0), sPost))
 
-      for { ((x1, x2), y) <- data } {
+      data.foreach { entry =>
+        val ((x1, x2), y) = entry
         observe(Normal(a + b1 * x1 + b2 * x2, err), y: DValue[Double])
       }
 
@@ -343,7 +343,6 @@ class DValueSpec extends FlatSpec {
       sample(model)
     }
   }
-  */
 
   it should "use the reparametrization gradient" in {
 
