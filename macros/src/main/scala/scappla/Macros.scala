@@ -249,9 +249,11 @@ class Macros(val c: blackbox.Context) {
           val newArgs = res.map { _.last }
           defs :+ q"$fn(..$newArgs)"
 
-        case q"val $name = $expr" =>
+        case q"$mods val $tname : $tpt = $expr" =>
+          println(s"    VALDEFF ${showRaw(tname)}")
+          val TermName(name) = tname
           val stmts :+ last = toANF(expr)
-          stmts :+ q"val $name = $last"
+          stmts :+ q"$mods val ${TermName(name)}: $tpt = $last"
 
         case Ident(TermName(name)) =>
           Seq(Ident(TermName(name)))
@@ -260,7 +262,8 @@ class Macros(val c: blackbox.Context) {
           Seq(q"""(..${args.map { arg => arg match {
                          case ValDef(mods, TermName(name), tpt, expr) =>
                            println(s"    FN VALDEF ${showRaw(arg)}")
-                           ValDef(mods, TermName(name), tpt, expr)
+                           val stmts = toANF(expr)
+                           ValDef(mods, TermName(name), tpt, q"{..$stmts}")
 
                          case _ =>
                            println(s"    FN ARG ${showRaw(arg)}")
@@ -272,11 +275,16 @@ class Macros(val c: blackbox.Context) {
 
         case q"$expr: $tpt" =>
           expand(expr) { eName =>
-            Seq(eName)
+            Seq(q"$eName: $tpt")
+          }
+
+        case q"$expr.$tname" =>
+          expand(expr) { eName =>
+            Seq(q"$eName.$tname")
           }
 
         case _ =>
-          println(s"  SKIPPING ${showCode(tree)}")
+          println(s"  SKIPPING ${showRaw(tree)}")
           Seq(tree)
 
       }
