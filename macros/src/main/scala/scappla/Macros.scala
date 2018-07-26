@@ -450,15 +450,41 @@ class Macros(val c: blackbox.Context) {
           }
 
           def complete() = {
-              ..${(obs.toSeq ++ vars.filterNot {
-                    case (k, _) => args.contains(k)
-                  }.values.toSet.flatten.toSeq.reverse)
-                    .map { t =>
+              ..${(obs.toSeq ++ topoSortVars().filterNot {
+                    case k => args.contains(k)
+                  }.reverse).map { t =>
                       q"$t.complete()"
                     }
               }
           }
       }"""
+    }
+
+    def topoSortVars(): Seq[TermName] = {
+
+      val visited = scala.collection.mutable.HashSet[TermName]()
+      val result = scala.collection.mutable.ListBuffer[TermName]()
+
+      def visitVar(tname: TermName): Unit = {
+        if (!visited.contains(tname)) {
+          visited += tname
+          for { dep <- vars.getOrElse(tname, Set.empty) } {
+            visitVar(dep)
+          }
+          if (!result.contains(tname)) {
+            result += tname
+          }
+        }
+      }
+
+      for {
+        deps <- vars.values
+        dep <- deps
+      } {
+        visitVar(dep)
+      }
+
+      result.toSeq
     }
 
   }
