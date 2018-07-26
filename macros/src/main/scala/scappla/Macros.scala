@@ -450,7 +450,7 @@ class Macros(val c: blackbox.Context) {
           }
 
           def complete() = {
-              ..${(obs ++ vars.filterNot {
+              ..${(obs.toSeq ++ vars.filterNot {
                     case (k, _) => args.contains(k)
                   }.values.toSet.flatten.toSeq.reverse)
                     .map { t =>
