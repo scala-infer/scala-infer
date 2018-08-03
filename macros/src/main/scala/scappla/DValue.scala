@@ -47,6 +47,7 @@ class Buffer[X](upstream: DValue[X])(implicit num: Numeric[X]) extends DValue[X]
     }
   }
 
+  override def toString: String = s"Buf($upstream)"
 }
 
 class Constant[X](upstream: X) extends DValue[X] {
@@ -54,6 +55,15 @@ class Constant[X](upstream: X) extends DValue[X] {
   override def v: X = upstream
 
   override def dv(v: X): Unit = {}
+
+  override def toString: String = {
+    upstream match {
+      case d : Double =>
+        s"Const(${"%.4f".format(d)})"
+      case _ =>
+        s"Const($upstream)"
+    }
+  }
 }
 
 abstract class LazyDValue[X](private var value: X) extends DValue[X] {
@@ -76,6 +86,8 @@ abstract class LazyDValue[X](private var value: X) extends DValue[X] {
   protected def _v: X
 
   protected def _dv(dx: X): Unit
+
+  override def toString: String = s"Lazy($value)"
 }
 
 trait DFunction1[From, To] extends (From => To) {
@@ -95,6 +107,8 @@ case class DNeg(up: DValue[Double]) extends DValue[Double] {
 
   override def dv(v: Double): Unit =
     up.dv(-v)
+
+  override def toString: String = s"-$up"
 }
 
 case class DSub(from: DValue[Double], what: DValue[Double]) extends LazyDValue[Double](0.0) {
@@ -106,6 +120,8 @@ case class DSub(from: DValue[Double], what: DValue[Double]) extends LazyDValue[D
     from.dv(v)
     what.dv(-v)
   }
+
+  override def toString: String = s"($from - $what)"
 }
 
 case class DAdd(a: DValue[Double], b: DValue[Double]) extends LazyDValue[Double](0.0) {
@@ -117,6 +133,8 @@ case class DAdd(a: DValue[Double], b: DValue[Double]) extends LazyDValue[Double]
     a.dv(v)
     b.dv(v)
   }
+
+  override def toString: String = s"($a + $b)"
 }
 
 case class DMul(a: DValue[Double], b: DValue[Double]) extends LazyDValue[Double](0.0) {
@@ -128,6 +146,8 @@ case class DMul(a: DValue[Double], b: DValue[Double]) extends LazyDValue[Double]
     a.dv(v * b.v)
     b.dv(v * a.v)
   }
+
+  override def toString: String = s"($a * $b)"
 }
 
 case class DDiv(num: DValue[Double], denom: DValue[Double]) extends LazyDValue[Double](0.0) {
@@ -139,19 +159,8 @@ case class DDiv(num: DValue[Double], denom: DValue[Double]) extends LazyDValue[D
     num.dv(v / denom.v)
     denom.dv(-v * this.v / denom.v)
   }
-}
 
-class DScalar(self: DValue[Double]) {
-
-  def unary_- = DNeg(self)
-
-  def -(other: DValue[Double]) = DSub(self, other)
-
-  def +(other: DValue[Double]) = DAdd(self, other)
-
-  def *(other: DValue[Double]) = DMul(self, other)
-
-  def /(other: DValue[Double]) = DDiv(self, other)
+  override def toString: String = s"$num / $denom"
 }
 
 class DVariable(var v: Double) extends DValue[Double] {
@@ -162,11 +171,6 @@ class DVariable(var v: Double) extends DValue[Double] {
     grad += v
   }
 
-}
-
-class DConstant(val v: Double) extends DValue[Double] {
-
-  override def dv(v: Double): Unit = {}
 }
 
 object Functions {
@@ -184,6 +188,8 @@ object Functions {
       override def _dv(dx: Double): Unit = {
         x.dv(dx / x.v)
       }
+
+      override def toString: String = s"Log($x)"
     }
   }
 
@@ -199,6 +205,8 @@ object Functions {
       override def _dv(dx: Double): Unit = {
         x.dv(dx * v)
       }
+
+      override def toString: String = s"Exp($x)"
     }
 
   }
@@ -227,6 +235,8 @@ object Functions {
         base.dv(dx * ev * scala.math.pow(base.v, ev - 1))
         exp.dv(dx * scala.math.log(base.v) * v)
       }
+
+      override def toString: String = s"Pow($base, $exp)"
     }
   }
 
@@ -234,11 +244,7 @@ object Functions {
 
 object DValue {
 
-  implicit def toConstant(value: Double) = new DConstant(value)
-
-  implicit def toScalarOps(value: DValue[Double]): DScalar = {
-    new DScalar(value)
-  }
+  implicit def toConstant(value: Double) = new Constant(value)
 
   implicit val scalarOrdering: Ordering[DValue[Double]] = Ordering.by(_.v)
 
@@ -269,4 +275,7 @@ object DValue {
     }
 
   }
+
+  implicit def mkNumericOps(lhs: DValue[Double]): scalarNumeric.FractionalOps =
+    new scalarNumeric.FractionalOps(lhs)
 }
