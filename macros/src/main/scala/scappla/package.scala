@@ -1,3 +1,5 @@
+import java.util.Objects
+
 import scala.util.Random
 import scala.language.experimental.macros
 import scappla.DValue._
@@ -53,7 +55,7 @@ package object scappla {
 
       override def complete(): Unit = {
         score.dv(1.0)
-//        println("completing observation score")
+//        println(s"completing observation score ${distribution}")
         score.complete()
       }
     }
@@ -109,11 +111,57 @@ package object scappla {
 //          new Exception().printStackTrace()
           }
         }
+
+        override def toString: String = s"Param@${hashCode()}"
       }
     }
   }
 
-  trait Variable[A] {
+  class SGDMomentum(val mass: Int = 10, val debug: Boolean = false) extends Optimizer {
+
+    override def param[X: Fractional](initial: X, lr: X): DValue[X] = {
+      val num = implicitly[Fractional[X]]
+      import num._
+      new DValue[X] {
+
+        private var iter: Int = 0
+
+        private var value: X = initial
+        private var momentum: X = num.zero
+
+        override def v: X = value
+
+        override def dv(dv: X): Unit = {
+          iter += 1
+          momentum = (num.fromInt(mass - 1) * momentum + dv) / num.fromInt(mass)
+          value = value + momentum * lr / num.fromInt(iter)
+          if (debug) {
+            println(s"    SGD $iter: $value ($dv)")
+            //          new Exception().printStackTrace()
+          }
+        }
+
+        override def toString: String = s"Param@${hashCode()}"
+      }
+    }
+  }
+
+  /**
+    * When the execution trace is torn down, each object is "completed" in reverse (topological)
+    * order.  I.e. all objects that are dependent on the current object have been completed.
+    * The complete operation is the last operation that will be invoked on the object.
+    */
+  trait Completeable {
+
+    /**
+      * When the value of the variable is retrieved and it can no longer be
+      * exposed to any new dependencies, it should be completed.  In the case of the
+      * outer "sample", this means updating the inferred distributions.
+      */
+    def complete(): Unit
+  }
+
+  trait Variable[A] extends Completeable {
 
     def get: A
 
@@ -147,13 +195,6 @@ package object scappla {
       * are needed.
       */
     def addVariable(modelScore: Score, guideScore: Score): Unit
-
-    /**
-      * When the value of the variable is retrieved and it can no longer be
-      * exposed to any new dependencies, it should be completed.  In the case of the
-      * outer "sample", this means updating the inferred distributions.
-      */
-    def complete(): Unit
   }
 
   class Dependencies(upstream: Variable[_]*) extends Variable[Any] {
@@ -199,11 +240,9 @@ package object scappla {
       }
   }
 
-  trait Observation {
+  trait Observation extends Completeable {
 
     def score: Score
-
-    def complete(): Unit
   }
 
   trait Model[A] {

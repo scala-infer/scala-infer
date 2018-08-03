@@ -300,48 +300,7 @@ class DValueSpec extends FlatSpec {
     }
     val avg_mu = total_x / N
     val var_mu = total_xx / N - avg_mu * avg_mu
-    println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)}")
-  }
-
-  it should "allow linear regression to be specified" in {
-    import DValue._
-
-    val data = {
-      val alpha = 1.0
-      val sigma = 1.0
-      val beta = (1.0, 2.5)
-
-      for {_ <- 0 until 100} yield {
-        val X = (Random.nextGaussian(), 0.2 * Random.nextGaussian())
-        val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + Random.nextGaussian() * sigma
-        (X, Y)
-      }
-    }
-
-    val sgd = new SGD()
-    val aPost  = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val sPost  = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-
-    val model = infer {
-      val a   = sample(Normal(0.0, 1.0), aPost)
-      val b1  = sample(Normal(0.0, 1.0), b1Post)
-      val b2  = sample(Normal(0.0, 1.0), b2Post)
-      val err = exp(sample(Normal(0.0, 1.0), sPost))
-
-      data.foreach { entry =>
-        val ((x1, x2), y) = entry
-        observe(Normal(a + b1 * x1 + b2 * x2, err), y: DValue[Double])
-      }
-
-      (a, b1, b2, err)
-    }
-
-    // warm up
-    Range(0, 10).foreach { i =>
-      sample(model)
-    }
+    println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)})")
   }
 
   it should "use the reparametrization gradient" in {
@@ -407,7 +366,154 @@ class DValueSpec extends FlatSpec {
     val endTime = System.currentTimeMillis()
     println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
 
-    println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)}")
+    println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)})")
+  }
+
+  it should "allow linear regression to be specified" in {
+    import DValue._
+
+    val data = {
+      val alpha = 1.0
+      val sigma = 1.0
+      val beta = (1.0, 2.5)
+
+      for {_ <- 0 until 100} yield {
+        val X = (Random.nextGaussian(), 0.2 * Random.nextGaussian())
+        val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + Random.nextGaussian() * sigma
+        (X, Y)
+      }
+    }
+
+    val sgd = new SGD()
+    val aPost  = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val sPost  = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+
+    val model = infer {
+      val a   = sample(Normal(0.0, 1.0), aPost)
+      val b1  = sample(Normal(0.0, 1.0), b1Post)
+      val b2  = sample(Normal(0.0, 1.0), b2Post)
+      val err = exp(sample(Normal(0.0, 1.0), sPost))
+
+      data.foreach { entry =>
+        val ((x1, x2), y) = entry
+        observe(Normal(a + b1 * x1 + b2 * x2, err), y: DValue[Double])
+      }
+
+      (a, b1, b2, err)
+    }
+
+    // warm up
+    Range(0, 10000).foreach { i =>
+      sample(model)
+    }
+
+    // print some samples
+    Range(0, 10).foreach { i =>
+      val l = sample(model)
+      val values = (l._1.v, l._2.v, l._3.v, l._4.v)
+      println(s"  ${values}")
+    }
+  }
+
+  it should "find max likelihood for linear regression without macros" in {
+
+    val rng = new Random(123456789L)
+    val data = {
+      val alpha = 1.0
+      val beta = (1.0, 2.5)
+      val sigma = 1.0
+
+      for {_ <- 0 until 100} yield {
+        val X = (rng.nextGaussian(), 0.2 * rng.nextGaussian())
+        val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + rng.nextGaussian() * sigma
+        (X, Y)
+      }
+    }
+
+    val lr = 50.0 / (data.size + 1)
+
+    // find MAP
+    val sgd = new SGDMomentum()
+    val aPost  = sgd.param(0.0, lr)
+    val b1Post = sgd.param(0.0, lr)
+    val b2Post = sgd.param(0.0, lr)
+    val sPost  = sgd.param(0.0, lr)
+
+    val model = new Model[(DValue[Double], DValue[Double], DValue[Double], DValue[Double])] {
+
+      override def sample(): Variable[(DValue[Double], DValue[Double], DValue[Double], DValue[Double])] = {
+        val a   = aPost.buffer
+        val b1  = b1Post.buffer
+        val b2  = b2Post.buffer
+        val sDraw = sPost.buffer
+        val err = exp(sDraw)
+
+        val cb = new Function1[((Double, Double), Double), Unit] with Completeable {
+
+          var obScore : Score = 0.0
+          private var completions: List[Completeable] = Nil
+
+          override def apply(entry: ((Double, Double), Double)): Unit = {
+            import DValue._
+            val ((x1, x2), y) = entry
+            val observation = observeImpl(Normal(a + x1.const * b1 + x2.const * b2, err), y.const)
+            obScore = DAdd(obScore, observation.score)
+            completions = observation :: completions
+          }
+
+          def complete() = {
+            completions.foreach(_.complete())
+          }
+        }
+        data.foreach(cb)
+
+        new Variable[(DValue[Double], DValue[Double], DValue[Double], DValue[Double])] {
+
+          import scappla.DValue._
+
+          override val get = (a, b1, b2, err)
+
+          override val modelScore: Score =
+            cb.obScore
+
+          override def guideScore: Score = 0.0
+
+          override def addObservation(score: Score): Unit = {}
+
+          override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
+
+          override def complete(): Unit = {
+            cb.complete()
+            sDraw.complete()
+            b2.complete()
+            b1.complete()
+            a.complete()
+          }
+        }
+      }
+    }
+
+    for { _ <- 0 until 10} {
+      // warm up
+      Range(0, 1000).foreach { i =>
+        sample(model)
+      }
+
+      println(s"  A post: ${aPost.v}")
+      println(s" B1 post: ${b1Post.v}")
+      println(s" B2 post: ${b2Post.v}")
+      println(s"  E post: ${sPost.v}")
+    }
+
+    // print some samples
+    Range(0, 10).foreach { i =>
+      val l = sample(model)
+      val values = (l._1.v, l._2.v, l._3.v, l._4.v)
+      println(s"  ${values}")
+    }
+
   }
 
 }
