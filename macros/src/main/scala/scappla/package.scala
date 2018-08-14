@@ -87,12 +87,12 @@ package object scappla {
 
   trait Optimizer {
 
-    def param[X: Fractional](initial: X, lr: X): DValue[X]
+    def param[X: Fractional](initial: X, lr: X, name: Option[String] = None): DValue[X]
   }
 
   class SGD(val debug: Boolean = false) extends Optimizer {
 
-    override def param[X: Fractional](initial: X, lr: X): DValue[X] = {
+    override def param[X: Fractional](initial: X, lr: X, name: Option[String]): DValue[X] = {
       val num = implicitly[Fractional[X]]
       import num._
       new DValue[X] {
@@ -107,7 +107,7 @@ package object scappla {
           iter += 1
           value = value + dv * lr / num.fromInt(iter)
           if (debug) {
-            println(s"    SGD $iter: $value ($dv)")
+            println(s"    SGD (${name.getOrElse("")}) $iter: $value ($dv)")
 //          new Exception().printStackTrace()
           }
         }
@@ -119,7 +119,7 @@ package object scappla {
 
   class SGDMomentum(val mass: Int = 10, val debug: Boolean = false) extends Optimizer {
 
-    override def param[X: Fractional](initial: X, lr: X): DValue[X] = {
+    override def param[X: Fractional](initial: X, lr: X, name: Option[String]): DValue[X] = {
       val num = implicitly[Fractional[X]]
       import num._
       new DValue[X] {
@@ -134,11 +134,24 @@ package object scappla {
         override def dv(dv: X): Unit = {
           iter += 1
           momentum = (num.fromInt(mass - 1) * momentum + dv) / num.fromInt(mass)
-          value = value + momentum * lr / num.fromInt(iter)
+          val newValue = value + momentum * lr / num.fromInt(iter)
           if (debug) {
-            println(s"    SGD $iter: $value ($dv)")
+            println(s"    SGD (${name.getOrElse("")}) $iter: $value (dv: $dv, p: $momentum) => $newValue")
             //          new Exception().printStackTrace()
+            num.abs(dv) match {
+              case adv: Double if adv > 1.0E8 =>
+                assert(false)
+              case _ =>
+            }
+            newValue match {
+              case v : Double =>
+                if (v.isNaN || v.isInfinite) {
+                  assert(false)
+                }
+              case _ =>
+            }
           }
+          value = newValue
         }
 
         override def toString: String = s"Param@${hashCode()}"
@@ -409,7 +422,20 @@ package object scappla {
 
     override def sample(): Sample[DValue[Double]] = new Sample[DValue[Double]] {
 
-      private val x = mu + sigma * Random.nextGaussian()
+      private val x: DValue[Double] =
+        new DValue[Double] {
+          private val e = Random.nextGaussian()
+          private val scale = 5.0
+
+          override val v: Double = mu.v + sigma.v * e
+
+          // backprop with inverse fisher, limiting updates by the standard deviation
+          override def dv(d: Double): Unit = {
+            val r = scale * math.tanh(d / (sigma.v * scale)) / sigma.v
+            mu.dv(r)
+            sigma.dv(e * r / 2)
+          }
+        }
 
       override val get: Buffer[Double] = x.buffer
 
