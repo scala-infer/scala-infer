@@ -425,30 +425,38 @@ class DValueSpec extends FlatSpec {
       val beta = (1.0, 2.5)
       val sigma = 1.0
 
-      for {_ <- 0 until 100} yield {
+      for {_ <- 0 until 1000} yield {
         val X = (rng.nextGaussian(), 0.2 * rng.nextGaussian())
         val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + rng.nextGaussian() * sigma
         (X, Y)
       }
     }
 
-    val lr = 50.0 / (data.size + 1)
+    val lr = 1000.0 / (data.size + 1)
 
     // find MAP
-    val sgd = new SGDMomentum()
-    val aPost  = sgd.param(0.0, lr)
-    val b1Post = sgd.param(0.0, lr)
-    val b2Post = sgd.param(0.0, lr)
-    val sPost  = sgd.param(0.0, lr)
+    val sgd = new SGDMomentum(mass = 100)
+    val aPost  = Normal(sgd.param(0.0, lr, Some("a-m")), exp(sgd.param(0.0, lr, Some("a-s"))))
+    val b1Post = Normal(sgd.param(0.0, lr, Some("b1-m")), exp(sgd.param(0.0, lr, Some("b1-s"))))
+    val b2Post = Normal(sgd.param(0.0, lr, Some("b2-m")), exp(sgd.param(0.0, lr, Some("b2-s"))))
+    val sPost  = Normal(sgd.param(0.0, lr, Some("e-m")), exp(sgd.param(0.0, lr, Some("e-s"))))
 
     val model = new Model[(DValue[Double], DValue[Double], DValue[Double], DValue[Double])] {
 
+      val aGuide = ReparamGuide(aPost)
+      val b1Guide = ReparamGuide(b1Post)
+      val b2Guide = ReparamGuide(b2Post)
+      val sGuide = ReparamGuide(sPost)
+
       override def sample(): Variable[(DValue[Double], DValue[Double], DValue[Double], DValue[Double])] = {
-        val a   = aPost.buffer
-        val b1  = b1Post.buffer
-        val b2  = b2Post.buffer
-        val sDraw = sPost.buffer
-        val err = exp(sDraw)
+        val aVar = aGuide.sample(Normal(0.0, 1.0))
+        val a   = aVar.get
+        val b1Var = b1Guide.sample(Normal(0.0, 1.0))
+        val b1  = b1Var.get
+        val b2Var = b2Guide.sample(Normal(0.0, 1.0))
+        val b2  = b2Var.get
+        val sDraw = sGuide.sample(Normal(0.0, 1.0))
+        val err = exp(sDraw.get)
 
         val cb = new Function1[((Double, Double), Double), Unit] with Completeable {
 
@@ -487,9 +495,9 @@ class DValueSpec extends FlatSpec {
           override def complete(): Unit = {
             cb.complete()
             sDraw.complete()
-            b2.complete()
-            b1.complete()
-            a.complete()
+            b2Var.complete()
+            b1Var.complete()
+            aVar.complete()
           }
         }
       }
@@ -497,14 +505,14 @@ class DValueSpec extends FlatSpec {
 
     for { _ <- 0 until 10} {
       // warm up
-      Range(0, 1000).foreach { i =>
+      Range(0, 100).foreach { i =>
         sample(model)
       }
 
-      println(s"  A post: ${aPost.v}")
-      println(s" B1 post: ${b1Post.v}")
-      println(s" B2 post: ${b2Post.v}")
-      println(s"  E post: ${sPost.v}")
+      println(s"  A post: ${aPost.mu.v} (${aPost.sigma.v})")
+      println(s" B1 post: ${b1Post.mu.v} (${b1Post.sigma.v})")
+      println(s" B2 post: ${b2Post.mu.v} (${b2Post.sigma.v})")
+      println(s"  E post: ${sPost.mu.v} (${sPost.sigma.v})")
     }
 
     // print some samples
