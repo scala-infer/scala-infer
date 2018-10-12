@@ -3,6 +3,8 @@ package scappla.guides
 import scappla.{BayesNode, Buffer, Score, Variable}
 import scappla.distributions.Distribution
 
+import scappla.Real._
+
 case class BBVIGuide[A](posterior: Distribution[A]) {
 
   var iter = 0

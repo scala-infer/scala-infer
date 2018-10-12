@@ -2,14 +2,14 @@ package scappla.autodiff
 
 import org.scalatest.FlatSpec
 import scappla.Functions.{log, pow}
-import scappla.{DVariable, Functions, Real, autodiff}
+import scappla.{DVariable, Functions, Real, autodiff, DFunction1}
 
 class AutoDiffSpec extends FlatSpec {
 
   import Functions._
 
   "The ad macro" should "compute the backward gradient of a polynomial" in {
-    val fn = autodiff { (z: Double) => z + z * z * z }
+    val fn = toReal { (z: Double) => z + z * z * z }
 
     val variable = new DVariable(2.0)
 
@@ -22,7 +22,7 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compute the backward gradient of the log" in {
-    val fn = autodiff { (z: Double) => z * log(z) }
+    val fn = toReal { (z: Double) => z * log(z) }
 
     val variable = new DVariable(2.0)
 
@@ -36,7 +36,7 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compute gradient of pow for base" in {
-    val fn = autodiff { (z: Double) => z + pow(z, 3.0) }
+    val fn = toReal { (z: Double) => z + pow(z, 3.0) }
 
     val variable = new DVariable(0.5)
     val value: Real = fn(variable)
@@ -47,7 +47,7 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compute gradient of Math.pow for exponent" in {
-    val fn = autodiff { (z: Double) =>
+    val fn = toReal { (z: Double) =>
       z + pow(2.0, z)
     }
 
@@ -61,7 +61,7 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compute gradient with a block in body" in {
-    val fn = autodiff {
+    val fn = toReal {
       (z: Double) => {
         val x = z * z * z
         x
@@ -76,10 +76,10 @@ class AutoDiffSpec extends FlatSpec {
   }
 
   it should "compose gradients" in {
-    val square = autodiff {
+    val square = toReal {
       (x: Double) => x * x
     }
-    val plus_x = autodiff {
+    val plus_x = toReal {
       (x: Double) => x + square(x)
     }
 
