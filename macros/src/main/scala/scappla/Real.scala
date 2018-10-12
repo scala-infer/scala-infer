@@ -57,12 +57,7 @@ class Constant(upstream: Double) extends Real {
   override def dv(v: Double): Unit = {}
 
   override def toString: String = {
-    upstream match {
-      case d : Double =>
-        s"Const(${"%.4f".format(d)})"
-      case _ =>
-        s"Const($upstream)"
-    }
+    s"Const(${"%.4f".format(upstream)})"
   }
 }
 

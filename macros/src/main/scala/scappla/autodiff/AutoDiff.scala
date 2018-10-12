@@ -8,7 +8,7 @@ class AutoDiff(val c: blackbox.Context) {
 
   import c.universe._
 
-  def autodiff(fn: c.Expr[Double => Double]): c.Expr[DFunction1] = {
+  def diffMacro(fn: c.Expr[Double => Double]): c.Expr[DFunction1] = {
     fn.tree match {
       case q"($argName: $argType) => $body" =>
         //      case (method: DefDef) :: _ =>

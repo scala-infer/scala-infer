@@ -5,6 +5,7 @@ import scappla.{Real, Score}
 
 import scala.util.Random
 
+import Real._
 
 case class Bernoulli(p: Real) extends Distribution[Boolean] {
 
