@@ -236,4 +236,12 @@ package object scappla {
     testfv
   )
 
+  def liftFn[A, B](
+      fn: A => B
+  ): Variable[A] => Variable[B] =
+    (varA: Variable[A]) => {
+      val Variable(a, adep) = varA
+      Variable(fn(a), adep)
+  }
+
 }
