@@ -64,28 +64,22 @@ object TestAutoDiff extends App {
     val inRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
     val noRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
 
-    val sprinkle = infer {
-      arg: Boolean =>
-        if (true) {
-          sample(Bernoulli(0.01), inRain)
-        } else {
-          sample(Bernoulli(0.4), noRain)
-        }
-    }
-
-    val sprinkled = sample(sprinkle(true))
-    println(s"Sprinkled: ${sprinkled}")
-
     val rainPost = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
 
     val model = infer {
 
-      val rain = sample(Bernoulli(0.2), rainPost)
-      val smodel = sprinkle(rain)
-      val sprinkled = sample(smodel)
-      val boe = rain
+      val sprinkle = (arg: Boolean) => {
+          if (true) {
+            sample(Bernoulli(0.01), inRain)
+          } else {
+            sample(Bernoulli(0.4), noRain)
+          }
+      }
 
-      val p_wet = (boe, sprinkled) match {
+      val rain = sample(Bernoulli(0.2), rainPost)
+      val sprinkled = sprinkle(rain)
+
+      val p_wet = (rain, sprinkled) match {
         case (true, true) => 0.99
         case (false, true) => 0.9
         case (true, false) => 0.8
