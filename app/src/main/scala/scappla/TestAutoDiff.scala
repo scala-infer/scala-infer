@@ -69,7 +69,7 @@ object TestAutoDiff extends App {
     val model = infer {
 
       val sprinkle = (arg: Boolean) => {
-          if (true) {
+          if (arg) {
             sample(Bernoulli(0.01), inRain)
           } else {
             sample(Bernoulli(0.4), noRain)

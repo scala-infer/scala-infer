@@ -329,7 +329,7 @@ class Macros(val c: blackbox.Context) {
             RichTree(q"val ${arg._1} = ${arg._2}.get", Set(arg._2))
           }
           val q"{..$stmts}" = body
-          val newStmts = visitor.visitBlockStmts(stmts)
+          val newStmts = argDecls ++ visitor.visitBlockStmts(stmts)
           val newBody = q"{..${newStmts.map { _.tree }}}"
           val newVars = newStmts.flatMap { _.vars }.toSet.filter(scope.isDefined)
 
