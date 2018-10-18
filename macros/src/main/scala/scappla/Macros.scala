@@ -322,7 +322,7 @@ class Macros(val c: blackbox.Context) {
           }
 
           val newScope = scope.push()
-          newArgs.map { _._1 }.foreach(arg => newScope.declare(arg, Set(arg)))
+          newArgs.foreach(arg => newScope.declare(arg._1, Set(arg._2)))
 
           val visitor = new BlockVisitor(newScope, guides)
           val argDecls = newArgs.map { arg =>
