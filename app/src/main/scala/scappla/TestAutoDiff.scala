@@ -90,10 +90,9 @@ object TestAutoDiff extends App {
       observe(Bernoulli(p_wet), true)
 
       // return quantity we're interested in
-      true
+      rain
     }
 
-    /*
 
     val N = 10000
     // burn in
@@ -113,7 +112,6 @@ object TestAutoDiff extends App {
     val p_expected = 0.3577
     val n_expected = p_expected * N
     assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
-    */
   }
 
 /*
