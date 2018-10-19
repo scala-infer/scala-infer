@@ -87,7 +87,12 @@ class Macros(val c: blackbox.Context) {
 
   class Scope(known: Map[TermName, RichTree]) {
 
+    private val args: mutable.Set[TermName] = mutable.Set.empty
     private val refs: mutable.HashMap[TermName, RichTree] = mutable.HashMap.empty
+
+    def isPreDefined(v: TermName): Boolean = {
+      known.contains(v) || args.contains(v)
+    }
 
     def isDefined(v: TermName): Boolean = {
       known.contains(v) || refs.contains(v)
@@ -99,6 +104,11 @@ class Macros(val c: blackbox.Context) {
       } else {
         RichTree(Ident(v), Set.empty)
       }
+    }
+
+    def argument(name: c.universe.TermName, tree: RichTree): Scope = {
+      args += name
+      declare(name, tree)
     }
 
     def declare(v: TermName, deps: RichTree): Scope = {
@@ -260,7 +270,9 @@ class Macros(val c: blackbox.Context) {
                   else
                     ${richFalse.tree}""",
               Set(ifVar)
-            )) ++ fn(
+            )) ++ condRef.vars.map { cv =>
+              RichTree(q"$cv.node.addVariable($ifVar.node.modelScore, $ifVar.node.guideScore)")
+            } ++ fn(
               RichTree.join(
                 resultTree,
                 RichTree.join(resultTree, richTrue, richFalse),
@@ -278,7 +290,7 @@ class Macros(val c: blackbox.Context) {
           visitExpr(expr, true) { matchName =>
             val result = q"${matchName.tree} match { case ..${mappedCases.map{ _._2 }}}"
             val richResult = mappedCases.map { _._1 }.reduce(RichTree.join(result, _, _))
-            fn(richResult)
+            fn(RichTree.join(result, richResult, matchName))
           }
 
         case q"scappla.this.`package`.sample[$tDist]($prior, $posterior)" =>
@@ -322,7 +334,7 @@ class Macros(val c: blackbox.Context) {
           }
 
           val newScope = scope.push()
-          newArgs.foreach(arg => newScope.declare(arg._1, RichTree(q"${arg._1}", Set(arg._2))))
+          newArgs.foreach(arg => newScope.argument(arg._1, RichTree(q"${arg._1}", Set(arg._2))))
 
           val visitor = new BlockVisitor(newScope, guides)
           val argDecls = newArgs.map { arg =>
@@ -470,8 +482,8 @@ class Macros(val c: blackbox.Context) {
             println(s" OBSERVE ${showRaw(resultTree)}")
 
             RichTree(resultTree, richDistName.vars) +:
-                richDistName.vars.toSeq.map { v =>
-                  RichTree(q"$v.addObservation($obName.score)")
+                richDistName.vars.filter(!scope.isPreDefined(_)).toSeq.map { v =>
+                  RichTree(q"$v.node.addObservation($obName.score)")
                 }
           }
 
