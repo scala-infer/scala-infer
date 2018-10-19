@@ -150,7 +150,7 @@ class Macros(val c: blackbox.Context) {
       this
     }
 
-    def build(result: RichTree, tpe: Type): RichTree = {
+    def build(scope: Scope, result: RichTree, tpe: Type): RichTree = {
       val tree = q"""Variable[${tpe.widen}](${result.tree}, new BayesNode {
 
           import scappla.Real._
@@ -172,11 +172,15 @@ class Macros(val c: blackbox.Context) {
       }}
 
           def addObservation(score: Score) = {..${
-        result.vars.toSeq.map { lv => q"$lv.node.addObservation(score)" }
+        result.vars.filter(!scope.isPreDefined(_)).toSeq.map { lv =>
+          q"$lv.node.addObservation(score)"
+        }
       }}
 
           def addVariable(modelScore: Score, guideScore: Score) = {..${
-        result.vars.toSeq.map { lv => q"$lv.node.addVariable(modelScore, guideScore)" }
+        result.vars.filter(!scope.isPreDefined(_)).toSeq.map {lv =>
+          q"$lv.node.addVariable(modelScore, guideScore)"
+        }
       }}
 
           def complete() = {..${
@@ -200,7 +204,7 @@ class Macros(val c: blackbox.Context) {
       val setup :+ last = stmts
       val richSetup = setup.flatMap(t => visitStmt(t))
       richSetup ++ visitExpr(last) { lastRt =>
-        Seq(builder.build(lastRt, last.tpe))
+        Seq(builder.build(scope, lastRt, last.tpe))
       }
     }
 
@@ -251,9 +255,10 @@ class Macros(val c: blackbox.Context) {
             println(s"  MATCHING IF ELSE $condRef")
 
             def visitSubExpr(tExpr: Tree) = {
-              val trueVisitor = new BlockVisitor(scope.push(), guides)
+              val newScope = scope.push()
+              val trueVisitor = new BlockVisitor(newScope, guides)
               val newTrueStmts = trueVisitor.visitExpr(tExpr) { rtLast =>
-                Seq(trueVisitor.builder.build(rtLast, tExpr.tpe))
+                Seq(trueVisitor.builder.build(newScope, rtLast, tExpr.tpe))
               }
               toExpr(newTrueStmts)
             }
@@ -334,12 +339,16 @@ class Macros(val c: blackbox.Context) {
           }
 
           val newScope = scope.push()
-          newArgs.foreach(arg => newScope.argument(arg._1, RichTree(q"${arg._1}", Set(arg._2))))
 
           val visitor = new BlockVisitor(newScope, guides)
           val argDecls = newArgs.map { arg =>
             RichTree(q"val ${arg._1} = ${arg._2}.get", Set(arg._2))
           }
+          newArgs.foreach(arg => {
+            newScope.argument(arg._2, RichTree(q"${arg._2}", Set(arg._2)))
+            newScope.declare(arg._1, RichTree(q"${arg._1}", Set(arg._2)))
+          })
+
           val q"{..$stmts}" = body
           val newStmts = argDecls ++ visitor.visitBlockStmts(stmts)
           val newBody = q"{..${newStmts.map { _.tree }}}"
