@@ -29,9 +29,3 @@ case class Bernoulli(p: Real) extends Distribution[Boolean] {
   }
 
 }
-
-object Bernoulli {
-
-  def apply(p: Double): Bernoulli =
-    Bernoulli(Real(p))
-}
