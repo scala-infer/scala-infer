@@ -42,8 +42,10 @@ case class Normal(mu: Real, sigma: Real) extends DDistribution {
   }
 }
 
+/*
 object Normal {
 
   def apply(mu: Double, sigma: Double): Normal =
     Normal(Real(mu), Real(sigma))
 }
+*/
