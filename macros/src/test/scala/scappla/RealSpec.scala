@@ -381,24 +381,39 @@ class RealSpec extends FlatSpec {
             node.addObservation(observation.score)
             Variable(Unit, new BayesNode {
 
-              override def modelScore: Score = ???
+              override def modelScore: Score = 0.0
 
-              override def guideScore: Score = ???
+              override def guideScore: Score = 0.0
 
-              override def addObservation(score: Score): Unit = ???
+              override def addObservation(score: Score): Unit = {}
 
-              override def addVariable(modelScore: Score, guideScore: Score): Unit = ???
+              override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
 
-              override def complete(): Unit = ???
+              override def complete(): Unit = {}
             })
         }
-        val Variable(_, result) = foreachImpl(cb, Variable(data.toList, ConstantNode))
+        val wrappedCb =
+          new Function[((Double, Double), Double), Unit] with Completeable {
+
+            var modelScore: Real = 0.0
+            var nodes: List[BayesNode] = Nil
+
+            override def apply(entry: ((Double, Double), Double)): Unit = {
+              val result = cb.apply(Variable(entry, ConstantNode))
+              nodes = result.node :: nodes
+            }
+
+            override def complete(): Unit = {
+              nodes.reverse.foreach(_.complete())
+            }
+          }
+        data.foreach(wrappedCb)
 
         Variable((a, b1, b2, err), new BayesNode {
 
           import scappla.Real._
 
-          override val modelScore: Score = result.modelScore
+          override val modelScore: Score = wrappedCb.modelScore
 
           override def guideScore: Score = Real(0.0)
 
@@ -407,7 +422,7 @@ class RealSpec extends FlatSpec {
           override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
 
           override def complete(): Unit = {
-            result.complete()
+            wrappedCb.complete()
             sDraw.node.complete()
             b2Var.node.complete()
             b1Var.node.complete()
