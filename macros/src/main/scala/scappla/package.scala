@@ -1,5 +1,4 @@
 import com.typesafe.scalalogging.LazyLogging
-import scappla.autodiff.AutoDiff
 import scappla.distributions.Distribution
 
 import scala.language.experimental.macros
@@ -46,13 +45,6 @@ package object scappla {
     */
   def observe[A](distribution: Distribution[A], value: A): Unit = {}
 
-  /**
-    *  Higher order functions.
-    *  Iterating over collections and the like is (for now?) restricted to a limited
-    *  set of explicitly functions.
-    */
-  def foreach[A](fn: A => Unit, m: List[A]): Unit = {}
-
   // IMPLEMENTATION
 
   trait Observation extends Completeable {
@@ -76,36 +68,6 @@ package object scappla {
         score.complete()
       }
     }
-
-  def foreachImpl[A](fn: Variable[A] => Variable[Unit], m: Variable[List[A]]): Variable[Unit] = {
-    val Variable(values, node) = m
-    val result = values.map { v =>
-      fn(Variable(v, node))
-    }
-    val nodes = result.map(_.node)
-    Variable(Unit, new BayesNode {
-
-      override val modelScore: Score =
-        nodes.foldLeft(Real(0.0)) { case (s, b) =>
-          DAdd(s, b.modelScore)
-        }
-
-      override val guideScore: Score =
-        nodes.foldLeft(Real(0.0)) { case (s, b) =>
-          DAdd(s, b.guideScore)
-        }
-
-      override def addObservation(score: Score): Unit = ???
-
-      override def addVariable(modelScore: Score, guideScore: Score): Unit = ???
-
-      override def complete(): Unit = {
-        for { node <- nodes } {
-          node.complete()
-        }
-      }
-    })
-  }
 
   /**
     * When the execution trace is torn down, each object is "completed" in reverse (topological)
@@ -165,10 +127,10 @@ package object scappla {
     override def complete(): Unit = {}
 
     override def addObservation(score: Score): Unit =
-      logger.warn("Adding observation to a constant variable")
+      logger.debug("Adding observation to a constant variable")
 
     override def addVariable(modelScore: Score, guideScore: Score): Unit =
-      logger.warn("Adding dependant variable to a constant variable")
+      logger.debug("Adding dependant variable to a constant variable")
   }
 
   class Dependencies(upstream: Seq[BayesNode]) extends BayesNode {
@@ -197,51 +159,4 @@ package object scappla {
 
     implicit def toConstant[A](value: A): Variable[A] = Variable[A](value, ConstantNode)
   }
-
-  def liftFunction[A, B](
-      vf: Variable[A => B],
-      fv: Variable[A]
-  ): Variable[B] = {
-    val Variable(f, lnode) = vf
-    Variable(f(fv.get), new Dependencies(Seq(lnode, fv.node)))
-  }
-
-  val applied = liftFunction[Int, Double](
-    Variable((i: Int) => 2.0 * i, ConstantNode),
-    Variable(2, ConstantNode)
-  )
-
-  def liftHOMethod[A, B, C](
-      vf: Variable[(A => B) => C],
-      fv: Variable[A] => Variable[B]
-  ): Variable[C] = {
-    val Variable(f, lnode) = vf
-    var nodes: List[BayesNode] = lnode :: Nil
-    val lb = f { a =>
-      val varA = Variable(a, lnode)
-      val Variable(b, bnode) = fv(varA)
-      nodes = bnode :: nodes
-      b
-    }
-    Variable(lb, new Dependencies(nodes))
-  }
-
-  val testfv : Variable[Int] => Variable[Double] = vi => {
-    val Variable(i, node) = vi
-    Variable(2.0 * i, node)
-  }
-
-  val liftedMethod = liftHOMethod[Int, Double, List[Double]](
-    Variable(List.empty[Int].map[Double, List[Double]], ConstantNode),
-    testfv
-  )
-
-  def liftFn[A, B](
-      fn: A => B
-  ): Variable[A] => Variable[B] =
-    (varA: Variable[A]) => {
-      val Variable(a, adep) = varA
-      Variable(fn(a), adep)
-  }
-
 }
