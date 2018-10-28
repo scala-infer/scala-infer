@@ -251,13 +251,14 @@ class VariableSpec extends FlatSpec {
 
               override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
 
-              override def complete(): Unit = {}
+              override def complete(): Unit = {
+                observation.complete()
+              }
             })
         }
         val wrappedCb =
           new Function[((Double, Double), Double), Unit] with Completeable {
 
-            var modelScore: Real = 0.0
             var nodes: List[BayesNode] = Nil
 
             override def apply(entry: ((Double, Double), Double)): Unit = {
@@ -275,7 +276,9 @@ class VariableSpec extends FlatSpec {
 
           import scappla.Real._
 
-          override val modelScore: Score = wrappedCb.modelScore
+          override val modelScore: Score = wrappedCb.nodes.map {
+            _.modelScore
+          }.reduce(DAdd)
 
           override def guideScore: Score = Real(0.0)
 
