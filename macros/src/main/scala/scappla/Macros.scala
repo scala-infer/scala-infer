@@ -499,6 +499,9 @@ class Macros(val c: blackbox.Context) {
             ))
           }
 
+        case q"$subject.this" =>
+          fn(RichTree(q"$subject.this"))
+
         case q"$subject.$method" =>
           val expanded = if (method == Ident(TermName("apply"))) {
             visitApply(subject) _
