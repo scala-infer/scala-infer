@@ -27,8 +27,6 @@ the reparametrization trick can be used to obtain a low variance estimator.  Dis
 use black-box variational inference, which only requires gradients of the score function to the
 parameters.
 
-It is possible to nest models.  This makes it possible to modularize the model.
-
 ```scala
 // optimization algorithm: (stochastic) gradient descent
 val sgd = new SGD()
@@ -39,25 +37,25 @@ val sgd = new SGD()
 val inRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
 val noRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
 
-// conditional sampling of the sprinkler.  The probability that
-// the sprinkler turned on, is dependent on whether it rained or not.
-val sprinkle = infer {
-  rain: Boolean =>
-    if (rain) {
-      sample(Bernoulli(0.01), inRain)
-    } else {
-      sample(Bernoulli(0.4), noRain)
-    }
-}
-
 // posterior distribution for the rain
 val rainPost = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
 
 // full model of the rain-sprinkler-grass system.  
 val model = infer {
 
+  // conditional sampling of the sprinkler.  The probability that
+  // the sprinkler turned on, is dependent on whether it rained or not.
+  val sprinkle = {
+    rain: Boolean =>
+      if (rain) {
+        sample(Bernoulli(0.01), inRain)
+      } else {
+        sample(Bernoulli(0.4), noRain)
+      }
+  }
+
   val rain = sample(Bernoulli(0.2), rainPost)
-  val sprinkled = sample(sprinkle(rain))
+  val sprinkled = sprinkle(rain)
 
   val p_wet = (rain, sprinkled) match {
     case (true,  true)  => 0.99
@@ -73,3 +71,46 @@ val model = infer {
   rain
 }
 ```
+
+Automatic Differentiation
+-------------------------
+To compute gradients, back propagation on the (log) probability is used.  To be able to do this, a
+variant of scala's native `Double` is used.  A scala-infer `Real` not only has a value, but is also
+able to back-propagate gradients.  It is possible to use familiar scala syntax, with operators like
+`+`, `-`, `*` and `/`:
+```scala
+val x : Real = 0.0
+val y : Real = 1.0
+val z = x * y
+```
+A number of functions are available out of the box, `log`, `exp`, `pow` and `sigmoid`.  It is 
+possible to combine these in custom functions by using the `toReal` macro:
+```scala
+val realFn = toReal { x: Double => 2 * x }
+```
+This should not be needed for regular model definitions, though.  These functions are typically
+part of the likelihood, prior or posterior definitions.
+
+Black-Box Variational Inference
+-------------------------------
+Dealing with discrete random variables is necessary to support a general programming language,
+with control flow depending on sampled variables.  For discrete variables reparametrization is
+not possible and we resort to Black-Box Variational Inference.  This suffers from large variance
+on estimates of the gradient of the posterior probability with respect to the variational
+parameters.
+
+Two ways of reducing the variance are
+* Rao-Blackwellization
+* Control variates
+
+The first (Rao-Blackwellization) is implemented by limiting, for each variable, the posterior to
+elements in its Markov blanket.  The prior probability links the variable to its parents,
+likelihoods of observations and prior probabilities of downstream variables link it to children
+and their (other) parents.  This procedure eliminates irrelevant other variables as sources of
+variance.
+
+A simple control variate (moving average of the log-posterior) is used to reduce variance of
+the gradient further.
+
+For further reading, see [https://arxiv.org/abs/1401.0118]("Black Box Variational Inference") by
+Ranganath, Gerrish and Blei.
