@@ -112,5 +112,5 @@ variance.
 A simple control variate (moving average of the log-posterior) is used to reduce variance of
 the gradient further.
 
-For further reading, see [https://arxiv.org/abs/1401.0118]("Black Box Variational Inference") by
+For further reading, see [Black Box Variational Inference](https://arxiv.org/abs/1401.0118) by
 Ranganath, Gerrish and Blei.
