@@ -102,7 +102,7 @@ class MacrosSpec extends FlatSpec {
       val sigma = 1.0
       val beta = (1.0, 2.5)
 
-      for {_ <- 0 until 100} yield {
+      for {_ <- 0 until 1000} yield {
         val X = (Random.nextGaussian(), 0.2 * Random.nextGaussian())
         val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + Random.nextGaussian() * sigma
         (X, Y)
@@ -121,20 +121,33 @@ class MacrosSpec extends FlatSpec {
       val b2 = sample(Normal(0.0, 1.0), b2Post)
       val err = exp(sample(Normal(0.0, 1.0), sPost))
 
+      data.foreach[Unit] {
+        entry: ((Double, Double), Double) =>
+          val ((x1, x2), y) = entry
+          observe(Normal(a + b1 * x1 + b2 * x2, err), y: Real)
+      }
+
+      /*
       val cb = {
         entry: ((Double, Double), Double) =>
           val ((x1, x2), y) = entry
           observe(Normal(a + b1 * x1 + b2 * x2, err), y: Real)
       }
       data.foreach[Unit](cb)
+      */
 
       (a, b1, b2, err)
     }
 
     // warm up
-    Range(0, 10000).foreach { i =>
+    Range(0, 1000).foreach { i =>
       sample(model)
     }
+
+    println(s"  A post: ${aPost.mu.v} (${aPost.sigma.v})")
+    println(s" B1 post: ${b1Post.mu.v} (${b1Post.sigma.v})")
+    println(s" B2 post: ${b2Post.mu.v} (${b2Post.sigma.v})")
+    println(s"  E post: ${sPost.mu.v} (${sPost.sigma.v})")
 
     // print some samples
     Range(0, 10).foreach { i =>

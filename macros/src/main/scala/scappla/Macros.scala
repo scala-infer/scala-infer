@@ -151,6 +151,8 @@ class Macros(val c: blackbox.Context) {
 
     private val obs: mutable.Set[TermName] = mutable.Set.empty
 
+    private val fns: mutable.Set[TermName] = mutable.Set.empty
+
     def variable(v: TermName): VariableAggregator = {
       vars += v
       this
@@ -158,6 +160,11 @@ class Macros(val c: blackbox.Context) {
 
     def observation(o: TermName): VariableAggregator = {
       obs += o
+      this
+    }
+
+    def function(o: TermName): VariableAggregator = {
+      fns += o
       this
     }
 
@@ -195,7 +202,9 @@ class Macros(val c: blackbox.Context) {
       }}
 
           def complete() = {..${
-        obs.toSeq.map { t =>
+        fns.toSeq.map { f =>
+          q"$f.complete()"
+        } ++ obs.toSeq.map { t =>
           q"$t.complete()"
         } ++ vars.reverse.map { t =>
           q"$t.node.complete()"
@@ -473,23 +482,26 @@ class Macros(val c: blackbox.Context) {
           println(s"  FN MATCH ${showCode(expr)}")
           val res = args.map { arg =>
             visitExpr(arg) { aName =>
-              Seq(aName)
+              if (aName.wrapper.isEmpty) {
+                Seq(aName)
+              } else {
+                val fnName = TermName(c.freshName())
+                builder.function(fnName)
+                Seq(
+                  RichTree(q"val $fnName = ${aName.wrapper.get}"),
+                  RichTree(q"$fnName")
+                )
+              }
             }
           }
           val defs = res.flatMap {
             _.dropRight(1)
           }
           val newArgs = res.map {
-            _.last
-          }.map { arg =>
-            if (arg.wrapper.isEmpty) {
-              arg.tree
-            } else {
-              arg.wrapper.get
-            }
+            _.last.tree
           }
           visitExpr(f) { richFn =>
-            val result = q"${richFn.tree}.$m[..$tpts](..${newArgs})"
+            val result = q"${richFn.tree}.$m[..$tpts](..$newArgs)"
             defs ++ fn(RichTree.join(
               result,
               richFn,
@@ -503,10 +515,11 @@ class Macros(val c: blackbox.Context) {
           fn(RichTree(q"$subject.this"))
 
         case q"$subject.$method" =>
-          val expanded = if (method == Ident(TermName("apply"))) {
-            visitApply(subject) _
-          } else {
-            visitExpr(subject) _
+          val expanded = method match {
+            case TermName("apply") =>
+              visitApply(subject) _
+            case _ =>
+              visitExpr(subject) _
           }
           expanded { richSubject =>
             fn(richSubject.map { t => q"$t.$method" })
@@ -614,249 +627,6 @@ class Macros(val c: blackbox.Context) {
     }
 
   }
-
-  /*
-    class RVVisitor(body: c.Tree, args: Map[TermName, TermName] = Map.empty) {
-
-      println(s"VISITING ${showCode(body, printTypes = true)}")
-
-      private val vars = scala.collection.mutable.HashMap[TermName, Set[TermName]]()
-      for {(arg, v) <- args} vars += arg -> Set(v)
-
-      private val obs = scala.collection.mutable.HashSet[TermName]()
-      val guides = scala.collection.mutable.HashMap[TermName, c.Tree]()
-
-      var varStack: List[TermName] = Nil
-
-      val (stmts, lastName) = body match {
-        case q"{..$stmts }" =>
-          val setup :+ last = stmts
-          println(s"LAST [${last.tpe}]: ${showCode(last)}")
-          val (prelim, lastName) = last match {
-            case Ident(TermName(name)) =>
-              (setup, TermName(name))
-            case _ =>
-              val lastName = TermName(c.freshName())
-              (setup :+ q"val ${lastName} = ${last}", lastName)
-          }
-          val newSetup = prelim.flatMap(toANF)
-          println(s"VARS: ${vars}")
-          val newLast = build(lastName, body.tpe)
-          (newSetup :+ newLast, lastName)
-      }
-
-      def expand(expr: c.Tree, doVar: Boolean = false)(fn: c.Tree => Seq[c.Tree]): Seq[c.Tree] = {
-        expr match {
-          case Ident(TermName(name)) =>
-            fn(Ident(TermName(name)))
-
-          case Literal(value) =>
-            println(s"   LITERAL ${showRaw(expr)}")
-            fn(expr)
-
-          case _ =>
-            val varName = TermName(c.freshName())
-            val stmts :+ last = toANF(expr)
-            if (doVar || stmts.nonEmpty) {
-              if (expr.tpe =:= definitions.UnitTpe) {
-                println(s"   LAST EXPRESSION IS EMPTY ${showCode(last, printTypes = true)}")
-                (stmts :+ last) ++ fn(EmptyTree)
-              } else {
-                (stmts :+ q"val $varName = $last") ++ fn(Ident(varName))
-              }
-            } else {
-              fn(last)
-            }
-        }
-      }
-
-
-      def toANF(tree: c.Tree): Seq[c.Tree] = {
-
-        println(s"MAMTCHINIG ${showCode(tree, printTypes = true)}")
-        tree match {
-
-          case q"$s.$method($o)" =>
-            expand(s) { sName =>
-              expand(o) { oName =>
-                Seq(q"$sName.$method($oName)")
-              }
-            }
-
-
-          case q"$fn($o)" =>
-            println(s"  FN MATCH (1 arg) ${showRaw(tree, printTypes = true, printIds = true)}")
-            expand(o, true) { oName =>
-              Seq(q"$fn(${oName})")
-            }
-
-          case q"$fn(..$args)" =>
-            println(s"  FN MATCH ${showRaw(fn)}")
-            val res = args.map { arg =>
-              expand(arg) { aName =>
-                Seq(aName)
-              }
-            }
-            val defs = res.flatMap {
-              _.dropRight(1)
-            }
-            val newArgs = res.map {
-              _.last
-            }
-            defs :+ q"$fn(..$newArgs)"
-
-          case q"val $tname = if ($cond) { $tExpr } else { $fExpr }" =>
-
-          case q"($arg: $aty) => $fnBody" =>
-            println(s"     FN TYPE: [${fnBody.tpe}]")
-            // val fnRV = new RVVisitor(fnBody)
-            // val newBody = visit(fnBody)
-            val res =
-            q"""new Function1[${aty}, ${fnBody.tpe}] with Completeable {
-
-                var score : Real = Real.apply(0.0)
-                var completions : List[Completeable] = Nil
-
-                def apply($arg: $aty) = ${inl(toANF(fnBody))}
-
-                def complete(): Unit = {
-                    completions.foreach(_.complete())
-                }
-            }"""
-            println(s"   RESULT: ${showCode(res)}")
-
-            val exprVars = findVars(res)
-            val deps = exprVars.flatMap { ev =>
-              vars.getOrElse(ev, Set.empty)
-            }
-            val tname = varStack.head
-            vars += tname -> deps
-            Seq(
-              res
-            )
-  //                case q"$mods val $tname : $tpt = $expr" =>
-  //                  println(s"    VALDEFF ${showRaw(tname)}")
-  //                  val TermName(name) = tname
-  //                  val stmts :+ last = toANF(expr)
-  //                  stmts :+ q"$mods val ${TermName(name)}: $tpt = $last"
-
-          case Ident(TermName(name)) =>
-            Seq(Ident(TermName(name)))
-
-          case q"$expr: $tpt" =>
-            expand(expr) { eName =>
-              Seq(q"$eName: $tpt")
-            }
-
-  //        case q"$expr.$tname" =>
-  //          expand(expr) { eName =>
-  //            Seq(q"$eName.$tname")
-  //          }
-
-          case _ =>
-            println(s"  SKIPPING ${showRaw(tree)}")
-            Seq(tree)
-
-        }
-      }
-
-      def inl(exprs: Seq[c.Tree]) = {
-        if (exprs.size == 1) {
-          exprs.head
-        } else {
-          q"{ ..$exprs }"
-        }
-      }
-
-      def findVars(tree: c.Tree): Set[TermName] = {
-        tree match {
-          case Ident(TermName(name)) =>
-            Set(TermName(name))
-
-          case q"$fn(..$args)" =>
-            args.toSet.flatMap(arg => findVars(arg))
-
-          case q"$a match { case ..$cases }" =>
-            findVars(a)
-
-          case _ => Set.empty
-        }
-      }
-
-      def build(last: TermName, rType: c.Type): c.Tree = {
-        val lastVars = vars(last)
-        q"""new Variable[$rType] {
-
-            import scappla.Real._
-
-            val get: $rType = ${last}
-
-            val modelScore: Score = {
-                ${
-          (obs.map { t =>
-            q"$t.score": c.Tree
-          } ++ vars.values.toSet.flatten.toSeq.map { t =>
-            q"$t.modelScore": c.Tree
-          }).reduceOption { (a, b) => q"DAdd($a, $b)" }
-              .getOrElse(q"Real.apply(0.0)")
-        }
-            }
-
-            val guideScore: Score = {
-                ${
-          vars.values.toSet.flatten.toSeq.map { t =>
-            q"$t.guideScore": c.Tree
-          }.reduceOption { (a, b) => q"DAdd($a, $b)" }
-              .getOrElse(q"Real.apply(0.0)")
-        }
-            }
-
-            def addObservation(score: Score) = {
-               ..${lastVars.toSeq.map { lv => q"$lv.addObservation(score)" }}
-            }
-
-            def addVariable(modelScore: Score, guideScore: Score) = {
-               ..${lastVars.toSeq.map { lv => q"$lv.addVariable(modelScore, guideScore)" }}
-            }
-
-            def complete() = {
-                ..${
-          (obs.toSeq ++ topoSortVars(vars).filterNot {
-            case k => args.contains(k)
-          }.reverse).map { t =>
-            q"$t.complete()"
-          }
-        }
-            }
-        }"""
-      }
-    }
-  */
-
-  /*
-  def topoSortVars(vars: Map[TermName, Set[TermName]]): Seq[TermName] = {
-    val visited = scala.collection.mutable.ListBuffer[TermName]()
-
-    def visitVar(tname: TermName): Unit = {
-      if (vars.contains(tname) && !visited.contains(tname)) {
-        visited += tname
-        for {
-          dep <- vars(tname)
-        } {
-          visitVar(dep)
-        }
-      }
-    }
-
-    for {
-      dep <- vars.keys
-    } {
-      visitVar(dep)
-    }
-
-    visited
-  }
-  */
 
   def infer[X: WeakTypeTag](fn: c.Expr[X]): c.Expr[scappla.Model[X]] = {
     println(s"  INFER: ${showRaw(fn)}")
