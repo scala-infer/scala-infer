@@ -91,6 +91,16 @@ val realFn = toReal { x: Double => 2 * x }
 This should not be needed for regular model definitions, though.  These functions are typically
 part of the likelihood, prior or posterior definitions.
 
+Reparametrization Gradient
+--------------------------
+Continuous random variables from suitable distributions can be recast in a "reparametrized" form.
+A sample is obtained by sampling a fixed-parameter distribution, followed by a deterministic
+transformation specified by the parameters of the target distribution.
+
+The variance of the gradient obtained for the parameters is reduced further by using the "Path
+Derivative", as detailed in [Sticking the Landing: Simple, Lower-Variance Gradient Estimators for
+Variational Inference](https://arxiv.org/abs/1703.09194) by Roeder, Wu and Duvenaud.
+
 Black-Box Variational Inference
 -------------------------------
 Dealing with discrete random variables is necessary to support a general programming language,
@@ -114,3 +124,4 @@ the gradient further.
 
 For further reading, see [Black Box Variational Inference](https://arxiv.org/abs/1401.0118) by
 Ranganath, Gerrish and Blei.
+
