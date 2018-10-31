@@ -9,9 +9,9 @@ distributions and are used to generate data.  Such a model is known as *generati
 an explicit process.
 
 Three new keywords are introduced:
-* infer
-* sample
-* observe
+* `infer` to define a model
+* `sample` to draw a random variable from a distribution
+* `observe` to bind data to distributions in the model
 
 When a value is sampled, two distributions are needed; the *prior* and the (variational
 approximation to) the *posterior*.  Actual sample values are drawn from the posterior, but
@@ -26,6 +26,13 @@ Different tactics are used for discrete and continuous variables.  For continuou
 the reparametrization trick can be used to obtain a low variance estimator.  Discrete variables
 use black-box variational inference, which only requires gradients of the score function to the
 parameters.
+
+Example: Sprinkler system
+-------------------------
+This is the rain-sprinkler-wet-grass system from the Wikipedia entry on [Bayesian
+Networks](https://en.wikipedia.org/wiki/Bayesian_network).  It features a number of discrete
+(boolean) random variables, an observation (the grass is wet) and an variational posterior
+distribution that is optimized to approximate the exact posterior.
 
 ```scala
 // optimization algorithm: (stochastic) gradient descent
@@ -71,12 +78,73 @@ val model = infer {
   rain
 }
 ```
+The example shows a number of features:
+* control flow (`if (...) ... else ...`) can be based on random variables
+* it's possible to define functions of random variables
+
+Example: linear Regression
+--------------------------
+Here we showcase linear regression on 2 input variables.  All variables are continuous here, with
+some fixed values used to generate a data set and a model to infer these parameters from the data.
+```scala
+val data = {
+  val alpha = 1.0
+  val beta = (1.0, 2.5)
+  val sigma = 1.0
+
+  for {_ <- 0 until 100} yield {
+    val X = (Random.nextGaussian(), 0.2 * Random.nextGaussian())
+    val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + Random.nextGaussian() * sigma
+    (X, Y)
+  }
+}
+
+val sgd = new SGDMomentum(mass = 100)
+val aPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+val errPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+
+val model = infer {
+  val a = sample(Normal(0.0, 1.0), aPost)
+  val b1 = sample(Normal(0.0, 1.0), b1Post)
+  val b2 = sample(Normal(0.0, 1.0), b2Post)
+  val err = exp(sample(Normal(0.0, 1.0), errPost))
+
+  data.foreach[Unit] {
+    entry: ((Double, Double), Double) =>
+      val ((x1, x2), y) = entry
+      observe(Normal(a + b1 * x1 + b2 * x2, err), y: Real)
+  }
+
+  (a, b1, b2, err)
+}
+
+// warm up
+Range(0, 1000).foreach { i =>
+  sample(model)
+}
+
+// print some samples
+Range(0, 10).foreach { i =>
+  val l = sample(model)
+  val values = (l._1.v, l._2.v, l._3.v, l._4.v)
+  println(s"  $values")
+}
+```
+Here, we not only inject the variational posterior distribution into the model, but the data as
+well.  Some things to note here 
+* we can naturally iterate over the data and declare observations - the used data types `Seq` and
+`Tuple2` have no special meaning and neither has the `foreach` method
+* while real parameters and random variables run over the whole real axis, they can be
+mapped to the interval `(0, Inf)` by the `exp` function
 
 Automatic Differentiation
 -------------------------
-To compute gradients, back propagation on the (log) probability is used.  To be able to do this, a
-variant of scala's native `Double` is used.  A scala-infer `Real` not only has a value, but is also
-able to back-propagate gradients.  It is possible to use familiar scala syntax, with operators like
+To compute gradients, back propagation on the gradient of the (log) probability is used.  To be
+able to do this, a variant of scala's native `Double` is used.  A scala-infer `Real` not only has a
+value, but is also able to back-propagate gradients.  It is possible to use familiar scala syntax,
+with operators like
 `+`, `-`, `*` and `/`:
 ```scala
 val x : Real = 0.0
