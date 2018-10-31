@@ -27,6 +27,13 @@ the reparametrization trick can be used to obtain a low variance estimator.  Dis
 use black-box variational inference, which only requires gradients of the score function to the
 parameters.
 
+Running the project
+-------------------
+While intended to become a library to be used, so far the only used ways of triggering the
+macro expansion and execution is to use either
+* `sbt macros/test`, or
+* `sbt app/run`
+
 Example: Sprinkler system
 -------------------------
 This is the rain-sprinkler-wet-grass system from the Wikipedia entry on [Bayesian
