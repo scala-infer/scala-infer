@@ -87,6 +87,7 @@ Example: linear Regression
 Here we showcase linear regression on 2 input variables.  All variables are continuous here, with
 some fixed values used to generate a data set and a model to infer these parameters from the data.
 ```scala
+// generate data; parameters should be recovered by inference algorithm
 val data = {
   val alpha = 1.0
   val beta = (1.0, 2.5)
@@ -99,28 +100,36 @@ val data = {
   }
 }
 
+// choose an optimization algorithm, gradient descent with momentum
+// each parameter could have its own optimizer
 val sgd = new SGDMomentum(mass = 100)
+
+// set up variational approximation to the posterior distribution
 val aPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
 val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
 val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
 val errPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
 
+// the actual model.  Draw variables from prior distributions and link those variables to
+// the posterior approximation.
 val model = infer {
   val a = sample(Normal(0.0, 1.0), aPost)
   val b1 = sample(Normal(0.0, 1.0), b1Post)
   val b2 = sample(Normal(0.0, 1.0), b2Post)
   val err = exp(sample(Normal(0.0, 1.0), errPost))
 
+  // iterate over data points to define the observations
   data.foreach[Unit] {
     entry: ((Double, Double), Double) =>
       val ((x1, x2), y) = entry
       observe(Normal(a + b1 * x1 + b2 * x2, err), y: Real)
   }
 
+  // return the values that we're interested in
   (a, b1, b2, err)
 }
 
-// warm up
+// warm up - each sample of the model triggers a gradient descent step
 Range(0, 1000).foreach { i =>
   sample(model)
 }
