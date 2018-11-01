@@ -1,11 +1,11 @@
 package scappla.guides
 
 import scappla.{BayesNode, Buffer, Real, Score, Variable}
-import scappla.distributions.DDistribution
+import scappla.distributions.{DDistribution, Distribution}
 
-case class ReparamGuide(posterior: DDistribution) {
+case class ReparamGuide(posterior: DDistribution) extends Guide[Real] {
 
-  def sample(prior: DDistribution): Variable[Real] = {
+  def sample(prior: Distribution[Real]): Variable[Real] = {
 
     val sample = posterior.sample()
     val value: Real = sample.get

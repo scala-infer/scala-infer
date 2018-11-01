@@ -2,6 +2,7 @@ package scappla
 
 import scappla.Functions._
 import scappla.distributions.Bernoulli
+import scappla.guides.BBVIGuide
 import scappla.optimization.SGD
 
 object TestSprinkler extends App {
@@ -9,10 +10,10 @@ object TestSprinkler extends App {
   import Real._
 
   val sgd = new SGD()
-  val inRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
-  val noRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+  val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+  val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
-  val rainPost = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+  val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
   val model = infer {
 

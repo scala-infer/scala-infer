@@ -2,6 +2,7 @@ package scappla
 
 import scappla.Functions.exp
 import scappla.distributions.Normal
+import scappla.guides.ReparamGuide
 import scappla.optimization.SGDMomentum
 
 import scala.util.Random
@@ -23,10 +24,10 @@ object TestLinearRegression extends App {
     }
 
     val sgd = new SGDMomentum(mass = 100)
-    val aPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val sPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val aPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val b1Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val b2Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val sPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
 
     val model = infer {
       val a = sample(Normal(0.0, 1.0), aPost)
