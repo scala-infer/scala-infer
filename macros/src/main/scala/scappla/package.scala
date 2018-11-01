@@ -1,5 +1,6 @@
 import com.typesafe.scalalogging.LazyLogging
 import scappla.distributions.Distribution
+import scappla.guides.Guide
 
 import scala.language.experimental.macros
 
@@ -37,8 +38,8 @@ package object scappla {
     * Sampling in an infer block.
     * This implementation will be overridden by a macro.
     */
-  def sample[X](prior: Distribution[X], posterior: Distribution[X]): X =
-    posterior.sample().get
+  def sample[X](prior: Distribution[X], guide: Guide[X]): X =
+    guide.sample(prior).get
 
   /**
     * Register an observation in an infer block.

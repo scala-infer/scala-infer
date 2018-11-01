@@ -2,6 +2,7 @@ package scappla
 
 import org.scalatest.FlatSpec
 import scappla.distributions.{Bernoulli, Normal}
+import scappla.guides.{BBVIGuide, ReparamGuide}
 import scappla.optimization.{SGD, SGDMomentum}
 
 import scala.util.Random
@@ -14,10 +15,10 @@ class MacrosSpec extends FlatSpec {
   it should "allow a model to be specified" in {
 
     val sgd = new SGD()
-    val inRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
-    val noRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+    val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+    val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
-    val rainPost = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+    val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
     val model = infer {
 
@@ -69,7 +70,7 @@ class MacrosSpec extends FlatSpec {
 
   it should "reparametrize doubles" in {
     val sgd = new SGD()
-    val muGuide = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    val muGuide = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
 
     val model: Model[Real] = infer {
       val mu = sample(Normal(0.0, 1.0), muGuide)
@@ -110,10 +111,21 @@ class MacrosSpec extends FlatSpec {
     }
 
     val sgd = new SGDMomentum(mass = 100)
-    val aPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-    val sPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    def normalParams(): (Real, Real) = {
+      (sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    }
+
+    val aParam = normalParams()
+    val aPost = ReparamGuide(Normal(aParam._1, aParam._2))
+
+    val b1Param = normalParams()
+    val b1Post = ReparamGuide(Normal(b1Param._1, b1Param._2))
+
+    val b2Param = normalParams()
+    val b2Post = ReparamGuide(Normal(b2Param._1, b2Param._2))
+
+    val sParam = normalParams()
+    val sPost = ReparamGuide(Normal(sParam._1, sParam._2))
 
     val model = infer {
       val a = sample(Normal(0.0, 1.0), aPost)
@@ -144,10 +156,10 @@ class MacrosSpec extends FlatSpec {
       sample(model)
     }
 
-    println(s"  A post: ${aPost.mu.v} (${aPost.sigma.v})")
-    println(s" B1 post: ${b1Post.mu.v} (${b1Post.sigma.v})")
-    println(s" B2 post: ${b2Post.mu.v} (${b2Post.sigma.v})")
-    println(s"  E post: ${sPost.mu.v} (${sPost.sigma.v})")
+    println(s"  A post: ${aParam._1.v} (${aParam._2.v})")
+    println(s" B1 post: ${b1Param._1.v} (${b1Param._2.v})")
+    println(s" B2 post: ${b2Param._1.v} (${b2Param._2.v})")
+    println(s"  E post: ${sParam._1.v} (${sParam._2.v})")
 
     // print some samples
     Range(0, 10).foreach { i =>

@@ -5,7 +5,7 @@ import scappla.distributions.Distribution
 
 import scappla.Real._
 
-case class BBVIGuide[A](posterior: Distribution[A]) {
+case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
 
   var iter = 0
 

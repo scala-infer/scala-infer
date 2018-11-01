@@ -133,18 +133,6 @@ class Macros(val c: blackbox.Context) {
 
   }
 
-  class GuideAggregator {
-
-    private val guides = new scala.collection.mutable.ListBuffer[Tree]()
-
-    def define(guide: Tree): GuideAggregator = {
-      guides += guide
-      this
-    }
-
-    def build(): Seq[Tree] = guides.toSeq
-  }
-
   class VariableAggregator {
 
     private val vars: mutable.ListBuffer[TermName] = new mutable.ListBuffer()
@@ -215,7 +203,7 @@ class Macros(val c: blackbox.Context) {
     }
   }
 
-  class BlockVisitor(scope: Scope, guides: GuideAggregator) {
+  class BlockVisitor(scope: Scope) {
 
     private val builder = new VariableAggregator()
 
@@ -264,7 +252,7 @@ class Macros(val c: blackbox.Context) {
           fn(RichTree(expr))
 
         case q"{ ..$stmts }" if stmts.size > 1 =>
-          val visitor = new BlockVisitor(scope.push(), guides)
+          val visitor = new BlockVisitor(scope.push())
           val newStmts = visitor.visitBlockStmts(stmts)
 
           // reduce list of variables to those known in the current scope
@@ -285,7 +273,7 @@ class Macros(val c: blackbox.Context) {
 
             def visitSubExpr(tExpr: Tree) = {
               val newScope = scope.push()
-              val trueVisitor = new BlockVisitor(newScope, guides)
+              val trueVisitor = new BlockVisitor(newScope)
               val newTrueStmts = trueVisitor.visitExpr(tExpr) { rtLast =>
                 Seq(trueVisitor.builder.build(newScope, rtLast, tExpr.tpe))
               }
@@ -327,26 +315,18 @@ class Macros(val c: blackbox.Context) {
             fn(RichTree.join(result, richResult, matchName))
           }
 
-        case q"scappla.this.`package`.sample[$tDist]($prior, $posterior)" =>
+        case q"scappla.this.`package`.sample[$tDist]($prior, $guide)" =>
           visitExpr(prior, doVar = true) { priorName =>
-            visitExpr(posterior, doVar = true) { posteriorName =>
-              val guideVar = TermName(c.freshName())
+            visitExpr(guide, doVar = true) { guideName =>
               val tVarName = TermName(c.freshName())
 //              println(s"MATCHING ${showRaw(tDist.tpe)} (${showCode(tDist)})")
-              val guide = tDist.tpe match {
-                case tpe if tpe =:= typeOf[Real] =>
-                  q"scappla.guides.ReparamGuide(${posteriorName.tree})"
-                case _ =>
-                  q"scappla.guides.BBVIGuide[$tDist](${posteriorName.tree})"
-              }
-              guides.define(q"val ${guideVar} = ${guide}")
               builder.variable(tVarName)
-              scope.declare(tVarName, RichTree(q"$tVarName", (priorName.vars ++ posteriorName.vars) + tVarName))
-              val ref = scope.reference(tVarName).map(tree => q"${tree}.get")
+              scope.declare(tVarName, RichTree(q"$tVarName", (priorName.vars ++ guideName.vars) + tVarName))
+              val ref = scope.reference(tVarName).map(tree => q"$tree.get")
               Seq(
                 RichTree(
-                  q"val $tVarName = $guideVar.sample(${priorName.tree})",
-                  priorName.vars
+                  q"val $tVarName = ${guideName.tree}.sample(${priorName.tree})",
+                  priorName.vars ++ guideName.vars
                 )
               ) ++ fn(ref)
             }
@@ -369,7 +349,7 @@ class Macros(val c: blackbox.Context) {
 
           val newScope = scope.push()
 
-          val visitor = new BlockVisitor(newScope, guides)
+          val visitor = new BlockVisitor(newScope)
           val argDecls = newArgs.map { arg =>
             RichTree(q"val ${arg._1} = ${arg._2}.get", Set(arg._2))
           }
@@ -478,34 +458,40 @@ class Macros(val c: blackbox.Context) {
           }
           */
 
-        case q"$f.$m[..$tpts](..$args)" =>
+        case q"$f.$m[..$tpts](...$mArgs)" =>
           println(s"  FN MATCH ${showCode(expr)}")
-          val res = args.map { arg =>
-            visitExpr(arg) { aName =>
-              if (aName.wrapper.isEmpty) {
-                Seq(aName)
-              } else {
-                val fnName = TermName(c.freshName())
-                builder.function(fnName)
-                Seq(
-                  RichTree(q"val $fnName = ${aName.wrapper.get}"),
-                  RichTree(q"$fnName")
-                )
+          val mRes = (mArgs: List[List[Tree]]).map { args =>
+            args.map { arg =>
+              visitExpr(arg) { aName =>
+                if (aName.wrapper.isEmpty) {
+                  Seq(aName)
+                } else {
+                  val fnName = TermName(c.freshName())
+                  builder.function(fnName)
+                  Seq(
+                    RichTree(q"val $fnName = ${aName.wrapper.get}"),
+                    RichTree(q"$fnName")
+                  )
+                }
               }
             }
           }
-          val defs = res.flatMap {
-            _.dropRight(1)
+          val defs = mRes.flatMap { res =>
+            res.flatMap {
+              _.dropRight(1)
+            }
           }
-          val newArgs = res.map {
-            _.last.tree
+          val newArgs = mRes.map { res =>
+            res.map {
+              _.last.tree
+            }
           }
           visitExpr(f) { richFn =>
-            val result = q"${richFn.tree}.$m[..$tpts](..$newArgs)"
+            val result = q"${richFn.tree}.$m[..$tpts](...$newArgs)"
             defs ++ fn(RichTree.join(
               result,
               richFn,
-              res.flatten.reduceOption(
+              mRes.flatten.flatten.reduceOption(
                 RichTree.join(result, _, _)
               ).getOrElse(RichTree(EmptyTree))
             ))
@@ -541,7 +527,7 @@ class Macros(val c: blackbox.Context) {
           }
 
         case _ =>
-          throw new RuntimeException("n match")
+          throw new RuntimeException(s"no match for ${showCode(expr)}")
 
 /*
         case _ =>
@@ -632,14 +618,11 @@ class Macros(val c: blackbox.Context) {
     println(s"  INFER: ${showRaw(fn)}")
     val xType = implicitly[WeakTypeTag[X]]
 
-    val guides = new GuideAggregator()
     val q"{..$stmts}" = fn.tree
-    val visitor = new BlockVisitor(new Scope(Map.empty), guides)
+    val visitor = new BlockVisitor(new Scope(Map.empty))
     val newStmts = visitor.visitBlockStmts(stmts)
     val newBody =
       q"""new Model[$xType] {
-
-        ..${guides.build()}
 
         def sample() = {
           ..${newStmts.map{_.tree}}
