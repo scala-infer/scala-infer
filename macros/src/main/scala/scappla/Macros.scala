@@ -211,6 +211,7 @@ class Macros(val c: blackbox.Context) {
       println(s"VISITINGN BLOCK ${showCode(q"{..$stmts}")}")
       val setup :+ last = stmts
       val richSetup = setup.flatMap(t => visitStmt(t))
+      println(s"   TPE: ${last.tpe}")
       richSetup ++ (if (last.tpe =:= definitions.UnitTpe) {
         visitStmt(last) :+ builder.build(scope, RichTree(EmptyTree), definitions.UnitTpe)
       } else {
@@ -273,11 +274,16 @@ class Macros(val c: blackbox.Context) {
 
             def visitSubExpr(tExpr: Tree) = {
               val newScope = scope.push()
-              val trueVisitor = new BlockVisitor(newScope)
-              val newTrueStmts = trueVisitor.visitExpr(tExpr) { rtLast =>
-                Seq(trueVisitor.builder.build(newScope, rtLast, tExpr.tpe))
+              val subVisitor = new BlockVisitor(newScope)
+              val newSubStmts = if (tExpr.tpe =:= definitions.UnitTpe) {
+                subVisitor.visitStmt(tExpr) :+
+                    subVisitor.builder.build(newScope, RichTree(EmptyTree), definitions.UnitTpe)
+              } else {
+                subVisitor.visitExpr(tExpr) { rtLast =>
+                  Seq(subVisitor.builder.build(newScope, rtLast, tExpr.tpe))
+                }
               }
-              toExpr(newTrueStmts)
+              toExpr(newSubStmts)
             }
 
             val ifVar = TermName(c.freshName())
@@ -459,7 +465,7 @@ class Macros(val c: blackbox.Context) {
           */
 
         case q"$f.$m[..$tpts](...$mArgs)" =>
-          println(s"  FN MATCH ${showCode(expr)}")
+          println(s"  FN MATCH (TYPE: ${expr.tpe}) ${showCode(expr)}")
           val mRes = (mArgs: List[List[Tree]]).map { args =>
             args.map { arg =>
               visitExpr(arg) { aName =>

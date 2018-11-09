@@ -2,7 +2,7 @@ package scappla
 
 import org.scalatest.FlatSpec
 import scappla.distributions.{Bernoulli, Normal}
-import scappla.guides.{BBVIGuide, ReparamGuide}
+import scappla.guides.{Guide, BBVIGuide, ReparamGuide}
 import scappla.optimization.{SGD, SGDMomentum}
 
 import scala.util.Random
@@ -111,6 +111,7 @@ class MacrosSpec extends FlatSpec {
     }
 
     val sgd = new SGDMomentum(mass = 100)
+
     def normalParams(): (Real, Real) = {
       (sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
     }
@@ -160,6 +161,57 @@ class MacrosSpec extends FlatSpec {
     println(s" B1 post: ${b1Param._1.v} (${b1Param._2.v})")
     println(s" B2 post: ${b2Param._1.v} (${b2Param._2.v})")
     println(s"  E post: ${sParam._1.v} (${sParam._2.v})")
+
+    // print some samples
+    Range(0, 10).foreach { i =>
+      val l = sample(model)
+      val values = (l._1.v, l._2.v, l._3.v, l._4.v)
+      println(s"  $values")
+    }
+  }
+
+  it should "allow mixing discrete/continuous variables" in {
+    val data = {
+      val p = 0.87
+      val mus = Seq(-0.5, 1.2)
+      val sigma = 0.3
+
+      for {_ <- 0 until 10} yield {
+        if (Random.nextDouble() < p) {
+          Random.nextGaussian() * sigma + mus(0)
+        } else {
+          Random.nextGaussian() * sigma + mus(1)
+        }
+      }
+    }
+
+    val sgd = new SGDMomentum(mass = 100)
+    val pPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
+    val mu1Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
+    val mu2Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
+    val sigmaPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
+
+    val dataWithDist = data.map { datum =>
+      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 1.0)))))
+    }
+    val model = infer {
+      val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
+      val mu1 = sample(Normal(0.0, 1.0), mu1Post)
+      val mu2 = sample(Normal(0.0, 1.0), mu2Post)
+      val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))
+
+      dataWithDist.foreach[Unit] {
+        entry: (Double, Guide[Boolean]) =>
+          val i = sample(Bernoulli(p), entry._2)
+          if (i) {
+            observe(Normal(mu1, sigma), entry._1: Real)
+          } else {
+            observe(Normal(mu2, sigma), entry._1: Real)
+          }
+      }
+
+      (p, mu1, mu2, sigma)
+    }
 
     // print some samples
     Range(0, 10).foreach { i =>
