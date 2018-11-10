@@ -172,11 +172,11 @@ class MacrosSpec extends FlatSpec {
 
   it should "allow mixing discrete/continuous variables" in {
     val data = {
-      val p = 0.87
+      val p = 0.75
       val mus = Seq(-0.5, 1.2)
       val sigma = 0.3
 
-      for {_ <- 0 until 10} yield {
+      for {_ <- 0 until 200} yield {
         if (Random.nextDouble() < p) {
           Random.nextGaussian() * sigma + mus(0)
         } else {
@@ -186,13 +186,13 @@ class MacrosSpec extends FlatSpec {
     }
 
     val sgd = new SGDMomentum(mass = 100)
-    val pPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
-    val mu1Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
-    val mu2Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
-    val sigmaPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), sgd.param(0.0, 1.0)))
+    val pPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val mu1Post = ReparamGuide(Normal(sgd.param(-1.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val mu2Post = ReparamGuide(Normal(sgd.param(1.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val sigmaPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
 
     val dataWithDist = data.map { datum =>
-      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 1.0)))))
+      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 100.0)))))
     }
     val model = infer {
       val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
@@ -211,6 +211,11 @@ class MacrosSpec extends FlatSpec {
       }
 
       (p, mu1, mu2, sigma)
+    }
+
+    // warm up
+    Range(0, 10000).foreach { i =>
+      sample(model)
     }
 
     // print some samples
