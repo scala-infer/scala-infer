@@ -6,6 +6,8 @@ import scappla.guides.{BBVIGuide, Guide}
 import scappla.optimization.SGD
 
 object TestHMM extends App {
+/*
+  import Real._
 
   var trueObservations = Seq(true, false, false, false)
 
@@ -45,6 +47,7 @@ object TestHMM extends App {
     val states = sample(model)
     println(s"  $states")
   }
+  */
 
   /*
   var transition = function(s) {
