@@ -18,7 +18,7 @@ lazy val macros = (project in file("macros")).settings(
 )
 
 lazy val app = (project in file("app")).settings(
-  mainClass in Compile := Some("scappla.TestAutoDiff"),
+  mainClass in Compile := Some("scappla.TestMixture"),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
   scalacOptions ++= Seq("-Ymacro-debug-verbose")
 ) dependsOn macros
