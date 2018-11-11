@@ -259,32 +259,21 @@ class Macros(val c: blackbox.Context) {
           // reduce list of variables to those known in the current scope
           val vars = newStmts.flatMap(_.vars).toSet.filter(scope.isDefined)
 
-          val varName = c.freshName()
+          val varName = TermName(c.freshName())
           builder.variable(varName)
 
-          val varExpr = q"val $varName = { ..${newStmts.map(_.tree)}}"
-          Seq(
-            RichTree(varExpr, vars),
-            RichTree(q"$varName.get", Set(varName))
-          )
+          val varDef = q"{ ..${newStmts.map(_.tree)}}"
+          val varExpr = q"val $varName = $varDef"
+          Seq(RichTree(varExpr, vars)) ++
+              (if (expr.tpe =:= definitions.UnitTpe) {
+                Seq.empty
+              } else {
+                Seq(RichTree(q"$varName.get", Set(varName)))
+              })
 
         case q"if ($cond) $tExpr else $fExpr" =>
           visitExpr(cond, true) { condRef =>
             println(s"  MATCHING IF ELSE $condRef")
-
-            def visitSubExpr(tExpr: Tree) = {
-              val newScope = scope.push()
-              val subVisitor = new BlockVisitor(newScope)
-              val newSubStmts = if (tExpr.tpe =:= definitions.UnitTpe) {
-                subVisitor.visitStmt(tExpr) :+
-                    subVisitor.builder.build(newScope, RichTree(EmptyTree), definitions.UnitTpe)
-              } else {
-                subVisitor.visitExpr(tExpr) { rtLast =>
-                  Seq(subVisitor.builder.build(newScope, rtLast, tExpr.tpe))
-                }
-              }
-              toExpr(newSubStmts)
-            }
 
             val ifVar = TermName(c.freshName())
             builder.variable(ifVar)
@@ -312,13 +301,21 @@ class Macros(val c: blackbox.Context) {
         case q"$expr match { case ..$cases }" =>
           val mappedCases = cases.map { c =>
             val cq"$when => $result" = c
-            val richResult = toExpr(visitExpr(result)(Seq(_)))
+            val richResult = visitSubExpr(result)
             (richResult, cq"${reIdentPat(when)} => ${richResult.tree}")
           }
           visitExpr(expr, true) { matchName =>
+            val matchVar = TermName(c.freshName())
+            builder.variable(matchVar)
+            val resultTree = q"$matchVar.get"
             val result = q"${matchName.tree} match { case ..${mappedCases.map{ _._2 }}}"
             val richResult = mappedCases.map { _._1 }.reduce(RichTree.join(result, _, _))
-            fn(RichTree.join(result, richResult, matchName))
+            Seq(RichTree(
+              q"val $matchVar = $result",
+              Set(matchVar)
+            )) ++ fn(
+              RichTree.join(resultTree, matchName, richResult)
+            )
           }
 
         case q"scappla.this.`package`.sample[$tDist]($prior, $guide)" =>
@@ -589,6 +586,20 @@ class Macros(val c: blackbox.Context) {
           visitExpr(expr)(Seq(_))
       }
 
+    }
+
+    def visitSubExpr(tExpr: Tree) = {
+      val newScope = scope.push()
+      val subVisitor = new BlockVisitor(newScope)
+      val newSubStmts = if (tExpr.tpe =:= definitions.UnitTpe) {
+        subVisitor.visitStmt(tExpr) :+
+            subVisitor.builder.build(newScope, RichTree(EmptyTree), definitions.UnitTpe)
+      } else {
+        subVisitor.visitExpr(tExpr) { rtLast =>
+          Seq(subVisitor.builder.build(newScope, rtLast, tExpr.tpe))
+        }
+      }
+      toExpr(newSubStmts)
     }
 
     def reIdentPat(expr: Tree): Tree = {

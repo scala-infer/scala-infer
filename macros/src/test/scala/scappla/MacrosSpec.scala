@@ -135,8 +135,7 @@ class MacrosSpec extends FlatSpec {
       val err = exp(sample(Normal(0.0, 1.0), sPost))
 
       data.foreach[Unit] {
-        entry: ((Double, Double), Double) =>
-          val ((x1, x2), y) = entry
+        case ((x1, x2), y) =>
           observe(Normal(a + b1 * x1 + b2 * x2, err), y: Real)
       }
 
@@ -201,12 +200,12 @@ class MacrosSpec extends FlatSpec {
       val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))
 
       dataWithDist.foreach[Unit] {
-        entry: (Double, Guide[Boolean]) =>
-          val i = sample(Bernoulli(p), entry._2)
+        case (x, guide) =>
+          val i = sample(Bernoulli(p), guide)
           if (i) {
-            observe(Normal(mu1, sigma), entry._1: Real)
+            observe(Normal(mu1, sigma), x: Real)
           } else {
-            observe(Normal(mu2, sigma), entry._1: Real)
+            observe(Normal(mu2, sigma), x: Real)
           }
       }
 
