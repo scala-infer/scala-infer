@@ -57,11 +57,11 @@ object TestMixture extends App {
     val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))
 
     dataWithDist.foreach[Unit] {
-      entry: (Double, Real, Guide[Boolean]) =>
-        if (sample(Bernoulli(p), entry._3)) {
-          observe(Normal(mu1, sigma), entry._1: Real)
+      case (value, _, guide) =>
+        if (sample(Bernoulli(p), guide)) {
+          observe(Normal(mu1, sigma), value: Real)
         } else {
-          observe(Normal(mu2, sigma), entry._1: Real)
+          observe(Normal(mu2, sigma), value: Real)
         }
     }
 
@@ -81,11 +81,13 @@ object TestMixture extends App {
     println(s"${sigmoid(values._1)}, ${values._2}, ${values._3}, ${exp(values._4)}")
   }
 
+  /*
   // print assignments
   println("ASSIGNMENTS")
   dataWithDist.foreach {
     case (x, param, _) =>
       println(s"$x ${sigmoid(param.v)}")
   }
+  */
 
 }
