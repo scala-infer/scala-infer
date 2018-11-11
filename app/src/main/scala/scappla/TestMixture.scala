@@ -15,7 +15,7 @@ object TestMixture extends App {
     val p = 0.75
     val mu1 = -0.5
     val mu2 = 1.2
-    val sigma = 0.2
+    val sigma = 0.25
 
     for {_ <- 0 until 500} yield {
       if (Random.nextDouble() < p) {
@@ -41,13 +41,14 @@ object TestMixture extends App {
   }
 
   val sgd = new SGDMomentum(mass = 100)
-  val pPost = newGlobal(0.0, -1.0)
-  val mu1Post = newGlobal(-1.0, -1.0)
-  val mu2Post = newGlobal(1.0, -1.0)
-  val sigmaPost = newGlobal(0.0, -1.0)
+  val pPost = newGlobal(0.0, 0.0)
+  val mu1Post = newGlobal(-1.0, 0.0)
+  val mu2Post = newGlobal(1.0, 0.0)
+  val sigmaPost = newGlobal(0.0, 0.0)
 
   val dataWithDist = data.map { datum =>
-    (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 100.0)))))
+    val param = sgd.param(0.0, 10.0)
+    (datum, param, BBVIGuide(Bernoulli(sigmoid(param))))
   }
   val model = infer {
     val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
@@ -56,8 +57,8 @@ object TestMixture extends App {
     val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))
 
     dataWithDist.foreach[Unit] {
-      entry: (Double, Guide[Boolean]) =>
-        if (sample(Bernoulli(p), entry._2)) {
+      entry: (Double, Real, Guide[Boolean]) =>
+        if (sample(Bernoulli(p), entry._3)) {
           observe(Normal(mu1, sigma), entry._1: Real)
         } else {
           observe(Normal(mu2, sigma), entry._1: Real)
@@ -78,6 +79,13 @@ object TestMixture extends App {
     val l = sample(model)
     val values = (l._1.v, l._2.v, l._3.v, l._4.v)
     println(s"${sigmoid(values._1)}, ${values._2}, ${values._3}, ${exp(values._4)}")
+  }
+
+  // print assignments
+  println("ASSIGNMENTS")
+  dataWithDist.foreach {
+    case (x, param, _) =>
+      println(s"$x ${sigmoid(param.v)}")
   }
 
 }
