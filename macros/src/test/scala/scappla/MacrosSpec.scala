@@ -174,9 +174,9 @@ class MacrosSpec extends FlatSpec {
     val data = {
       val p = 0.75
       val mus = Seq(-0.5, 1.2)
-      val sigma = 0.3
+      val sigma = 0.2
 
-      for {_ <- 0 until 200} yield {
+      for {_ <- 0 until 500} yield {
         if (Random.nextDouble() < p) {
           Random.nextGaussian() * sigma + mus(0)
         } else {
@@ -192,7 +192,7 @@ class MacrosSpec extends FlatSpec {
     val sigmaPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
 
     val dataWithDist = data.map { datum =>
-      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 100.0)))))
+      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0)))))
     }
     val model = infer {
       val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
@@ -214,9 +214,16 @@ class MacrosSpec extends FlatSpec {
     }
 
     // warm up
-    Range(0, 10000).foreach { i =>
+    Range(0, 1000).foreach { i =>
       sample(model)
     }
+    val N = 5000
+    val startTime = System.currentTimeMillis()
+    Range(0, N).foreach { i =>
+      sample(model)
+    }
+    val endTime = System.currentTimeMillis()
+    println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
 
     // print some samples
     Range(0, 10).foreach { i =>
