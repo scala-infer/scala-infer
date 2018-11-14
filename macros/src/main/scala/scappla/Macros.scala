@@ -428,13 +428,14 @@ class Macros(val c: blackbox.Context) {
          */
         case q"$f.apply($o)" =>
           f match {
-            case Ident(TermName(fname)) if scope.isDefined(fname) =>
+            case Ident(TermName(fname))
+              if scope.isDefined(fname) && scope.reference(fname).wrapper.isDefined =>
               visitExpr(f) { richFn =>
                 visitExpr(o) { richO =>
                   val varResult = TermName(c.freshName())
                   builder.variable(varResult)
                   val result = q"$varResult.get"
-                  val nodes = richO.vars.map {t => q"$t.node"}
+                  val nodes = richO.vars.map { t => q"$t.node" }
                   Seq(RichTree(
                     q"val $varResult = ${richFn.tree}.apply(scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
                   )) ++ fn(
@@ -501,7 +502,8 @@ class Macros(val c: blackbox.Context) {
           }
 
         case q"$subject.this" =>
-          fn(RichTree(q"$subject.this"))
+          println(s"  MATCH THIS ${showCode(expr)}")
+          fn(RichTree(expr))
 
         case q"$subject.$method" =>
           val expanded = method match {
