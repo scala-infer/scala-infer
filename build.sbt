@@ -16,13 +16,14 @@ lazy val macros = (project in file("macros")).settings(
 
     "org.nd4j"                    % "nd4j-native-platform" % nd4jVersion,
 
+    "com.github.tototoshi"       %% "scala-csv"          % "1.3.5",
     "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
   ),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 )
 
 lazy val app = (project in file("app")).settings(
-  mainClass in Compile := Some("scappla.TestMixture"),
+  mainClass in Compile := Some("scappla.TestChickweight"),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
   scalacOptions ++= Seq("-Ymacro-debug-verbose")
 ) dependsOn macros
