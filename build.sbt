@@ -4,6 +4,8 @@ version := "0.1"
 
 scalaVersion := "2.12.4"
 
+val nd4jVersion = "1.0.0-beta3"
+
 lazy val macros = (project in file("macros")).settings(
   libraryDependencies ++= Seq(
     "org.scala-lang"              % "scala-reflect"      % scalaVersion.value,
@@ -11,6 +13,8 @@ lazy val macros = (project in file("macros")).settings(
     "com.chuusai"                %% "shapeless"          % "2.3.2",
     "com.typesafe.scala-logging" %% "scala-logging"      % "3.9.0",
     "ch.qos.logback"              % "logback-classic"    % "1.2.3",
+
+    "org.nd4j"                    % "nd4j-native-platform" % nd4jVersion,
 
     "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
   ),
