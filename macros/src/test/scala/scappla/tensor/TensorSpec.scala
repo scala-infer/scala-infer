@@ -1,25 +1,26 @@
 package scappla.tensor
 
-import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
 import scappla.Functions.log
 
 class TensorSpec extends FlatSpec {
 
+  case class Batch(size: Int) extends Dim[Batch]
+
+  case class Input(size: Int) extends Dim[Input]
+
+  case class Other(size: Int) extends Dim[Other]
+
   it should "concatenate dimensions" in {
-    case class Batch(size: Int) extends Dim[Batch]
 
-    case class Input(size: Int) extends Dim[Input]
+    val shape = Other(2) :#: Input(3) :#: Batch(2)
 
-    case class Other(size: Int) extends Dim[Other]
-
-    val shape = Other(4) :: Input(3) :: Batch(5)
-
-    val batch: Tensor[Other :: Input :: Batch] = TConst(
-      Nd4j.create(Array(0.0, 1.0, 2.0, 3.0, 4.0)),
-      Other(2) :: Input(3) :: Batch(5)
+    val batch: Tensor[Other :#: Input :#: Batch] = TConst(
+      Array(0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f),
+      shape
     )
 
     val logBatch = log(batch)
   }
+
 }

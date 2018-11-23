@@ -1,8 +1,5 @@
 package scappla.tensor
 
-import org.nd4j.linalg.api.ndarray.INDArray
-import org.nd4j.linalg.factory.Nd4j
-import org.nd4j.linalg.ops.transforms.Transforms
 import scappla.Functions
 import scappla.Functions.{exp, log}
 
@@ -18,7 +15,7 @@ object Shape {
 }
 
 class ShapeOps[S <: Shape](shape: S) {
-  def ::[H <: Dim[_]](h : H) : H :: S = scappla.tensor.::(h, shape)
+  def :#:[H <: Dim[_]](h : H) : H :#: S = scappla.tensor.:#:(h, shape)
 }
 
 trait Dim[Self <: Dim[_]] extends Shape {
@@ -28,10 +25,10 @@ trait Dim[Self <: Dim[_]] extends Shape {
 
   final override def sizes: List[Int] = List(size)
 
-  def ::[H <: Dim[_]](head: H) = scappla.tensor.::[H, Self](head, this)
+  def :#:[H <: Dim[_]](head: H) = scappla.tensor.:#:[H, Self](head, this)
 }
 
-final case class ::[H <: Dim[_], +T <: Shape](head: H, tail: T) extends Shape {
+final case class :#:[H <: Dim[_], +T <: Shape](head: H, tail: T) extends Shape {
 
   def size = head.size * tail.size
 
@@ -50,11 +47,7 @@ object Scalar extends Scalar
 
 trait Tensor[S <: Shape] {
 
-  def values: INDArray
-
   def shape: S
-
-  def backward(gradient: INDArray): Unit
 
   def plus(other: Tensor[S]): Tensor[S] = {
     TPlus(this, other)
@@ -78,74 +71,55 @@ trait Tensor[S <: Shape] {
 
 }
 
-case class TConst[S <: Shape](values: INDArray, shape: S) extends Tensor[S] {
+trait TensorInterpreter {
 
-  override def backward(gradient: INDArray): Unit = {}
+  def forward(tensor: Tensor[Scalar]): Float
+
+  def backward(tensor: Tensor[Scalar], value: Float): Unit
+}
+
+case class TConst[S <: Shape](values: Array[Float], shape: S) extends Tensor[S] {
+  assert(shape.size == values.size)
 }
 
 case class TNeg[S <: Shape](orig: Tensor[S]) extends Tensor[S] {
 
-  override val shape = orig.shape
-
-  override val values = orig.values.neg()
-
-  override def backward(gradient: INDArray): Unit = {
-    orig.backward(gradient.neg())
-  }
+  override val shape : S = orig.shape
 }
 
 case class TPlus[S <: Shape](left: Tensor[S], right: Tensor[S]) extends Tensor[S] {
   assert(left.shape == right.shape)
 
   override val shape: S = left.shape
-
-  override val values = left.values.add(right.values)
-
-  override def backward(gradient: INDArray): Unit = {
-    left.backward(gradient)
-    right.backward(gradient)
-  }
 }
 
 case class TMinus[S <: Shape](left: Tensor[S], right: Tensor[S]) extends Tensor[S] {
   assert(left.shape == right.shape)
 
   override val shape: S = left.shape
-
-  override val values = left.values.sub(right.values)
-
-  override def backward(gradient: INDArray): Unit = {
-    left.backward(gradient)
-    right.backward(gradient.neg())
-  }
 }
 
 case class TTimes[S <: Shape](left: Tensor[S], right: Tensor[S]) extends Tensor[S] {
   assert(left.shape == right.shape)
 
   override val shape: S = left.shape
-
-  override val values = left.values.mul(right.values)
-
-  override def backward(gradient: INDArray): Unit = {
-    left.backward(gradient.mul(right.values))
-    right.backward(gradient.mul(left.values))
-  }
 }
 
 case class TDiv[S <: Shape](numer: Tensor[S], denom: Tensor[S]) extends Tensor[S] {
   assert(numer.shape == denom.shape)
 
   override val shape: S = numer.shape
-
-  override val values = numer.values.div(denom.values)
-
-  override def backward(gradient: INDArray): Unit = {
-    numer.backward(gradient.div(denom.values))
-    denom.backward(gradient.neg().muli(numer.values).divi(denom.values).divi(denom.values))
-  }
 }
 
+case class TLog[S <: Shape](upstream: Tensor[S]) extends Tensor[S] {
+
+  override val shape: S = upstream.shape
+}
+
+case class TExp[S <: Shape](upstream: Tensor[S]) extends Tensor[S] {
+
+  override val shape: S = upstream.shape
+}
 
 object Tensor {
 
@@ -181,29 +155,11 @@ object Tensor {
 
   implicit def logTensor[S <: Shape]: log.Apply[Tensor[S], Tensor[S]] = new Functions.log.Apply[Tensor[S], Tensor[S]] {
 
-    def apply(in: Tensor[S]): Tensor[S] = new Tensor[S] {
-
-      val shape = in.shape
-
-      val values = Transforms.log(in.values)
-
-      override def backward(gradient: INDArray): Unit = {
-        in.backward(gradient.div(in.values))
-      }
-    }
+    def apply(in: Tensor[S]): Tensor[S] = TLog(in)
   }
 
   implicit def expTensor[S <: Shape]: exp.Apply[Tensor[S], Tensor[S]] = new Functions.exp.Apply[Tensor[S], Tensor[S]] {
 
-    def apply(in: Tensor[S]): Tensor[S] = new Tensor[S] {
-
-      val shape = in.shape
-
-      val values = Transforms.exp(in.values)
-
-      override def backward(gradient: INDArray): Unit = {
-        in.backward(gradient.mul(values))
-      }
-    }
+    def apply(in: Tensor[S]): Tensor[S] = TExp(in)
   }
 }
