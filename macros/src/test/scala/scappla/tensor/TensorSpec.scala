@@ -15,12 +15,18 @@ class TensorSpec extends FlatSpec {
 
     val shape = Other(2) :#: Input(3) :#: Batch(2)
 
-    val batch: Tensor[Other :#: Input :#: Batch] = TConst(
-      Array(0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f),
-      shape
-    )
-
+    val batch: Tensor[Other :#: Input :#: Batch] = TParam(shape, _ => ())
     val logBatch = log(batch)
+  }
+
+  it should "sum along dimension" in {
+    val shape = Batch(2)
+
+    val batch: Tensor[Batch] = TParam(shape, _ => ())
+
+    val result = Nd4jTensor.interpret(Tensor.sum(batch), param => Array(0.0f, 1.0f))
+
+    print(s"Result ${result.v}")
   }
 
 }
