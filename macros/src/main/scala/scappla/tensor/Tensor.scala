@@ -1,7 +1,8 @@
 package scappla.tensor
 
-import scappla.Functions
 import scappla.Functions.{exp, log}
+import scappla.{Functions, Real}
+import shapeless.Nat
 
 sealed trait Shape {
 
@@ -45,7 +46,7 @@ sealed trait Scalar extends Shape {
 object Scalar extends Scalar
 
 
-trait Tensor[S <: Shape] {
+sealed trait Tensor[S <: Shape] {
 
   def shape: S
 
@@ -73,14 +74,10 @@ trait Tensor[S <: Shape] {
 
 trait TensorInterpreter {
 
-  def forward(tensor: Tensor[Scalar]): Float
-
-  def backward(tensor: Tensor[Scalar], value: Float): Unit
+  def interpret(tensor: Tensor[Scalar], resolver: TParam[_] => Array[Float]): Real
 }
 
-case class TConst[S <: Shape](values: Array[Float], shape: S) extends Tensor[S] {
-  assert(shape.size == values.size)
-}
+case class TParam[S <: Shape](shape: S, backward: Array[Float] => Unit) extends Tensor[S]
 
 case class TNeg[S <: Shape](orig: Tensor[S]) extends Tensor[S] {
 
@@ -121,7 +118,18 @@ case class TExp[S <: Shape](upstream: Tensor[S]) extends Tensor[S] {
   override val shape: S = upstream.shape
 }
 
+case class TSum[R <: Shape, S <: Shape](shape: R, index: Int, upstream: Tensor[S]) extends Tensor[R]
+
 object Tensor {
+
+  def sum[S <: Shape,D <: Dim[_], I <: Nat, R <: Shape](
+      tensor: Tensor[S]
+  )(implicit
+      indexOf: IndexOf.Aux[S, D, I],
+      removeAt: RemoveAt.Aux[S, I, R]
+  ): Tensor[R] = {
+    TSum[R, S](removeAt.apply(tensor.shape), indexOf.toInt, tensor)
+  }
 
   // NUMERIC
 
