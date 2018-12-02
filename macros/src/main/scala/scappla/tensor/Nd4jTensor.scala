@@ -3,85 +3,59 @@ package scappla.tensor
 import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.factory.Nd4j
 import org.nd4j.linalg.ops.transforms.Transforms
-import scappla.Real
 
-import scala.collection.mutable
+object Nd4jTensor {
 
-object Nd4jTensor extends TensorInterpreter {
+  implicit val ops : DataOps[INDArray] = new DataOps[INDArray] {
 
-  override def interpret(tensor: Tensor[Scalar], resolver: TParam[_] => Array[Float]): Real = {
-    new Nd4jReal(tensor, resolver)
-  }
+    override def zeros(dims: Int*): INDArray =
+      Nd4j.create(dims: _*)
 
-  private class Nd4jReal(tensor: Tensor[Scalar], resolver: TParam[_] => Array[Float]) extends Real {
+    override def set(a: Array[Float], dims: Int*): INDArray =
+      Nd4j.create(a, dims.toArray)
 
-    private val cache: mutable.Map[Tensor[_], INDArray] =
-      mutable.HashMap.empty[Tensor[_], INDArray]
+    override def get(a: INDArray): Array[Float] =
+      a.data().asFloat()
 
-    override def v: Double = {
-      forwardShape(tensor).getDouble(Seq(0): _*)
+    // elementwise operations
+
+    override def plus(a: INDArray, b: INDArray): INDArray =
+      a.add(b)
+
+    override def minus(a: INDArray, b: INDArray): INDArray =
+      a.sub(b)
+
+    override def times(a: INDArray, b: INDArray): INDArray =
+      a.mul(b)
+
+    override def div(a: INDArray, b: INDArray): INDArray =
+      a.div(b)
+
+    override def negate(a: INDArray): INDArray =
+      a.neg()
+
+    override def log(a: INDArray): INDArray =
+      Transforms.log(a)
+
+    override def exp(a: INDArray): INDArray =
+      Transforms.exp(a)
+
+    // reshaping operations
+
+    override def sum(a: INDArray, dim: Int): INDArray = {
+      val oldShape = a.shape().toSeq
+      val result = a.sum(dim)
+      val newShape = oldShape.take(dim) ++ oldShape.drop(dim + 1)
+      val finalResult = result.reshape(newShape: _*)
+      finalResult
     }
 
-    private def forwardShape[S <: Shape](variable: Tensor[S]): INDArray = {
-      if (!cache.contains(variable)) {
-        val result = variable match {
-          case param@TParam(shape, _) =>
-            Nd4j.create(resolver(param), shape.sizes.toArray)
-          case TNeg(orig) =>
-            forwardShape(orig).neg()
-          case TPlus(left, right) =>
-            forwardShape(left).add(forwardShape(right))
-          case TMinus(left, right) =>
-            forwardShape(left).sub(forwardShape(right))
-          case TTimes(left, right) =>
-            forwardShape(left).mul(forwardShape(right))
-          case TDiv(left, right) =>
-            forwardShape(left).div(forwardShape(right))
-          case TLog(upstream) =>
-            Transforms.log(forwardShape(upstream))
-          case TExp(upstream) =>
-            Transforms.exp(forwardShape(upstream))
-          case TSum(shape, index, upstream) =>
-            forwardShape(upstream).sum(index)
-        }
-        cache += variable -> result
-      }
-      cache(variable)
-    }
-
-    override def dv(value: Double): Unit = {
-      backwardShape(tensor, Nd4j.create(Array(value), Array.empty[Int]))
-    }
-
-    private def backwardShape[S <: Shape](tensor: Tensor[S], gradient: INDArray) {
-      tensor match {
-        case param@TParam(shape, backward) =>
-          backward(gradient.data().getFloatsAt(0L, shape.size))
-        case TNeg(orig) =>
-          backwardShape(orig, gradient.neg())
-        case TPlus(left, right) =>
-          backwardShape(left, gradient)
-          backwardShape(right, gradient)
-        case TMinus(left, right) =>
-          backwardShape(left, gradient)
-          backwardShape(right, gradient.neg())
-        case TTimes(left, right) =>
-          backwardShape(left, gradient.mul(forwardShape(right)))
-          backwardShape(right, gradient.mul(forwardShape(left)))
-        case TDiv(numer, denom) =>
-          val numer_v = forwardShape(numer)
-          val denom_v = forwardShape(denom)
-          backwardShape(numer, gradient.div(denom_v))
-          backwardShape(denom, gradient
-              .neg().muli(numer_v).divi(denom_v).divi(denom_v)
-          )
-        case TLog(upstream) =>
-          backwardShape(upstream, gradient.div(forwardShape(upstream)))
-        case TExp(upstream) =>
-          backwardShape(upstream, gradient.mul(forwardShape(upstream)))
-        case TSum(shape, index, upstream) =>
-          backwardShape(upstream, gradient.broadcast())
-      }
+    override def broadcast(a: INDArray, dimIndex: Int, dimSize: Int): INDArray = {
+      val oldShape = a.shape().toSeq
+      val newTmp: Seq[Long] = (oldShape.take(dimIndex) :+ 1L) ++ oldShape.drop(dimIndex)
+      val reshaped = a.reshape(newTmp.toArray: _*)
+      val newShape: Seq[Long] = (oldShape.take(dimIndex) :+ dimSize.toLong) ++ oldShape.drop(dimIndex)
+      reshaped.broadcast(newShape.toArray: _*)
     }
   }
 
