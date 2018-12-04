@@ -1,6 +1,6 @@
 package scappla.tensor
 
-import scappla.Functions
+import scappla.{Completeable, Functions}
 import scappla.Functions.{exp, log}
 import shapeless.Nat
 
@@ -80,13 +80,25 @@ trait DataOps[D] {
 
 sealed trait Tensor[S <: Shape, D] {
 
-  def dataOps: DataOps[D]
-
   def shape: S
 
-  def forward: D
+  private[tensor] def dataOps: DataOps[D]
 
-  def backward(gradient: D): Unit
+  private[tensor] def forwardData: D
+
+  private[tensor] def backwardData(gradient: D): Unit
+
+  def collect: Array[Float] = {
+    dataOps.get(forwardData)
+  }
+
+  def backward(gradient: Array[Float]): Unit = {
+    backwardData(dataOps.set(gradient, shape.sizes: _*))
+  }
+
+  def buffer(): Tensor[S, D] = {
+    TBuffer(this)
+  }
 
   def plus(other: Tensor[S, D]): Tensor[S, D] = {
     TPlus(this, other)
@@ -109,39 +121,49 @@ sealed trait Tensor[S <: Shape, D] {
   }
 }
 
-trait TensorInterpreter[D] {
+case class TBuffer[S <: Shape, D](value: Tensor[S, D])
+    extends Tensor[S, D] with Completeable {
 
-  // create parameter with initial values and update function
-  // update function receives gradient, returns new values
-  def param[S <: Shape](values: D, update: (D, D) => D): TParam[S, D]
+  override def dataOps: DataOps[D] = value.dataOps
 
-  def forward(tensor: Tensor[Scalar, D]): Float
+  override def shape: S = value.shape
 
-  def backward(tensor: Tensor[Scalar, D], gradient: Float): Unit
+  override def forwardData: D = value.forwardData
+
+  private var _grad : Option[D] = None
+
+  override def backwardData(gradient: D): Unit = {
+    _grad = _grad.map {
+      dataOps.plus(_, gradient)
+    }.orElse(Some(gradient))
+  }
+
+  override def complete(): Unit = {
+    _grad.foreach { value.backwardData }
+    _grad = None
+  }
 }
 
 case class TParam[S <: Shape, D](
-    shape: S,
     dataOps: DataOps[D],
-    values: () => D,
-    update: D => Unit
+    var values: Tensor[S, D],
+    update: Tensor[S, D] => Tensor[S, D]
 ) extends Tensor[S, D] {
 
-  override def forward: D =
-    values()
+  def shape: S = values.shape
 
-  override def backward(gradient: D): Unit =
-    update(gradient)
+  override def forwardData: D =
+    values.forwardData
+
+  override def backwardData(gradient: D): Unit =
+    values = update(TConst(shape, dataOps, gradient))
 }
 
 case class TConst[S <: Shape, D](
-    shape: S, dataOps: DataOps[D], values: Array[Float]
+    shape: S, dataOps: DataOps[D], forwardData: D
 ) extends Tensor[S, D] {
 
-  override def forward: D =
-    dataOps.set(values, shape.sizes.toArray: _*)
-
-  override def backward(gradient: D): Unit = {}
+  override def backwardData(gradient: D): Unit = {}
 }
 
 case class TNeg[S <: Shape, D](orig: Tensor[S, D]) extends Tensor[S, D] {
@@ -152,11 +174,11 @@ case class TNeg[S <: Shape, D](orig: Tensor[S, D]) extends Tensor[S, D] {
   override val dataOps: DataOps[D] =
     orig.dataOps
 
-  override def forward: D =
-    dataOps.negate(orig.forward)
+  override def forwardData: D =
+    dataOps.negate(orig.forwardData)
 
-  override def backward(gradient: D): Unit =
-    orig.backward(dataOps.negate(gradient))
+  override def backwardData(gradient: D): Unit =
+    orig.backwardData(dataOps.negate(gradient))
 }
 
 case class TPlus[S <: Shape, D](left: Tensor[S, D], right: Tensor[S, D]) extends Tensor[S, D] {
@@ -168,12 +190,12 @@ case class TPlus[S <: Shape, D](left: Tensor[S, D], right: Tensor[S, D]) extends
   override val dataOps: DataOps[D] =
     left.dataOps
 
-  override def forward: D =
-    dataOps.plus(left.forward, right.forward)
+  override def forwardData: D =
+    dataOps.plus(left.forwardData, right.forwardData)
 
-  override def backward(gradient: D): Unit = {
-    left.backward(gradient)
-    right.backward(gradient)
+  override def backwardData(gradient: D): Unit = {
+    left.backwardData(gradient)
+    right.backwardData(gradient)
   }
 }
 
@@ -186,12 +208,12 @@ case class TMinus[S <: Shape, D](left: Tensor[S, D], right: Tensor[S, D]) extend
   override val dataOps: DataOps[D] =
     left.dataOps
 
-  override def forward: D =
-    dataOps.minus(left.forward, right.forward)
+  override def forwardData: D =
+    dataOps.minus(left.forwardData, right.forwardData)
 
-  override def backward(gradient: D): Unit = {
-    left.backward(gradient)
-    right.backward(dataOps.negate(gradient))
+  override def backwardData(gradient: D): Unit = {
+    left.backwardData(gradient)
+    right.backwardData(dataOps.negate(gradient))
   }
 }
 
@@ -204,12 +226,12 @@ case class TTimes[S <: Shape, D](left: Tensor[S, D], right: Tensor[S, D]) extend
   override val dataOps: DataOps[D] =
     left.dataOps
 
-  override def forward: D =
-    dataOps.times(left.forward, right.forward)
+  override def forwardData: D =
+    dataOps.times(left.forwardData, right.forwardData)
 
-  override def backward(gradient: D): Unit = {
-    left.backward(dataOps.times(gradient, right.forward))
-    right.backward(dataOps.times(gradient, left.forward))
+  override def backwardData(gradient: D): Unit = {
+    left.backwardData(dataOps.times(gradient, right.forwardData))
+    right.backwardData(dataOps.times(gradient, left.forwardData))
   }
 }
 
@@ -222,14 +244,14 @@ case class TDiv[S <: Shape, D](numer: Tensor[S, D], denom: Tensor[S, D]) extends
   override val dataOps: DataOps[D] =
     numer.dataOps
 
-  override def forward: D =
-    dataOps.div(numer.forward, denom.forward)
+  override def forwardData: D =
+    dataOps.div(numer.forwardData, denom.forwardData)
 
-  override def backward(gradient: D): Unit = {
-    numer.backward(dataOps.div(gradient, denom.forward))
-    denom.backward(dataOps.div(
-      dataOps.times(gradient, numer.forward),
-      dataOps.times(denom.forward, denom.forward)
+  override def backwardData(gradient: D): Unit = {
+    numer.backwardData(dataOps.div(gradient, denom.forwardData))
+    denom.backwardData(dataOps.div(
+      dataOps.times(gradient, numer.forwardData),
+      dataOps.times(denom.forwardData, denom.forwardData)
     ))
   }
 }
@@ -240,11 +262,11 @@ case class TLog[S <: Shape, D](upstream: Tensor[S, D]) extends Tensor[S, D] {
 
   override val dataOps: DataOps[D] = upstream.dataOps
 
-  override def forward: D =
-    dataOps.log(upstream.forward)
+  override def forwardData: D =
+    dataOps.log(upstream.forwardData)
 
-  override def backward(gradient: D): Unit =
-    upstream.backward(dataOps.div(gradient, upstream.forward))
+  override def backwardData(gradient: D): Unit =
+    upstream.backwardData(dataOps.div(gradient, upstream.forwardData))
 }
 
 case class TExp[S <: Shape, D](upstream: Tensor[S, D]) extends Tensor[S, D] {
@@ -255,11 +277,11 @@ case class TExp[S <: Shape, D](upstream: Tensor[S, D]) extends Tensor[S, D] {
   override val dataOps: DataOps[D] =
     upstream.dataOps
 
-  override def forward: D =
-    dataOps.exp(upstream.forward)
+  override def forwardData: D =
+    dataOps.exp(upstream.forwardData)
 
-  override def backward(gradient: D): Unit =
-    upstream.backward(dataOps.times(gradient, upstream.forward))
+  override def backwardData(gradient: D): Unit =
+    upstream.backwardData(dataOps.times(gradient, upstream.forwardData))
 }
 
 case class TSum[R <: Shape, S <: Shape, D](
@@ -269,11 +291,11 @@ case class TSum[R <: Shape, S <: Shape, D](
   override val dataOps: DataOps[D] =
     upstream.dataOps
 
-  override def forward: D =
-    dataOps.sum(upstream.forward, index)
+  override def forwardData: D =
+    dataOps.sum(upstream.forwardData, index)
 
-  override def backward(gradient: D): Unit = {
-    upstream.backward(dataOps.broadcast(gradient, index, upstream.shape.sizes(index)))
+  override def backwardData(gradient: D): Unit = {
+    upstream.backwardData(dataOps.broadcast(gradient, index, upstream.shape.sizes(index)))
   }
 }
 
@@ -293,15 +315,14 @@ object Tensor {
       values: Array[Float]
   )(implicit
       dataOps: DataOps[D]
-  ): Tensor[S, D] = TConst(shape, dataOps, values)
+  ): Tensor[S, D] = TConst(shape, dataOps, dataOps.set(values, shape.sizes: _*))
 
   def param[S <: Shape, D](
-      shape: S,
-      values: () => D,
-      update: D => Unit
+      values: Tensor[S, D],
+      update: Tensor[S, D] => Tensor[S, D]
   )(implicit
       dataOps: DataOps[D]
-  ): Tensor[S, D] = TParam(shape, dataOps, values, update)
+  ): Tensor[S, D] = TParam(dataOps, values, update)
 
   // FUNCTIONS
 

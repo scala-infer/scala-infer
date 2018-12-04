@@ -30,7 +30,7 @@ class TensorSpec extends FlatSpec {
 
     val data = Tensor(shape, Array(0.0f, 1.0f))
     val sum = Tensor.sum(data)
-    val result = sum.forward.getFloat(0)
+    val result = sum.forwardData.getFloat(0)
 
     print(s"Result ${result}")
   }
@@ -38,16 +38,20 @@ class TensorSpec extends FlatSpec {
   it should "backprop gradient" in {
     val shape = Batch(2)
 
-    val data = Nd4j.create(Array(1f, 2f), Array(2))
+    val data = Tensor(shape, Array(1f, 2f))
+    var update: Option[Array[Float]] = None
 
-    val param = TParam[Batch, INDArray](shape, nd4jTensor, () => data, {
-      gradient => data.addi(gradient)
-    })
+    val param = Tensor.param(data,
+      (gradient: Tensor[Batch, INDArray]) => {
+        val result = data.plus(gradient)
+        update = Some(result.collect)
+        result
+      }
+    )
 
-    Tensor.sum(param)
-        .backward(Nd4j.create(Array(1f), Array.empty[Int]))
+    Tensor.sum(param).backward(Array(1f))
 
-    val dataArray = data.data().asFloat()
+    val dataArray = update.get
     assert(dataArray(0) == 2f)
     assert(dataArray(1) == 3f)
   }
