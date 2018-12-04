@@ -1,7 +1,7 @@
 package scappla.distributions
 
 import scappla.Functions.{log, pow}
-import scappla.{Buffer, Real, Score}
+import scappla._
 
 import scala.util.Random
 
@@ -26,11 +26,19 @@ case class Normal(mu: Real, sigma: Real) extends DDistribution {
         }
       }
 
-    override val get: Buffer = x.buffer
+    override val get: RealBuffer = x.buffer
 
     override def score: Score = dist.observe(get)
 
     override def complete(): Unit = get.complete()
+  }
+
+  val logSigma = new Real {
+    val upstream = log(sigma)
+
+    override def v: Double = ???
+
+    override def dv(v: Double): Unit = ???
   }
 
   override def observe(x: Real): Score = {
@@ -38,7 +46,7 @@ case class Normal(mu: Real, sigma: Real) extends DDistribution {
   }
 
   override def reparam_score(x: Real): Score = {
-    -log(sigma.const) - pow((x - mu.const) / sigma.const, Real(2.0)) / Real(2.0)
+    -log(sigma).const - pow((x - mu.const) / sigma.const, Real(2.0)) / Real(2.0)
   }
 }
 

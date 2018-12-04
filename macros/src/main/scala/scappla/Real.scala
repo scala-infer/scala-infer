@@ -2,25 +2,19 @@ package scappla
 
 import scala.language.experimental.macros
 
-trait Real {
+trait Real extends Differentiable[Double] {
 
-  def v: Double
+  override def buffer: RealBuffer = RealBuffer(this)
 
-  def dv(v: Double): Unit
-
-  def buffer: Buffer =
-    new Buffer(this)
-
-  def const: Constant =
-    new Constant(this.v)
+  override def const: RealConstant = new RealConstant(v)
 }
 
-class Buffer(upstream: Real) extends Real {
+case class RealBuffer(upstream: Differentiable[Double])
+    extends Real with Buffered[Double] {
 
   private var refCount: Int = 1
 
-  private var grad: Double =
-    0.0
+  protected var grad: Double = 0.0
 
   override def v: Double =
     upstream.v
@@ -30,12 +24,12 @@ class Buffer(upstream: Real) extends Real {
   }
 
   /**
-   * basic refcounting; when a function needs a buffer instead of a plain Real
-   * (i.e. when it has potentially more than one use of the value), it further defers
-   * the backpropagation of the gradient.  When all references have completed, can the
-   * gradient be propagated further backwards.
-   */
-  override def buffer = {
+    * basic refcounting; when a function needs a buffer instead of a plain Real
+    * (i.e. when it has potentially more than one use of the value), it further defers
+    * the backpropagation of the gradient.  When all references have completed, can the
+    * gradient be propagated further backwards.
+    */
+  override def buffer: RealBuffer = {
     refCount += 1
     this
   }
@@ -50,14 +44,10 @@ class Buffer(upstream: Real) extends Real {
   override def toString: String = s"Buf($upstream)"
 }
 
-class Constant(upstream: Double) extends Real {
-
-  override def v: Double = upstream
-
-  override def dv(v: Double): Unit = {}
+class RealConstant(v: Double) extends Constant[Double](v) with Real {
 
   override def toString: String = {
-    s"Const(${"%.4f".format(upstream)})"
+    s"Const(${"%.4f".format(v)})"
   }
 }
 
@@ -145,17 +135,17 @@ case class DMul(a: Real, b: Real) extends LazyReal(0.0) {
   override def toString: String = s"($a * $b)"
 }
 
-case class DDiv(num: Real, denom: Real) extends LazyReal(0.0) {
+case class DDiv(numer: Real, denom: Real) extends LazyReal(0.0) {
 
   override def _v: Double =
-    num.v / denom.v
+    numer.v / denom.v
 
   override def _dv(v: Double): Unit = {
-    num.dv(v / denom.v)
+    numer.dv(v / denom.v)
     denom.dv(-v * this.v / denom.v)
   }
 
-  override def toString: String = s"$num / $denom"
+  override def toString: String = s"$numer / $denom"
 }
 
 class DVariable(var v: Double) extends Real {
@@ -170,7 +160,7 @@ class DVariable(var v: Double) extends Real {
 
 object Real {
 
-  implicit def apply(value: Double): Real = new Constant(value)
+  implicit def apply(value: Double): Real = new RealConstant(value)
 
   implicit val scalarOrdering: Ordering[Real] = Ordering.by(_.v)
 

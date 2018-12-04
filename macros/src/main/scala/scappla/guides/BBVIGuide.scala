@@ -1,8 +1,7 @@
 package scappla.guides
 
-import scappla.{BayesNode, Buffer, Score, Variable}
+import scappla._
 import scappla.distributions.Distribution
-
 import scappla.Real._
 
 case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
@@ -24,11 +23,11 @@ case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
 
     val node: BayesNode = new BayesNode {
 
-      override val modelScore: Buffer = {
+      override val modelScore: RealBuffer = {
         prior.observe(value).buffer
       }
 
-      override val guideScore: Buffer = {
+      override val guideScore: RealBuffer = {
         posterior.observe(value).buffer
       }
 
