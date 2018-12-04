@@ -60,7 +60,7 @@ package object scappla {
   def observeImpl[A](distribution: Distribution[A], value: A): Observation =
     new Observation {
 
-      val score: Buffer =
+      val score: RealBuffer =
         distribution.observe(value).buffer
 
       override def complete(): Unit = {
