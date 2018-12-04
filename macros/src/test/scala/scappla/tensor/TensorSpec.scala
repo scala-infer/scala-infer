@@ -1,7 +1,6 @@
 package scappla.tensor
 
 import org.nd4j.linalg.api.ndarray.INDArray
-import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
 import scappla.Functions.log
 
@@ -23,6 +22,7 @@ class TensorSpec extends FlatSpec {
       0f, 1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10f, 11f
     ))
     val logBatch = log(batch)
+    print(s"Result: ${logBatch.collect.mkString(",")}")
   }
 
   it should "sum along dimension" in {
@@ -30,7 +30,7 @@ class TensorSpec extends FlatSpec {
 
     val data = Tensor(shape, Array(0.0f, 1.0f))
     val sum = Tensor.sum(data)
-    val result = sum.forwardData.getFloat(0)
+    val result = sum.collect(0)
 
     print(s"Result ${result}")
   }
@@ -50,6 +50,32 @@ class TensorSpec extends FlatSpec {
     )
 
     Tensor.sum(param).backward(Array(1f))
+
+    val dataArray = update.get
+    assert(dataArray(0) == 2f)
+    assert(dataArray(1) == 3f)
+  }
+
+  it should "buffer backward gradients" in {
+    val shape = Batch(2)
+
+    val data = Tensor(shape, Array(1f, 2f))
+    var update: Option[Array[Float]] = None
+
+    val param = Tensor.param(data,
+      (gradient: Tensor[Batch, INDArray]) => {
+        val result = data.plus(gradient)
+        update = Some(result.collect)
+        result
+      }
+    )
+
+    val buffer = param.buffer()
+    Tensor.sum(buffer).backward(Array(1f))
+
+    assert(update.isEmpty)
+
+    buffer.complete()
 
     val dataArray = update.get
     assert(dataArray(0) == 2f)

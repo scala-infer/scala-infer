@@ -82,21 +82,21 @@ sealed trait Tensor[S <: Shape, D] {
 
   def shape: S
 
-  private[tensor] def dataOps: DataOps[D]
+  protected var data: Option[D] = None
 
-  private[tensor] def forwardData: D
+  protected def evalData: D
 
-  private[tensor] def backwardData(gradient: D): Unit
+  protected def evalBackwardData(gradient: D): Unit
 
   def collect: Array[Float] = {
-    dataOps.get(forwardData)
+    dataOps.get(getData)
   }
 
   def backward(gradient: Array[Float]): Unit = {
     backwardData(dataOps.set(gradient, shape.sizes: _*))
   }
 
-  def buffer(): Tensor[S, D] = {
+  def buffer(): TBuffer[S, D] = {
     TBuffer(this)
   }
 
@@ -119,6 +119,18 @@ sealed trait Tensor[S <: Shape, D] {
   def negate: Tensor[S, D] = {
     TNeg(this)
   }
+
+  private[tensor] def dataOps: DataOps[D]
+
+  private[tensor] def backwardData(gradient: D): Unit = {
+    evalBackwardData(gradient)
+    data = None
+  }
+
+  private[tensor] def getData: D = {
+    data = data.orElse(Some(evalData))
+    data.get
+  }
 }
 
 case class TBuffer[S <: Shape, D](value: Tensor[S, D])
@@ -128,19 +140,26 @@ case class TBuffer[S <: Shape, D](value: Tensor[S, D])
 
   override def shape: S = value.shape
 
-  override def forwardData: D = value.forwardData
+  override def evalData: D = value.getData
 
-  private var _grad : Option[D] = None
+  private var grad: Option[D] = None
 
-  override def backwardData(gradient: D): Unit = {
-    _grad = _grad.map {
+  private[tensor] override def backwardData(gradient: D): Unit = {
+    evalBackwardData(gradient)
+  }
+
+  override def evalBackwardData(gradient: D): Unit = {
+    grad = grad.map {
       dataOps.plus(_, gradient)
     }.orElse(Some(gradient))
   }
 
   override def complete(): Unit = {
-    _grad.foreach { value.backwardData }
-    _grad = None
+    grad.foreach {
+      value.backwardData
+    }
+    grad = None
+    data = None
   }
 }
 
@@ -152,18 +171,18 @@ case class TParam[S <: Shape, D](
 
   def shape: S = values.shape
 
-  override def forwardData: D =
-    values.forwardData
+  override def evalData: D =
+    values.getData
 
-  override def backwardData(gradient: D): Unit =
+  override def evalBackwardData(gradient: D): Unit =
     values = update(TConst(shape, dataOps, gradient))
 }
 
 case class TConst[S <: Shape, D](
-    shape: S, dataOps: DataOps[D], forwardData: D
+    shape: S, dataOps: DataOps[D], evalData: D
 ) extends Tensor[S, D] {
 
-  override def backwardData(gradient: D): Unit = {}
+  override def evalBackwardData(gradient: D): Unit = {}
 }
 
 case class TNeg[S <: Shape, D](orig: Tensor[S, D]) extends Tensor[S, D] {
@@ -174,10 +193,10 @@ case class TNeg[S <: Shape, D](orig: Tensor[S, D]) extends Tensor[S, D] {
   override val dataOps: DataOps[D] =
     orig.dataOps
 
-  override def forwardData: D =
-    dataOps.negate(orig.forwardData)
+  override def evalData: D =
+    dataOps.negate(orig.getData)
 
-  override def backwardData(gradient: D): Unit =
+  override def evalBackwardData(gradient: D): Unit =
     orig.backwardData(dataOps.negate(gradient))
 }
 
@@ -190,10 +209,10 @@ case class TPlus[S <: Shape, D](left: Tensor[S, D], right: Tensor[S, D]) extends
   override val dataOps: DataOps[D] =
     left.dataOps
 
-  override def forwardData: D =
-    dataOps.plus(left.forwardData, right.forwardData)
+  override def evalData: D =
+    dataOps.plus(left.getData, right.getData)
 
-  override def backwardData(gradient: D): Unit = {
+  override def evalBackwardData(gradient: D): Unit = {
     left.backwardData(gradient)
     right.backwardData(gradient)
   }
@@ -208,10 +227,10 @@ case class TMinus[S <: Shape, D](left: Tensor[S, D], right: Tensor[S, D]) extend
   override val dataOps: DataOps[D] =
     left.dataOps
 
-  override def forwardData: D =
-    dataOps.minus(left.forwardData, right.forwardData)
+  override def evalData: D =
+    dataOps.minus(left.getData, right.getData)
 
-  override def backwardData(gradient: D): Unit = {
+  override def evalBackwardData(gradient: D): Unit = {
     left.backwardData(gradient)
     right.backwardData(dataOps.negate(gradient))
   }
@@ -226,12 +245,12 @@ case class TTimes[S <: Shape, D](left: Tensor[S, D], right: Tensor[S, D]) extend
   override val dataOps: DataOps[D] =
     left.dataOps
 
-  override def forwardData: D =
-    dataOps.times(left.forwardData, right.forwardData)
+  override def evalData: D =
+    dataOps.times(left.getData, right.getData)
 
-  override def backwardData(gradient: D): Unit = {
-    left.backwardData(dataOps.times(gradient, right.forwardData))
-    right.backwardData(dataOps.times(gradient, left.forwardData))
+  override def evalBackwardData(gradient: D): Unit = {
+    left.backwardData(dataOps.times(gradient, right.getData))
+    right.backwardData(dataOps.times(gradient, left.getData))
   }
 }
 
@@ -244,14 +263,14 @@ case class TDiv[S <: Shape, D](numer: Tensor[S, D], denom: Tensor[S, D]) extends
   override val dataOps: DataOps[D] =
     numer.dataOps
 
-  override def forwardData: D =
-    dataOps.div(numer.forwardData, denom.forwardData)
+  override def evalData: D =
+    dataOps.div(numer.getData, denom.getData)
 
-  override def backwardData(gradient: D): Unit = {
-    numer.backwardData(dataOps.div(gradient, denom.forwardData))
+  override def evalBackwardData(gradient: D): Unit = {
+    numer.backwardData(dataOps.div(gradient, denom.getData))
     denom.backwardData(dataOps.div(
-      dataOps.times(gradient, numer.forwardData),
-      dataOps.times(denom.forwardData, denom.forwardData)
+      dataOps.times(gradient, numer.getData),
+      dataOps.times(denom.getData, denom.getData)
     ))
   }
 }
@@ -262,11 +281,11 @@ case class TLog[S <: Shape, D](upstream: Tensor[S, D]) extends Tensor[S, D] {
 
   override val dataOps: DataOps[D] = upstream.dataOps
 
-  override def forwardData: D =
-    dataOps.log(upstream.forwardData)
+  override def evalData: D =
+    dataOps.log(upstream.getData)
 
-  override def backwardData(gradient: D): Unit =
-    upstream.backwardData(dataOps.div(gradient, upstream.forwardData))
+  override def evalBackwardData(gradient: D): Unit =
+    upstream.backwardData(dataOps.div(gradient, upstream.getData))
 }
 
 case class TExp[S <: Shape, D](upstream: Tensor[S, D]) extends Tensor[S, D] {
@@ -277,11 +296,11 @@ case class TExp[S <: Shape, D](upstream: Tensor[S, D]) extends Tensor[S, D] {
   override val dataOps: DataOps[D] =
     upstream.dataOps
 
-  override def forwardData: D =
-    dataOps.exp(upstream.forwardData)
+  override def evalData: D =
+    dataOps.exp(upstream.getData)
 
-  override def backwardData(gradient: D): Unit =
-    upstream.backwardData(dataOps.times(gradient, upstream.forwardData))
+  override def evalBackwardData(gradient: D): Unit =
+    upstream.backwardData(dataOps.times(gradient, upstream.getData))
 }
 
 case class TSum[R <: Shape, S <: Shape, D](
@@ -291,10 +310,10 @@ case class TSum[R <: Shape, S <: Shape, D](
   override val dataOps: DataOps[D] =
     upstream.dataOps
 
-  override def forwardData: D =
-    dataOps.sum(upstream.forwardData, index)
+  override def evalData: D =
+    dataOps.sum(upstream.getData, index)
 
-  override def backwardData(gradient: D): Unit = {
+  override def evalBackwardData(gradient: D): Unit = {
     upstream.backwardData(dataOps.broadcast(gradient, index, upstream.shape.sizes(index)))
   }
 }
