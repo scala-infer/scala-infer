@@ -141,18 +141,28 @@ class Macros(val c: blackbox.Context) {
 
     private val fns: mutable.Set[TermName] = mutable.Set.empty
 
+    private val completeable: mutable.ListBuffer[Tree] = new mutable.ListBuffer()
+
     def variable(v: TermName): VariableAggregator = {
       vars += v
+      completeable += q"$v.node"
       this
     }
 
     def observation(o: TermName): VariableAggregator = {
       obs += o
+      completeable += q"$o"
       this
     }
 
     def function(o: TermName): VariableAggregator = {
       fns += o
+      completeable += q"$o"
+      this
+    }
+
+    def buffer(o: TermName): VariableAggregator = {
+      completeable += q"$o"
       this
     }
 
@@ -190,12 +200,8 @@ class Macros(val c: blackbox.Context) {
       }}
 
           def complete() = {..${
-        fns.toSeq.map { f =>
-          q"$f.complete()"
-        } ++ obs.toSeq.map { t =>
-          q"$t.complete()"
-        } ++ vars.reverse.map { t =>
-          q"$t.node.complete()"
+        completeable.reverse.map { c =>
+          q"$c.complete()"
         }
       }}
       })"""
@@ -578,9 +584,16 @@ class Macros(val c: blackbox.Context) {
           val TermName(name) = tname
 //          println(s"  RECURRING into ${showCode(rhs)}")
           visitExpr(rhs) { exprName =>
-            scope.declare(TermName(name), exprName.copy(tree = q"${TermName(name)}"))
+              val fullExpr = if (rhs.tpe <:< typeOf[Differentiable[_]]) {
+                println(s"  DIFFERENTIABLE ${showCode(rhs)}")
+                builder.buffer(TermName(name))
+                exprName.map { t => q"$t.buffer"}
+              } else {
+                exprName
+              }
+            scope.declare(TermName(name), fullExpr.copy(tree = q"${TermName(name)}"))
             Seq(
-              exprName.map { t => q"val ${TermName(name)} = $t" }
+              fullExpr.map { t => q"val ${TermName(name)} = $t" }
             )
           }
 
