@@ -5,7 +5,7 @@ import scappla.{Real, Score, DAdd}
 
 import scala.util.Random
 
-import Real._
+import scappla.Real._
 
 case class Categorical(p: Seq[Real]) extends Distribution[Int] {
 
@@ -16,11 +16,11 @@ case class Categorical(p: Seq[Real]) extends Distribution[Int] {
     val (_, index) = p.zipWithIndex.foldLeft((draw, 0)) {
       case ((curDraw, curIdx), (p_i, idx)) =>
         val newDraw = curDraw - p_i.v
-	if (curDraw > 0) {
-	  (newDraw, idx)
-	} else {
-	  (newDraw, curIdx)
-	}
+        if (curDraw > 0) {
+          (newDraw, idx)
+        } else {
+          (newDraw, curIdx)
+        }
     }
     new Sample[Int] {
 

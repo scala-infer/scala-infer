@@ -584,7 +584,7 @@ class Macros(val c: blackbox.Context) {
           val TermName(name) = tname
 //          println(s"  RECURRING into ${showCode(rhs)}")
           visitExpr(rhs) { exprName =>
-              val fullExpr = if (rhs.tpe <:< typeOf[Differentiable[_]]) {
+              val fullExpr = if (rhs.tpe <:< typeOf[scappla.Expr[_]]) {
                 println(s"  DIFFERENTIABLE ${showCode(rhs)}")
                 builder.buffer(TermName(name))
                 exprName.map { t => q"$t.buffer"}

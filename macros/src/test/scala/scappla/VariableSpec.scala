@@ -10,6 +10,7 @@ import scala.util.Random
 class VariableSpec extends FlatSpec {
 
   import Functions._
+  import Real._
 
   it should "recover prior" in {
     val inferred = new Model[Boolean] {
@@ -129,10 +130,6 @@ class VariableSpec extends FlatSpec {
 
   it should "use the reparametrization gradient" in {
 
-    val data = (0 until 100).map { i =>
-      (i.toDouble, 3.0 * i.toDouble + 1.0 + Random.nextGaussian() * 0.2)
-    }
-
     val inferred = new Model[Real] {
 
       val sgd = new SGD()
@@ -148,7 +145,7 @@ class VariableSpec extends FlatSpec {
 
         val Variable(mu, muNode) = muGuide.sample(Normal(0.0, 1.0))
 
-        val sigma: Real = Real(1.0)
+        val sigma = Real(1.0)
         val observation: Observation = observeImpl(Normal(mu, sigma), Real(2.0))
 
         Variable(mu, new BayesNode {
@@ -193,7 +190,6 @@ class VariableSpec extends FlatSpec {
     println(s"Avg mu: ${avg_mu} (${math.sqrt(var_mu)})")
   }
 
-
   it should "find max likelihood for linear regression without macros" in {
 
     val rng = new Random(123456789L)
@@ -227,13 +223,13 @@ class VariableSpec extends FlatSpec {
 
       override def sample(): Variable[(Real, Real, Real, Real)] = {
         val aVar = aGuide.sample(Normal(0.0, 1.0))
-        val a = aVar.get
+        val a = aVar.get.buffer
         val b1Var = b1Guide.sample(Normal(0.0, 1.0))
-        val b1 = b1Var.get
+        val b1 = b1Var.get.buffer
         val b2Var = b2Guide.sample(Normal(0.0, 1.0))
-        val b2 = b2Var.get
+        val b2 = b2Var.get.buffer
         val sDraw = sGuide.sample(Normal(0.0, 1.0))
-        val err = exp(sDraw.get)
+        val err = exp(sDraw.get).buffer
 
         val cb : Variable[((Double, Double), Double)] => Variable[Unit] = {
           entry =>
@@ -274,8 +270,6 @@ class VariableSpec extends FlatSpec {
 
         Variable((a, b1, b2, err), new BayesNode {
 
-          import scappla.Real._
-
           override val modelScore: Score = wrappedCb.nodes.map {
             _.modelScore
           }.reduce(DAdd)
@@ -288,9 +282,13 @@ class VariableSpec extends FlatSpec {
 
           override def complete(): Unit = {
             wrappedCb.complete()
+            err.complete()
             sDraw.node.complete()
+            b2.complete()
             b2Var.node.complete()
+            b1.complete()
             b1Var.node.complete()
+            a.complete()
             aVar.node.complete()
           }
         })

@@ -2,7 +2,6 @@ package scappla.guides
 
 import scappla._
 import scappla.distributions.Distribution
-import scappla.Real._
 
 case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
 
@@ -23,11 +22,11 @@ case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
 
     val node: BayesNode = new BayesNode {
 
-      override val modelScore: RealBuffer = {
+      override val modelScore: Buffered[Double] = {
         prior.observe(value).buffer
       }
 
-      override val guideScore: RealBuffer = {
+      override val guideScore: Buffered[Double] = {
         posterior.observe(value).buffer
       }
 
@@ -35,12 +34,12 @@ case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
       private var logq: Score = guideScore
 
       override def addObservation(score: Score): Unit = {
-        logp += score
+        logp = DAdd(logp, score)
       }
 
       override def addVariable(modelScore: Score, guideScore: Score): Unit = {
-        logp += modelScore
-        logq += guideScore
+        logp = DAdd(logp, modelScore)
+        logq = DAdd(logq, guideScore)
       }
 
       // compute ELBO and backprop gradients

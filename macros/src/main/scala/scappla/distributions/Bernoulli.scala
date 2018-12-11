@@ -5,9 +5,9 @@ import scappla.{Real, Score}
 
 import scala.util.Random
 
-import Real._
-
 case class Bernoulli(p: Real) extends Distribution[Boolean] {
+
+  import Real._
 
   override def sample(): Sample[Boolean] = {
     val value = Random.nextDouble() < p.v
@@ -25,7 +25,7 @@ case class Bernoulli(p: Real) extends Distribution[Boolean] {
   }
 
   override def observe(value: Boolean): Score = {
-    if (value) log(p) else log(-p + Real(1.0))
+    if (value) log(p) else log(Real(1.0) - p)
   }
 
 }

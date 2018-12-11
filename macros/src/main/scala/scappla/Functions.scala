@@ -72,7 +72,23 @@ object Functions {
 
     implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
       def apply(x: Real): Real =
-        Real(1.0) / (DAdd(exp(-x), Real(1.0)))
+        DDiv(Real(1.0), DAdd(exp(DNeg(x)), Real(1.0)))
+    }
+  }
+
+  object tanh extends Op1 {
+
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(x: Double): Double = math.tanh(x)
+    }
+
+    implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
+      def apply(x: Real): Real = {
+        // (e^x - e^-x) / (e^x + e^-x)
+        // = (1.0 - e^(-2x)) / (1 + e^(-2x))
+        // = 2.0 / (1 + e^(-2x)) - 1
+        DAdd(Real(-1.0), DDiv(Real(2.0), DAdd(exp(DNeg(DMul(Real(2.0), x))), Real(1.0))))
+      }
     }
   }
 
@@ -97,6 +113,24 @@ object Functions {
         override def toString: String = s"Pow($base, $exp)"
       }
     }
+  }
+
+  object sum {
+
+    trait Apply[-A] extends Function1[A, Real]
+
+    def apply[A](in: A)(implicit fn: Apply[A]): Real = {
+      fn.apply(in)
+    }
+
+    implicit val forDouble: Apply[Double] = new Apply[Double] {
+      def apply(value: Double): Real = Real(value)
+    }
+
+    implicit val forReal: Apply[Real] = new Apply[Real] {
+      override def apply(value: Score): Real = value
+    }
+
   }
 
 }

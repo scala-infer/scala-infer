@@ -1,52 +1,72 @@
 package scappla.distributions
 
-import scappla.Functions.{log, pow}
+import scappla.Functions.{log, pow, sum, tanh}
 import scappla._
 
 import scala.util.Random
 
+trait RandomGaussian[D] {
 
-case class Normal(mu: Real, sigma: Real) extends DDistribution {
+  def gaussian(): D
+}
+
+object RandomGaussian {
+
+  implicit val forDouble: RandomGaussian[Double] = new RandomGaussian[Double] {
+    override def gaussian(): Double = Random.nextGaussian()
+  }
+}
+
+case class Normal[D : Fractional : RandomGaussian](
+    mu: Expr[D],
+    sigma: Expr[D]
+)(implicit
+    numX: Fractional[Expr[D]],
+    tanDImpl: tanh.Apply[D, D],
+    logImpl: log.Apply[Expr[D], Expr[D]],
+    powImpl: pow.Apply[Expr[D], Expr[D], Expr[D]],
+    sumImpl: sum.Apply[Expr[D]]
+) extends DDistribution[D] {
   dist =>
 
-  override def sample(): Sample[Real] = new Sample[Real] {
+  type DD = Expr[D]
 
-    private val x: Real =
-      new Real {
-        private val e = Random.nextGaussian()
-        private val scale = 5.0
+  private val numD = implicitly[Fractional[D]]
 
-        override val v: Double = mu.v + sigma.v * e
+  override def sample(): Sample[DD] = new Sample[DD] {
+    import numD.mkNumericOps
+
+    private val x: DD =
+      new Expr[D] {
+
+        private val e: D = implicitly[RandomGaussian[D]].gaussian()
+        private val scale: D = numD.fromInt(5)
+
+        override val v: D = mu.v + sigma.v * e
 
         // backprop with inverse fisher, limiting updates by the standard deviation
-        override def dv(d: Double): Unit = {
-          val r = scale * math.tanh(d / (sigma.v * scale)) / sigma.v
+        override def dv(d: D): Unit = {
+          val r : D = scale * tanh(d / (sigma.v * scale)) / sigma.v
           mu.dv(r)
-          sigma.dv(e * r / 2)
+          sigma.dv(e * r / numD.fromInt(2))
         }
       }
 
-    override val get: RealBuffer = x.buffer
+    override val get: Buffered[D] = x.buffer
 
     override def score: Score = dist.observe(get)
 
     override def complete(): Unit = get.complete()
   }
 
-  val logSigma = new Real {
-    val upstream = log(sigma)
-
-    override def v: Double = ???
-
-    override def dv(v: Double): Unit = ???
+  override def observe(x: Expr[D]): Score = {
+    import numX.mkNumericOps
+    sum(-log(sigma) - pow((x - mu) / sigma, numX.fromInt(2)) / numX.fromInt(2))
   }
 
-  override def observe(x: Real): Score = {
-    -log(sigma) - pow((x - mu) / sigma, Real(2.0)) / Real(2.0)
-  }
-
-  override def reparam_score(x: Real): Score = {
-    -log(sigma).const - pow((x - mu.const) / sigma.const, Real(2.0)) / Real(2.0)
+  override def reparam_score(x: DD): Score = {
+    import numX.mkNumericOps
+    sum(-log(sigma).const - pow((x - mu.const) / sigma.const, numX.fromInt(2)) / numX.fromInt(2))
   }
 }
 

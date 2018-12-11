@@ -2,15 +2,15 @@ package scappla
 
 import scala.language.experimental.macros
 
-trait Real extends Differentiable[Double] {
+trait BaseReal extends Expr[Double] {
 
   override def buffer: RealBuffer = RealBuffer(this)
 
-  override def const: RealConstant = new RealConstant(v)
+  override def const: RealConstant = RealConstant(v)
 }
 
-case class RealBuffer(upstream: Differentiable[Double])
-    extends Real with Buffered[Double] {
+case class RealBuffer(upstream: Real)
+    extends BaseReal with Buffered[Double] {
 
   private var refCount: Int = 1
 
@@ -44,19 +44,21 @@ case class RealBuffer(upstream: Differentiable[Double])
   override def toString: String = s"Buf($upstream)"
 }
 
-class RealConstant(v: Double) extends Constant[Double](v) with Real {
+case class RealConstant(override val v: Double) extends Constant[Double](v) with BaseReal {
 
   override def toString: String = {
     s"Const(${"%.4f".format(v)})"
   }
 }
 
-abstract class LazyReal(private var value: Double) extends Real {
+abstract class LazyReal(private var value: Double) extends BaseReal {
 
   private var isset: Boolean = false
+  private var completed = 0
 
   final override def v: Double = {
     if (!isset) {
+      completed = 0
       value = _v
       isset = true
     }
@@ -64,6 +66,10 @@ abstract class LazyReal(private var value: Double) extends Real {
   }
 
   final override def dv(dx: Double): Unit = {
+    completed += 1
+    if (completed > 1) {
+      println(s"  Completed ${completed} times")
+    }
     _dv(dx)
     isset = false
   }
@@ -75,17 +81,7 @@ abstract class LazyReal(private var value: Double) extends Real {
   override def toString: String = s"Lazy($value)"
 }
 
-trait DFunction1 extends (Double => Double) {
-
-  def apply(in: Real): Real
-}
-
-trait DFunction2 extends ((Double, Double) => Double) {
-
-  def apply(in1: Real, in2: Real): Real
-}
-
-case class DNeg(up: Real) extends Real {
+case class DNeg(up: Real) extends BaseReal {
 
   override def v: Double =
     -up.v
@@ -148,7 +144,7 @@ case class DDiv(numer: Real, denom: Real) extends LazyReal(0.0) {
   override def toString: String = s"$numer / $denom"
 }
 
-class DVariable(var v: Double) extends Real {
+class DVariable(var v: Double) extends BaseReal {
 
   var grad = 0.0
 
@@ -160,23 +156,23 @@ class DVariable(var v: Double) extends Real {
 
 object Real {
 
-  implicit def apply(value: Double): Real = new RealConstant(value)
+  implicit def apply(value: Double): BaseReal = RealConstant(value)
 
   implicit val scalarOrdering: Ordering[Real] = Ordering.by(_.v)
 
   implicit val scalarNumeric: Fractional[Real] = new Fractional[Real] {
 
-    override def plus(x: Real, y: Real): Real = DAdd(x, y)
+    override def plus(x: Real, y: Real): BaseReal = DAdd(x, y)
 
-    override def minus(x: Real, y: Real): Real = DSub(x, y)
+    override def minus(x: Real, y: Real): BaseReal = DSub(x, y)
 
-    override def times(x: Real, y: Real): Real = DMul(x, y)
+    override def times(x: Real, y: Real): BaseReal = DMul(x, y)
 
-    override def div(x: Real, y: Real): Real = DDiv(x, y)
+    override def div(x: Real, y: Real): BaseReal = DDiv(x, y)
 
-    override def negate(x: Real): Real = DNeg(x)
+    override def negate(x: Real): BaseReal = DNeg(x)
 
-    override def fromInt(x: Int): Real = Real(x)
+    override def fromInt(x: Int): BaseReal = Real(x)
 
     override def toInt(x: Real): Int = x.v.toInt
 

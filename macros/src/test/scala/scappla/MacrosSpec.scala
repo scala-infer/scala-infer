@@ -2,7 +2,7 @@ package scappla
 
 import org.scalatest.FlatSpec
 import scappla.distributions.{Bernoulli, Normal}
-import scappla.guides.{Guide, BBVIGuide, ReparamGuide}
+import scappla.guides.{BBVIGuide, ReparamGuide}
 import scappla.optimization.{SGD, SGDMomentum}
 
 import scala.util.Random
