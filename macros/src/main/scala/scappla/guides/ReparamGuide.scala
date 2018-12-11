@@ -3,19 +3,19 @@ package scappla.guides
 import scappla._
 import scappla.distributions.{DDistribution, Distribution}
 
-case class ReparamGuide(posterior: DDistribution) extends Guide[Real] {
+case class ReparamGuide[D](posterior: DDistribution[D]) extends Guide[Expr[D]] {
 
-  def sample(prior: Distribution[Real]): Variable[Real] = {
+  def sample(prior: Distribution[Expr[D]]): Variable[Expr[D]] = {
 
     val sample = posterior.sample()
-    val value: Real = sample.get
+    val value: Expr[D] = sample.get
 
     val node = new BayesNode {
-      override val modelScore: RealBuffer = {
+      override val modelScore: Buffered[Double] = {
         prior.observe(value).buffer
       }
 
-      override val guideScore: RealBuffer = {
+      override val guideScore: Buffered[Double] = {
         posterior.reparam_score(value).buffer
       }
 

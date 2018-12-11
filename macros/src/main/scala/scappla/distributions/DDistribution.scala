@@ -1,8 +1,8 @@
 package scappla.distributions
 
-import scappla.{Real, Score}
+import scappla.{Expr, Score}
 
-trait DDistribution extends Distribution[Real] {
+trait DDistribution[D] extends Distribution[Expr[D]] {
 
-    def reparam_score(a: Real): Score
-  }
+  def reparam_score(a: Expr[D]): Score
+}
