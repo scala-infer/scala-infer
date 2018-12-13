@@ -15,7 +15,7 @@ class VariableSpec extends FlatSpec {
   it should "recover prior" in {
     val inferred = new Model[Boolean] {
 
-      val optimizer = new SGD()
+      val optimizer = new Adam()
       // p = 1 / (1 + exp(-x)) => x = -log(1 / p - 1)
       val p_guide = sigmoid(optimizer.param(0.0, 10.0))
       //      val p_guide = optimizer.param(0.4)
@@ -43,7 +43,7 @@ class VariableSpec extends FlatSpec {
 
   it should "allow a discrete model to be executed" in {
 
-    val sgd = new SGD()
+    val sgd = new Adam()
     val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
     val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
@@ -132,7 +132,7 @@ class VariableSpec extends FlatSpec {
 
     val inferred = new Model[Real] {
 
-      val sgd = new SGD()
+      val sgd = new Adam()
 
       val muGuide = ReparamGuide(Normal(
         sgd.param(0.0, 1.0),
