@@ -1,6 +1,6 @@
 package scappla.distributions
 
-import scappla.Functions.{log, pow, sum, tanh}
+import scappla.Functions.{log, pow, sum}
 import scappla._
 
 import scala.util.Random
@@ -22,7 +22,6 @@ case class Normal[D : Fractional : RandomGaussian](
     sigma: Expr[D]
 )(implicit
     numX: Fractional[Expr[D]],
-    tanDImpl: tanh.Apply[D, D],
     logImpl: log.Apply[Expr[D], Expr[D]],
     powImpl: pow.Apply[Expr[D], Expr[D], Expr[D]],
     sumImpl: sum.Apply[Expr[D]]
@@ -40,13 +39,12 @@ case class Normal[D : Fractional : RandomGaussian](
       new Expr[D] {
 
         private val e: D = implicitly[RandomGaussian[D]].gaussian()
-        private val scale: D = numD.fromInt(5)
 
         override val v: D = mu.v + sigma.v * e
 
         // backprop with inverse fisher, limiting updates by the standard deviation
         override def dv(d: D): Unit = {
-          val r : D = scale * tanh(d / (sigma.v * scale)) / sigma.v
+          val r : D = d / (sigma.v * sigma.v)
           mu.dv(r)
           sigma.dv(e * r / numD.fromInt(2))
         }

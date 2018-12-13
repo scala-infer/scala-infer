@@ -70,7 +70,7 @@ class MacrosSpec extends FlatSpec {
   }
 
   it should "reparametrize doubles" in {
-    val sgd = new SGD()
+    val sgd = new Adam()
     val muGuide = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
 
     val model: Model[Real] = infer {
