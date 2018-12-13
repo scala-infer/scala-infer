@@ -3,7 +3,7 @@ package scappla
 import org.scalatest.FlatSpec
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, ReparamGuide}
-import scappla.optimization.{SGD, SGDMomentum}
+import scappla.optimization.{Adam, SGD, SGDMomentum}
 
 import scala.util.Random
 
@@ -14,7 +14,8 @@ class MacrosSpec extends FlatSpec {
 
   it should "allow a model to be specified" in {
 
-    val sgd = new SGD()
+//    val sgd = new SGD()
+    val sgd = new Adam()
     val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
     val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
@@ -110,7 +111,8 @@ class MacrosSpec extends FlatSpec {
       }
     }
 
-    val sgd = new SGDMomentum(mass = 100)
+//    val sgd = new SGDMomentum(mass = 100)
+    val sgd = new Adam()
 
     def normalParams(): (Real, Real) = {
       (sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
@@ -184,10 +186,11 @@ class MacrosSpec extends FlatSpec {
       }
     }
 
-    val sgd = new SGDMomentum(mass = 100)
+//    val sgd = new SGDMomentum(mass = 100)
+    val sgd = new Adam()
     val pPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
-    val mu1Post = ReparamGuide(Normal(sgd.param(-1.0, 1.0), exp(sgd.param(0.0, 1.0))))
-    val mu2Post = ReparamGuide(Normal(sgd.param(1.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val mu1Post = ReparamGuide(Normal(sgd.param(-1.0, 1.0), exp(sgd.param(-1.0, 1.0))))
+    val mu2Post = ReparamGuide(Normal(sgd.param(1.0, 1.0), exp(sgd.param(-1.0, 1.0))))
     val sigmaPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
 
     val dataWithDist = data.map { datum =>

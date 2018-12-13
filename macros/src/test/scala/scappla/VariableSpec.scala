@@ -3,7 +3,7 @@ package scappla
 import org.scalatest.FlatSpec
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, ReparamGuide}
-import scappla.optimization.{SGD, SGDMomentum}
+import scappla.optimization.{Adam, SGD, SGDMomentum}
 
 import scala.util.Random
 
@@ -208,7 +208,8 @@ class VariableSpec extends FlatSpec {
     val lr = 1000.0 / (data.size + 1)
 
     // find MAP
-    val sgd = new SGDMomentum(mass = 100)
+//    val sgd = new SGDMomentum(mass = 100)
+    val sgd = new Adam()
     val aPost = Normal(sgd.param(0.0, lr, Some("a-m")), exp(sgd.param(0.0, lr, Some("a-s"))))
     val b1Post = Normal(sgd.param(0.0, lr, Some("b1-m")), exp(sgd.param(0.0, lr, Some("b1-s"))))
     val b2Post = Normal(sgd.param(0.0, lr, Some("b2-m")), exp(sgd.param(0.0, lr, Some("b2-s"))))
