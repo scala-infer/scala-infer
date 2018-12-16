@@ -6,16 +6,10 @@ import org.nd4j.linalg.ops.transforms.Transforms
 
 object Nd4jTensor {
 
-  implicit val ops : DataOps[INDArray] = new DataOps[INDArray] {
+  implicit val ops: DataOps[INDArray] = new DataOps[INDArray] {
 
-    override def zeros(dims: Int*): INDArray =
-      Nd4j.create(dims: _*)
-
-    override def set(a: Array[Float], dims: Int*): INDArray =
-      Nd4j.create(a, dims.toArray)
-
-    override def get(a: INDArray): Array[Float] =
-      a.data().asFloat()
+    override def zeros(shape: Int*): INDArray =
+      Nd4j.create(shape: _*)
 
     // elementwise operations
 
@@ -42,20 +36,20 @@ object Nd4jTensor {
 
     // reshaping operations
 
-    override def sum(a: INDArray, dim: Int): INDArray = {
-      val oldShape = a.shape().toSeq
+    override def sum(a: INDArray, dim: Int, shape: Int*): INDArray = {
+      val oldShape = shape.toSeq
       val result = a.sum(dim)
       val newShape = oldShape.take(dim) ++ oldShape.drop(dim + 1)
-      val finalResult = result.reshape(newShape: _*)
+      val finalResult = result.reshape(newShape.toArray)
       finalResult
     }
 
-    override def broadcast(a: INDArray, dimIndex: Int, dimSize: Int): INDArray = {
-      val oldShape = a.shape().toSeq
-      val newTmp: Seq[Long] = (oldShape.take(dimIndex) :+ 1L) ++ oldShape.drop(dimIndex)
-      val reshaped = a.reshape(newTmp.toArray: _*)
-      val newShape: Seq[Long] = (oldShape.take(dimIndex) :+ dimSize.toLong) ++ oldShape.drop(dimIndex)
-      reshaped.broadcast(newShape.toArray: _*)
+    override def broadcast(a: INDArray, dimIndex: Int, dimSize: Int, shape: Int*): INDArray = {
+      val oldShape = shape.toSeq
+      val newTmp: Seq[Int] = (oldShape.take(dimIndex) :+ 1) ++ oldShape.drop(dimIndex)
+      val reshaped = a.reshape(newTmp.toArray)
+      val newShape: Seq[Int] = (oldShape.take(dimIndex) :+ dimSize) ++ oldShape.drop(dimIndex)
+      reshaped.broadcast(newShape.map { _.toLong }.toArray: _*)
     }
   }
 
