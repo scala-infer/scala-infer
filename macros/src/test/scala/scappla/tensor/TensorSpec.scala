@@ -1,6 +1,7 @@
 package scappla.tensor
 
 import org.nd4j.linalg.api.ndarray.INDArray
+import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
 import scappla.Functions.log
 
@@ -12,44 +13,49 @@ class TensorSpec extends FlatSpec {
 
   case class Other(size: Int) extends Dim[Other]
 
-  implicit val nd4jTensor = Nd4jTensor.ops
-
   it should "concatenate dimensions" in {
-
     val shape = Other(2) :#: Input(3) :#: Batch(2)
 
-    val batch = Tensor(shape, Array(
+    val data = Array(
       0f, 1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10f, 11f
-    ))
+    )
+
+    val batch = TensorExpr(shape, data)
     val logBatch = log(batch)
-    print(s"Result: ${logBatch.collect.mkString(",")}")
+    print(s"Result: ${logBatch.v.data.mkString(",")}")
   }
 
   it should "sum along dimension" in {
     val shape = Batch(2)
 
-    val data = Tensor(shape, Array(0.0f, 1.0f))
-    val sum = Tensor.sum(data)
-    val result = sum.collect(0)
+    val data = Array(0.0f, 1.0f)
 
-    print(s"Result ${result}")
+    val tensor = TensorExpr(shape, data)
+    val sum = TensorExpr.sum(tensor)
+    val result = sum.v.data(0)
+
+    print(s"Result $result")
   }
 
   it should "backprop gradient" in {
     val shape = Batch(2)
 
-    val data = Tensor(shape, Array(1f, 2f))
+    val data = Array(1f, 2f)
+
+    val tensor = TensorExpr(shape, data)
     var update: Option[Array[Float]] = None
 
-    val param = Tensor.param(data,
-      (gradient: Tensor[Batch, INDArray]) => {
-        val result = data.plus(gradient)
-        update = Some(result.collect)
-        result
+    val param = TensorExpr.param(
+      Tensor(shape, data),
+      (gradient: Tensor[Batch, Array[Float]]) => {
+        val result = DataOps.arrayOps.plus(data, gradient.data)
+        update = Some(result)
+        Tensor(shape, result)
       }
     )
 
-    Tensor.sum(param).backward(Array(1f))
+    TensorExpr.sum(param)
+        .dv(Tensor(Scalar, Array(1f)))
 
     val dataArray = update.get
     assert(dataArray(0) == 2f)
@@ -59,19 +65,21 @@ class TensorSpec extends FlatSpec {
   it should "buffer backward gradients" in {
     val shape = Batch(2)
 
-    val data = Tensor(shape, Array(1f, 2f))
+    val data = Array(1f, 2f)
+    val tensor = Tensor(shape, data)
     var update: Option[Array[Float]] = None
 
-    val param = Tensor.param(data,
-      (gradient: Tensor[Batch, INDArray]) => {
-        val result = data.plus(gradient)
-        update = Some(result.collect)
-        result
+    val param = TensorExpr.param(tensor,
+      (gradient: Tensor[Batch, Array[Float]]) => {
+        val result = DataOps.arrayOps.plus(data, gradient.data)
+        update = Some(result)
+        Tensor(shape, result)
       }
     )
 
-    val buffer = param.buffer()
-    Tensor.sum(buffer).backward(Array(1f))
+    val buffer = param.buffer
+    TensorExpr.sum(buffer)
+        .dv(Tensor(Scalar, Array(1f)))
 
     assert(update.isEmpty)
 
@@ -80,6 +88,23 @@ class TensorSpec extends FlatSpec {
     val dataArray = update.get
     assert(dataArray(0) == 2f)
     assert(dataArray(1) == 3f)
+  }
+
+  it should "work with nd4j as well" in {
+    implicit val nd4jTensor = Nd4jTensor.ops
+
+    val shape = Batch(2)
+
+    val data = Nd4j.create(
+      Array(0.0f, 1.0f),
+      shape.sizes.toArray
+    )
+
+    val tensor = TensorExpr(shape, data)
+    val sum = TensorExpr.sum(tensor)
+    val result = sum.v.data.data().asFloat()(0)
+
+    assert(result == 1f)
   }
 
 }
