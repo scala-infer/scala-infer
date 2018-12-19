@@ -4,7 +4,7 @@ trait DataOps[D] {
 
   // (de)constructing values
 
-  def zeros(dims: Int*): D
+  def fill(value: Float, dims: Int*): D
 
   // element-wise operations
 
@@ -24,6 +24,8 @@ trait DataOps[D] {
 
   // shape-affecting operations
 
+  def sumAll(a: D): Float
+
   def sum(a: D, dim: Int, shape: Int*): D
 
   def broadcast(a: D, dimIndex: Int, dimSize: Int, shape: Int*): D
@@ -33,8 +35,8 @@ object DataOps {
 
   implicit val arrayOps = new DataOps[Array[Float]] {
 
-    override def zeros(shape: Int*): Array[Float] =
-      Array.fill(shape.product)(0f)
+    override def fill(value: Float, shape: Int*): Array[Float] =
+      Array.fill(shape.product)(value)
 
     override def plus(a: Array[Float], b: Array[Float]): Array[Float] = {
       a.zip(b).map {
@@ -115,6 +117,10 @@ object DataOps {
         }
       }
       output
+    }
+
+    override def sumAll(a: Array[Float]): Float = {
+      a.sum
     }
   }
 }

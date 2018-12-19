@@ -67,11 +67,3 @@ case class Normal[D : Fractional : RandomGaussian](
     sum(-log(sigma).const - pow((x - mu.const) / sigma.const, numX.fromInt(2)) / numX.fromInt(2))
   }
 }
-
-/*
-object Normal {
-
-  def apply(mu: Double, sigma: Double): Normal =
-    Normal(Real(mu), Real(sigma))
-}
-*/

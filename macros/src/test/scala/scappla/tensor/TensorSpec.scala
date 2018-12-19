@@ -31,7 +31,7 @@ class TensorSpec extends FlatSpec {
     val data = Array(0.0f, 1.0f)
 
     val tensor = TensorExpr(shape, data)
-    val sum = TensorExpr.sum(tensor)
+    val sum = TensorExpr.sumAlong(tensor)
     val result = sum.v.data(0)
 
     print(s"Result $result")
@@ -54,7 +54,7 @@ class TensorSpec extends FlatSpec {
       }
     )
 
-    TensorExpr.sum(param)
+    TensorExpr.sumAlong(param)
         .dv(Tensor(Scalar, Array(1f)))
 
     val dataArray = update.get
@@ -78,7 +78,7 @@ class TensorSpec extends FlatSpec {
     )
 
     val buffer = param.buffer
-    TensorExpr.sum(buffer)
+    TensorExpr.sumAlong(buffer)
         .dv(Tensor(Scalar, Array(1f)))
 
     assert(update.isEmpty)
@@ -101,7 +101,7 @@ class TensorSpec extends FlatSpec {
     )
 
     val tensor = TensorExpr(shape, data)
-    val sum = TensorExpr.sum(tensor)
+    val sum = TensorExpr.sumAlong(tensor)
     val result = sum.v.data.data().asFloat()(0)
 
     assert(result == 1f)

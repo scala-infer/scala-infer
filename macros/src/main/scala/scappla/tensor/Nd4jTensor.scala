@@ -8,8 +8,8 @@ object Nd4jTensor {
 
   implicit val ops: DataOps[INDArray] = new DataOps[INDArray] {
 
-    override def zeros(shape: Int*): INDArray =
-      Nd4j.create(shape: _*)
+    override def fill(value: Float, shape: Int*): INDArray =
+      Nd4j.valueArrayOf(shape.toArray, value)
 
     // elementwise operations
 
@@ -50,6 +50,10 @@ object Nd4jTensor {
       val reshaped = a.reshape(newTmp.toArray)
       val newShape: Seq[Int] = (oldShape.take(dimIndex) :+ dimSize) ++ oldShape.drop(dimIndex)
       reshaped.broadcast(newShape.map { _.toLong }.toArray: _*)
+    }
+
+    override def sumAll(a: INDArray): Float = {
+      a.sumNumber().floatValue()
     }
   }
 
