@@ -1,7 +1,7 @@
 package scappla.tensor
 
-import scappla.Functions.{exp, log}
-import scappla.{Buffered, Expr, Functions}
+import scappla.Functions.{exp, log, sum}
+import scappla.{Buffered, Expr, Functions, Real}
 import shapeless.Nat
 
 
@@ -209,9 +209,23 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
   }
 }
 
+case class TSumAll[S <: Shape, D: DataOps](
+    upstream: TensorExpr[S, D]
+) extends Real {
+
+  override val v: Double = {
+    upstream.v.dataOps.sumAll(upstream.v.data)
+  }
+
+  override def dv(v: Double): Unit = {
+    val shape = upstream.v.shape
+    upstream.dv(Tensor(shape, upstream.v.dataOps.fill(v.toFloat, shape.sizes: _*)))
+  }
+}
+
 object TensorExpr {
 
-  def sum[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: DataOps](
+  def sumAlong[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: DataOps](
       tensor: TensorExpr[S, X]
   )(implicit
       indexOf: IndexOf.Aux[S, D, I],
@@ -238,6 +252,11 @@ object TensorExpr {
   implicit def expTensor[S <: Shape, D: DataOps]: exp.Apply[TensorExpr[S, D], TensorExpr[S, D]] =
     new Functions.exp.Apply[TensorExpr[S, D], TensorExpr[S, D]] {
       def apply(in: TensorExpr[S, D]): TensorExpr[S, D] = TExp(in)
+    }
+
+  implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[TensorExpr[S, D]] =
+    new sum.Apply[TensorExpr[S, D]] {
+      override def apply(in: TensorExpr[S, D]): Real = TSumAll(in)
     }
 
 }
