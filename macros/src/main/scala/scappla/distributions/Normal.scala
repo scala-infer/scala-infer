@@ -28,14 +28,12 @@ case class Normal[D : Fractional : RandomGaussian](
 ) extends DDistribution[D] {
   dist =>
 
-  type DD = Expr[D]
-
   private val numD = implicitly[Fractional[D]]
 
-  override def sample(): Sample[DD] = new Sample[DD] {
+  override def sample(): Sample[Expr[D]] = new Sample[Expr[D]] {
     import numD.mkNumericOps
 
-    private val x: DD =
+    private val x: Expr[D] =
       new Expr[D] {
 
         private val e: D = implicitly[RandomGaussian[D]].gaussian()
@@ -62,7 +60,7 @@ case class Normal[D : Fractional : RandomGaussian](
     sum(-log(sigma) - pow((x - mu) / sigma, numX.fromInt(2)) / numX.fromInt(2))
   }
 
-  override def reparam_score(x: DD): Score = {
+  override def reparam_score(x: Expr[D]): Score = {
     import numX.mkNumericOps
     sum(-log(sigma).const - pow((x - mu.const) / sigma.const, numX.fromInt(2)) / numX.fromInt(2))
   }

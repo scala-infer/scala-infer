@@ -4,9 +4,9 @@ import scappla.Score
 
 trait Sample[A] {
 
-    def get: A
+  def get: A
 
-    def score: Score
+  def score: Score
 
-    def complete(): Unit
-  }
+  def complete(): Unit
+}

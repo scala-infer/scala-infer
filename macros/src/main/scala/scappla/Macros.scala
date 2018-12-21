@@ -167,44 +167,52 @@ class Macros(val c: blackbox.Context) {
     }
 
     def build(scope: Scope, result: RichTree, tpe: Type): RichTree = {
-      val tree = q"""Variable[${tpe.widen}](${result.tree}, new BayesNode {
+      val tree = if (obs.isEmpty
+          && vars.isEmpty
+          && completeable.isEmpty
+          && result.vars.forall(scope.isPreDefined)
+      ) {
+        q"""Variable[${tpe.widen}](${result.tree}, scappla.ConstantNode)"""
+      } else {
+        q"""Variable[${tpe.widen}](${result.tree}, new BayesNode {
 
           import scappla.Real._
 
           val modelScore: Score = {${
-        (obs.map { t =>
-          q"$t.score": Tree
-        } ++ vars.map { t =>
-          q"$t.node.modelScore": Tree
-        }).reduceOption { (a, b) => q"DAdd($a, $b)" }
-            .getOrElse(q"Real.apply(0.0)")
-      }}
+          (obs.map { t =>
+            q"$t.score": Tree
+          } ++ vars.map { t =>
+            q"$t.node.modelScore": Tree
+          }).reduceOption { (a, b) => q"DAdd($a, $b)" }
+              .getOrElse(q"Real.apply(0.0)")
+          }}
 
           val guideScore: Score = {${
-        vars.map { t =>
-          q"$t.node.guideScore": Tree
-        }.reduceOption { (a, b) => q"DAdd($a, $b)" }
-            .getOrElse(q"Real.apply(0.0)")
-      }}
+          vars.map { t =>
+            q"$t.node.guideScore": Tree
+          }.reduceOption { (a, b) => q"DAdd($a, $b)" }
+              .getOrElse(q"Real.apply(0.0)")
+          }}
 
           def addObservation(score: Score) = {..${
-        result.vars.filter(!scope.isPreDefined(_)).toSeq.map { lv =>
-          q"$lv.node.addObservation(score)"
-        }
-      }}
+          result.vars.filter(!scope.isPreDefined(_)).toSeq.map { lv =>
+            q"$lv.node.addObservation(score)"
+          }
+          }}
 
           def addVariable(modelScore: Score, guideScore: Score) = {..${
-        result.vars.filter(!scope.isPreDefined(_)).toSeq.map {lv =>
-          q"$lv.node.addVariable(modelScore, guideScore)"
-        }
-      }}
+          result.vars.filter(!scope.isPreDefined(_)).toSeq.map { lv =>
+            q"$lv.node.addVariable(modelScore, guideScore)"
+          }
+          }}
 
           def complete() = {..${
-        completeable.reverse.map { c =>
-          q"$c.complete()"
-        }
-      }}
-      })"""
+          completeable.reverse.map { c =>
+            q"$c.complete()"
+          }
+          }}
+        })"""
+      }
       RichTree(tree, Set.empty)
     }
   }
@@ -272,9 +280,9 @@ class Macros(val c: blackbox.Context) {
           val varExpr = q"val $varName = $varDef"
           Seq(RichTree(varExpr, vars)) ++
               (if (expr.tpe =:= definitions.UnitTpe) {
-                Seq.empty
+                fn(RichTree(EmptyTree))
               } else {
-                Seq(RichTree(q"$varName.get", Set(varName)))
+                fn(RichTree(q"$varName.get", Set(varName)))
               })
 
         case q"if ($cond) $tExpr else $fExpr" =>
@@ -604,13 +612,17 @@ class Macros(val c: blackbox.Context) {
     }
 
     def visitSubExpr(tExpr: Tree) = {
+      println(s"VISITING SUB EXPR ${showCode(tExpr)} (${tExpr.tpe})")
       val newScope = scope.push()
       val subVisitor = new BlockVisitor(newScope)
       val newSubStmts = if (tExpr.tpe =:= definitions.UnitTpe) {
+        println(s"   UNIT TPE EXPR (${tExpr.tpe})")
         subVisitor.visitStmt(tExpr) :+
             subVisitor.builder.build(newScope, RichTree(EmptyTree), definitions.UnitTpe)
       } else {
+        println(s"   NON UNIT TPE EXPR (${tExpr.tpe})")
         subVisitor.visitExpr(tExpr) { rtLast =>
+            println(s"LAST EXPR IN SUB EXPR: ${showCode(rtLast.tree)}")
           Seq(subVisitor.builder.build(newScope, rtLast, tExpr.tpe))
         }
       }
@@ -637,6 +649,7 @@ class Macros(val c: blackbox.Context) {
       if (exprs.size == 1) {
         exprs.head
       } else {
+        println(s"TO EXPR VARS ${exprs.flatMap(_.vars).map{ _.toString}.mkString(",")}")
         RichTree(
           q"{ ..${exprs.map(_.tree)} }",
           exprs.flatMap(_.vars).toSet
