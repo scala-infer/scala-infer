@@ -4,7 +4,7 @@ import scappla.Score
 
 trait Distribution[A] {
 
-    def sample(): Sample[A]
+  def sample(): A
 
-    def observe(a: A): Score
-  }
+  def observe(a: A): Score
+}

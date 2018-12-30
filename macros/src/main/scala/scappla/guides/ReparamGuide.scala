@@ -7,8 +7,7 @@ case class ReparamGuide[D](posterior: DDistribution[D]) extends Guide[Expr[D]] {
 
   def sample(prior: Distribution[Expr[D]]): Variable[Expr[D]] = {
 
-    val sample = posterior.sample()
-    val value: Expr[D] = sample.get
+    val value = posterior.sample()
 
     val node = new BayesNode {
       override val modelScore: Buffered[Double] = {
@@ -30,7 +29,7 @@ case class ReparamGuide[D](posterior: DDistribution[D]) extends Guide[Expr[D]] {
         guideScore.dv(-1.0)
         //        println("completing guide score")
         guideScore.complete()
-        sample.complete()
+        value.complete()
       }
     }
 

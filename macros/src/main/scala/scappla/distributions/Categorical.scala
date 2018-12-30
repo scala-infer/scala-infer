@@ -11,7 +11,7 @@ case class Categorical(p: Seq[Real]) extends Distribution[Int] {
 
   private val total = p.reduce(DAdd)
 
-  override def sample(): Sample[Int] = {
+  override def sample(): Int = {
     val draw = Random.nextDouble() * total.v
     val (_, index) = p.zipWithIndex.foldLeft((draw, 0)) {
       case ((curDraw, curIdx), (p_i, idx)) =>
@@ -22,16 +22,7 @@ case class Categorical(p: Seq[Real]) extends Distribution[Int] {
           (newDraw, curIdx)
         }
     }
-    new Sample[Int] {
-
-      override val get: Int =
-        index
-
-      override val score: Score =
-        Categorical.this.observe(get)
-
-      override def complete(): Unit = {}
-    }
+    index
   }
 
   override def observe(value: Int): Score = {
