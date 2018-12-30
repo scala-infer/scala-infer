@@ -17,8 +17,7 @@ case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
   // use BBVI (with Rao Blackwellization)
   def sample(prior: Distribution[A]): Variable[A] = {
 
-    val sample = posterior.sample()
-    val value: A = sample.get
+    val value: A = posterior.sample()
 
     val node: BayesNode = new BayesNode {
 

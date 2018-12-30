@@ -9,19 +9,8 @@ case class Bernoulli(p: Real) extends Distribution[Boolean] {
 
   import Real._
 
-  override def sample(): Sample[Boolean] = {
-    val value = Random.nextDouble() < p.v
-    //      println(s"Sample: $value (${p.get.v})")
-    new Sample[Boolean] {
-
-      override val get: Boolean =
-        value
-
-      override val score: Score =
-        Bernoulli.this.observe(get)
-
-      override def complete(): Unit = {}
-    }
+  override def sample(): Boolean = {
+    Random.nextDouble() < p.v
   }
 
   override def observe(value: Boolean): Score = {

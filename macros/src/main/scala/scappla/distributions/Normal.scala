@@ -17,7 +17,7 @@ object RandomGaussian {
   }
 }
 
-case class Normal[D : Fractional : RandomGaussian](
+case class Normal[D: Fractional : RandomGaussian](
     mu: Expr[D],
     sigma: Expr[D]
 )(implicit
@@ -30,30 +30,21 @@ case class Normal[D : Fractional : RandomGaussian](
 
   private val numD = implicitly[Fractional[D]]
 
-  override def sample(): Sample[Expr[D]] = new Sample[Expr[D]] {
+  override def sample(): Buffered[D] = new Expr[D] {
+
     import numD.mkNumericOps
 
-    private val x: Expr[D] =
-      new Expr[D] {
+    private val e: D = implicitly[RandomGaussian[D]].gaussian()
 
-        private val e: D = implicitly[RandomGaussian[D]].gaussian()
+    override val v: D = mu.v + sigma.v * e
 
-        override val v: D = mu.v + sigma.v * e
-
-        // backprop with inverse fisher, limiting updates by the standard deviation
-        override def dv(d: D): Unit = {
-          val r : D = d / (sigma.v * sigma.v)
-          mu.dv(r)
-          sigma.dv(e * r / numD.fromInt(2))
-        }
-      }
-
-    override val get: Buffered[D] = x.buffer
-
-    override def score: Score = dist.observe(get)
-
-    override def complete(): Unit = get.complete()
-  }
+    // backprop with inverse fisher, limiting updates by the standard deviation
+    override def dv(d: D): Unit = {
+      val r: D = d / (sigma.v * sigma.v)
+      mu.dv(r)
+      sigma.dv(e * r / numD.fromInt(2))
+    }
+  }.buffer
 
   override def observe(x: Expr[D]): Score = {
     import numX.mkNumericOps
