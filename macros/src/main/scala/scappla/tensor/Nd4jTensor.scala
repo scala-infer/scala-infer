@@ -11,6 +11,9 @@ object Nd4jTensor {
     override def fill(value: Float, shape: Int*): INDArray =
       Nd4j.valueArrayOf(shape.toArray, value)
 
+    override def gaussian(shape: Int*): INDArray =
+      Nd4j.rand(shape.toArray)
+
     // elementwise operations
 
     override def plus(a: INDArray, b: INDArray): INDArray =

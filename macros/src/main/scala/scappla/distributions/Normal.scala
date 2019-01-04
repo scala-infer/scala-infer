@@ -1,58 +1,51 @@
 package scappla.distributions
 
-import scappla.Functions.{log, pow, sum}
+import scappla.Functions.{log, sum}
 import scappla._
 
 import scala.util.Random
 
-trait RandomGaussian[D] {
+trait RandomGaussian[D, S] {
 
-  def gaussian(): D
+  def gaussian(shape: S): D
 }
 
 object RandomGaussian {
 
-  implicit val forDouble: RandomGaussian[Double] = new RandomGaussian[Double] {
-    override def gaussian(): Double = Random.nextGaussian()
-  }
+  implicit val forDouble: RandomGaussian[Double, DoubleShape] =
+    new RandomGaussian[Double, DoubleShape] {
+      override def gaussian(shape: DoubleShape): Double = Random.nextGaussian()
+    }
 }
 
-case class Normal[D: Fractional : RandomGaussian](
+case class Normal[D, S](
     mu: Expr[D],
     sigma: Expr[D]
 )(implicit
-    numX: Fractional[Expr[D]],
+    shapeOf: ShapeOf[D, S],
+    rng: RandomGaussian[D, S],
+    numX: LiftedFractional[D, S],
     logImpl: log.Apply[Expr[D], Expr[D]],
-    powImpl: pow.Apply[Expr[D], Expr[D], Expr[D]],
     sumImpl: sum.Apply[Expr[D]]
 ) extends DDistribution[D] {
-  dist =>
 
-  private val numD = implicitly[Fractional[D]]
+  import numX.mkNumericOps
 
-  override def sample(): Buffered[D] = new Expr[D] {
-
-    import numD.mkNumericOps
-
-    private val e: D = implicitly[RandomGaussian[D]].gaussian()
-
-    override val v: D = mu.v + sigma.v * e
-
-    // backprop with inverse fisher, limiting updates by the standard deviation
-    override def dv(d: D): Unit = {
-      val r: D = d / (sigma.v * sigma.v)
-      mu.dv(r)
-      sigma.dv(e * r / numD.fromInt(2))
-    }
-  }.buffer
+  override def sample(): Buffered[D] = {
+    val shape = shapeOf(sigma.v)
+    val e = numX.const(rng.gaussian(shape))
+    (mu + e * sigma).buffer
+  }
 
   override def observe(x: Expr[D]): Score = {
-    import numX.mkNumericOps
-    sum(-log(sigma) - pow((x - mu) / sigma, numX.fromInt(2)) / numX.fromInt(2))
+    val shape = shapeOf(sigma.v)
+    val e = (x - mu) / sigma
+    sum(-log(sigma) - e * e / numX.fromInt(2, shape))
   }
 
   override def reparam_score(x: Expr[D]): Score = {
-    import numX.mkNumericOps
-    sum(-log(sigma).const - pow((x - mu.const) / sigma.const, numX.fromInt(2)) / numX.fromInt(2))
+    val shape = shapeOf(sigma.v)
+    val e = (x - mu.const) / sigma.const
+    sum(-log(sigma).const - e * e / numX.fromInt(2, shape))
   }
 }
