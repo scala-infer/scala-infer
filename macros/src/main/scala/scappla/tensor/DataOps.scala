@@ -1,10 +1,14 @@
 package scappla.tensor
 
+import scala.util.Random
+
 trait DataOps[D] {
 
   // (de)constructing values
 
   def fill(value: Float, dims: Int*): D
+
+  def gaussian(shape: Int*): D
 
   // element-wise operations
 
@@ -37,6 +41,10 @@ object DataOps {
 
     override def fill(value: Float, shape: Int*): Array[Float] =
       Array.fill(shape.product)(value)
+
+    override def gaussian(shape: Int*): Array[Float] = {
+      Array.fill(shape.product)(Random.nextGaussian().toFloat)
+    }
 
     override def plus(a: Array[Float], b: Array[Float]): Array[Float] = {
       a.zip(b).map {

@@ -160,33 +160,45 @@ object Real {
 
   implicit val scalarOrdering: Ordering[Real] = Ordering.by(_.v)
 
-  implicit val scalarNumeric: Fractional[Real] = new Fractional[Real] {
+  implicit val scalarNumeric: LiftedFractional[Double, DoubleShape] =
+    new LiftedFractional[Double, DoubleShape] {
 
-    override def plus(x: Real, y: Real): BaseReal = DAdd(x, y)
+      // Ordering
 
-    override def minus(x: Real, y: Real): BaseReal = DSub(x, y)
+      override def compare(x: Real, y: Real): Int = {
+        x.v.compareTo(y.v)
+      }
 
-    override def times(x: Real, y: Real): BaseReal = DMul(x, y)
+      // Numeric
 
-    override def div(x: Real, y: Real): BaseReal = DDiv(x, y)
+      override def plus(x: Real, y: Real): BaseReal = DAdd(x, y)
 
-    override def negate(x: Real): BaseReal = DNeg(x)
+      override def minus(x: Real, y: Real): BaseReal = DSub(x, y)
 
-    override def fromInt(x: Int): BaseReal = Real(x)
+      override def times(x: Real, y: Real): BaseReal = DMul(x, y)
 
-    override def toInt(x: Real): Int = x.v.toInt
+      override def negate(x: Real): BaseReal = DNeg(x)
 
-    override def toLong(x: Real): Long = x.v.toLong
+      override def fromInt(x: Int): BaseReal = Real(x)
 
-    override def toFloat(x: Real): Float = x.v.toFloat
+      override def toInt(x: Real): Int = x.v.toInt
 
-    override def toDouble(x: Real): Double = x.v
+      override def toLong(x: Real): Long = x.v.toLong
 
-    override def compare(x: Real, y: Real): Int = {
-      x.v.compareTo(y.v)
+      override def toFloat(x: Real): Float = x.v.toFloat
+
+      override def toDouble(x: Real): Double = x.v
+
+      // Fractional
+
+      override def div(x: Real, y: Real): BaseReal = DDiv(x, y)
+
+      // LiftedFractional
+
+      override def const(x: Double): Expr[Double] = Real(x)
+
+      override def fromInt(x: Int, shape: DoubleShape): Expr[Double] = Real(x)
     }
-
-  }
 
   implicit def mkNumericOps(lhs: Real): scalarNumeric.FractionalOps =
     new scalarNumeric.FractionalOps(lhs)

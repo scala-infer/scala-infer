@@ -42,3 +42,27 @@ class Constant[X](val v: X) extends Buffered[X] {
 
   override def complete(): Unit = {}
 }
+
+trait ShapeOf[D, Shape] {
+
+  def apply(data: D): Shape
+}
+
+trait DoubleShape extends ShapeOf[Double, DoubleShape]
+
+object DoubleShape extends DoubleShape {
+
+  override def apply(data: Double): DoubleShape = DoubleShape
+}
+
+object ShapeOf {
+
+  implicit val doubleShape: ShapeOf[Double, DoubleShape] = DoubleShape
+}
+
+trait LiftedFractional[X, S] extends Fractional[Expr[X]] {
+
+  def const(x: X): Expr[X]
+
+  def fromInt(x: Int, shape: S): Expr[X]
+}
