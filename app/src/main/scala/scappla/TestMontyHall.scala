@@ -31,8 +31,8 @@ object TestMontyHall extends App {
     }
     val montyOpens = montyOptions(Random.nextInt(montyOptions.size))
 
-    val p_switch = sigmoid(switch_dist.sample().get)
-    val p_remain = sigmoid(remain_dist.sample().get)
+    val p_switch = sigmoid(switch_dist.sample())
+    val p_remain = sigmoid(remain_dist.sample())
     if (p_switch.v > p_remain.v) {
       val switchedDoor = doors.filter { door =>
         door != selectedDoor && door != montyOpens
