@@ -27,9 +27,9 @@ trait Dim[Self <: Dim[_]] extends Shape {
 
 final case class :#:[H <: Dim[_], +T <: Shape](head: H, tail: T) extends Shape {
 
-  def size = head.size * tail.size
+  val size = head.size * tail.size
 
-  def sizes = head.size :: tail.sizes
+  val sizes = head.size :: tail.sizes
 }
 
 sealed trait Scalar extends Shape {

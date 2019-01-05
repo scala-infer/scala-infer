@@ -47,40 +47,81 @@ object DataOps {
     }
 
     override def plus(a: Array[Float], b: Array[Float]): Array[Float] = {
-      a.zip(b).map {
-        case (ax, bx) => ax + bx
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = a(i) + b(i)
+        i += 1
       }
+      result
     }
 
-    override def minus(a: Array[Float], b: Array[Float]): Array[Float] =
-      a.zip(b).map {
-        case (ax, bx) => ax - bx
+    override def minus(a: Array[Float], b: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = a(i) - b(i)
+        i += 1
       }
+      result
+    }
 
-    override def times(a: Array[Float], b: Array[Float]): Array[Float] =
-      a.zip(b).map {
-        case (ax, bx) => ax * bx
+    override def times(a: Array[Float], b: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = a(i) * b(i)
+        i += 1
       }
+      result
+    }
 
-    override def div(a: Array[Float], b: Array[Float]): Array[Float] =
-      a.zip(b).map {
-        case (ax, bx) => ax / bx
+    override def div(a: Array[Float], b: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = a(i) / b(i)
+        i += 1
       }
+      result
+    }
 
-    override def negate(a: Array[Float]): Array[Float] =
-      a.map {
-        -_
+    override def negate(a: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = -a(i)
+        i += 1
       }
+      result
+    }
 
-    override def log(a: Array[Float]): Array[Float] =
-      a.map {
-        scala.math.log(_).toFloat
+    override def log(a: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = scala.math.log(a(i)).toFloat
+        i += 1
       }
+      result
+    }
 
-    override def exp(a: Array[Float]): Array[Float] =
-      a.map {
-        scala.math.exp(_).toFloat
+    override def exp(a: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = scala.math.exp(a(i)).toFloat
+        i += 1
       }
+      result
+    }
 
     override def sum(a: Array[Float], dimIndex: Int, shape: Int*): Array[Float] = {
       val dimSize = shape(dimIndex)
@@ -128,7 +169,14 @@ object DataOps {
     }
 
     override def sumAll(a: Array[Float]): Float = {
-      a.sum
+      val len = a.length
+      var result = 0f
+      var i = 0
+      while (i < len) {
+        result += a(i)
+        i += 1
+      }
+      result
     }
   }
 }

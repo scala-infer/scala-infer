@@ -69,7 +69,7 @@ case class TNeg[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
 case class TPlus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
-  override def v: Tensor[S, D] = {
+  override val v: Tensor[S, D] = {
     val lt = left.v
     val rt = right.v
     assert(lt.shape == rt.shape)
@@ -87,7 +87,7 @@ case class TPlus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[T
 case class TMinus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
-  override def v: Tensor[S, D] = {
+  override val v: Tensor[S, D] = {
     val lt = left.v
     val rt = right.v
     assert(lt.shape == rt.shape)
@@ -105,7 +105,7 @@ case class TMinus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[
 case class TTimes[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
-  override def v: Tensor[S, D] = {
+  override val v: Tensor[S, D] = {
     val lt = left.v
     val rt = right.v
     assert(lt.shape == rt.shape)
@@ -126,7 +126,7 @@ case class TTimes[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[
 case class TDiv[S <: Shape, D: DataOps](numer: Expr[Tensor[S, D]], denom: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
-  override def v: Tensor[S, D] = {
+  override val v: Tensor[S, D] = {
     val nt = numer.v
     val dt = denom.v
     Tensor(nt.shape, nt.dataOps.div(nt.data, dt.data))
@@ -163,7 +163,7 @@ case class TLog[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends Te
 
 case class TExp[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends TensorExpr[S, D] {
 
-  override def v: Tensor[S, D] = {
+  override val v: Tensor[S, D] = {
     val ut = upstream.v
     Tensor(ut.shape, ut.dataOps.exp(ut.data))
   }
@@ -178,7 +178,7 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
     shape: R, index: Int, upstream: Expr[Tensor[S, D]]
 ) extends TensorExpr[R, D] {
 
-  override def v: Tensor[R, D] = {
+  override val v: Tensor[R, D] = {
     val ut = upstream.v
     Tensor(shape,
       ut.dataOps.sum(ut.data, index, ut.shape.sizes: _*)
@@ -211,7 +211,7 @@ case class TBroadcast[S <: Shape, D: DataOps](
     upstream: Real, shape: S
 ) extends TensorExpr[S, D] {
 
-  override def v: Tensor[S, D] = {
+  override val v: Tensor[S, D] = {
     val ops = implicitly[DataOps[D]]
     val data = ops.fill(upstream.v.toFloat, shape.sizes: _*)
     Tensor(shape, data)
@@ -234,7 +234,7 @@ object TensorExpr {
   ): Expr[Tensor[S, D]] = TConst(Tensor(shape, data))
 
   def sumAlong[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: DataOps](
-      tensor: TensorExpr[S, X]
+      tensor: Expr[Tensor[S, X]]
   )(implicit
       indexOf: IndexOf.Aux[S, D, I],
       removeAt: RemoveAt.Aux[S, I, R]
