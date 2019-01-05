@@ -20,6 +20,8 @@ class TensorSpec extends FlatSpec {
       0f, 1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10f, 11f
     )
 
+    import TensorExpr._
+
     val batch = TensorExpr(shape, data)
     val logBatch = log(batch)
     print(s"Result: ${logBatch.v.data.mkString(",")}")

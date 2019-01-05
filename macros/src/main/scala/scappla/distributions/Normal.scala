@@ -32,9 +32,20 @@ case class Normal[D, S](
   import numX.mkNumericOps
 
   override def sample(): Buffered[D] = {
-    val shape = shapeOf(sigma.v)
-    val e = numX.const(rng.gaussian(shape))
-    (mu + e * sigma).buffer
+    new Expr[D] {
+      val shape: S = shapeOf(sigma.v)
+      val e: Expr[D] = numX.const(rng.gaussian(shape))
+
+      override val v: D =
+        (mu + e * sigma).v
+
+      override def dv(v: D): Unit = {
+        val sc = sigma.const
+        val r = (mu + e * sigma / numX.fromInt(2, shape)) / (sc * sc)
+        r.dv(v)
+      }
+
+    }.buffer
   }
 
   override def observe(x: Expr[D]): Score = {
