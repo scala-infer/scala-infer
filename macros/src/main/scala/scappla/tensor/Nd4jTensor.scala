@@ -28,6 +28,9 @@ object Nd4jTensor {
     override def div(a: INDArray, b: INDArray): INDArray =
       a.div(b)
 
+    override def pow(a: INDArray, b: INDArray): INDArray =
+      Transforms.pow(a, b)
+
     override def negate(a: INDArray): INDArray =
       a.neg()
 
@@ -58,6 +61,7 @@ object Nd4jTensor {
     override def sumAll(a: INDArray): Float = {
       a.sumNumber().floatValue()
     }
+
   }
 
 }

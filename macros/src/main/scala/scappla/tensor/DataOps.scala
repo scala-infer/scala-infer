@@ -20,6 +20,8 @@ trait DataOps[D] {
 
   def div(a: D, b: D): D
 
+  def pow(a: D, b: D): D
+
   def negate(a: D): D
 
   def log(a: D): D
@@ -85,6 +87,17 @@ object DataOps {
       var i = 0
       while (i < len) {
         result(i) = a(i) / b(i)
+        i += 1
+      }
+      result
+    }
+
+    override def pow(a: Array[Float], b: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = scala.math.pow(a(i), b(i)).toFloat
         i += 1
       }
       result
@@ -178,5 +191,6 @@ object DataOps {
       }
       result
     }
+
   }
 }

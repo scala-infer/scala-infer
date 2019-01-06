@@ -1,6 +1,6 @@
 package scappla.tensor
 
-import scappla.Functions.{exp, log, sum}
+import scappla.Functions.{exp, log, pow, sum}
 import scappla._
 import scappla.distributions.RandomGaussian
 import shapeless.Nat
@@ -146,6 +146,40 @@ case class TDiv[S <: Shape, D: DataOps](numer: Expr[Tensor[S, D]], denom: Expr[T
   }
 }
 
+case class TPow[S <: Shape, D: DataOps](base: Expr[Tensor[S, D]], expo: Expr[Tensor[S, D]])
+    extends TensorExpr[S, D] {
+
+  override val v: Tensor[S, D] = {
+    val nt = base.v
+    val dt = expo.v
+    Tensor(nt.shape, nt.dataOps.pow(nt.data, dt.data))
+  }
+
+  override def dv(dx: Tensor[S, D]): Unit = {
+    val shape = v.shape
+    val ops = implicitly[DataOps[D]]
+    base.dv(Tensor(
+      shape,
+      ops.times(
+        ops.times(dx.data, expo.v.data),
+        ops.pow(
+          base.v.data,
+          ops.minus(
+            expo.v.data, ops.fill(1f, v.shape.sizes:_*)
+          )
+        )
+      )
+    ))
+    expo.dv(Tensor(
+      shape,
+      ops.times(
+        ops.times(dx.data, v.data),
+        ops.log(base.v.data)
+      )
+    ))
+  }
+}
+
 case class TLog[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends TensorExpr[S, D] {
 
   override val v: Tensor[S, D] = {
@@ -266,6 +300,11 @@ object TensorExpr {
   implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[Expr[Tensor[S, D]]] =
     new sum.Apply[Expr[Tensor[S, D]]] {
       override def apply(in: Expr[Tensor[S, D]]): Real = TSumAll(in)
+    }
+
+  implicit def powTensor[S <: Shape, D: DataOps]: pow.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
+    new pow.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
+      override def apply(base: Expr[Tensor[S, D]], exp: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] = TPow(base, exp)
     }
 
   implicit def numTensor[S <: Shape, D: DataOps] = new LiftedFractional[Tensor[S, D], S] {
