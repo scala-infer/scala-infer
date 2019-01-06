@@ -209,7 +209,7 @@ class VariableSpec extends FlatSpec {
 
     // find MAP
 //    val sgd = new SGDMomentum(mass = 100)
-    val sgd = new Adam()
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
     val aPost = Normal(sgd.param(0.0, lr, Some("a-m")), exp(sgd.param(0.0, lr, Some("a-s"))))
     val b1Post = Normal(sgd.param(0.0, lr, Some("b1-m")), exp(sgd.param(0.0, lr, Some("b1-s"))))
     val b2Post = Normal(sgd.param(0.0, lr, Some("b2-m")), exp(sgd.param(0.0, lr, Some("b2-s"))))
@@ -316,6 +316,5 @@ class VariableSpec extends FlatSpec {
     }
 
   }
-
 
 }

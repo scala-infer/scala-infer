@@ -15,7 +15,7 @@ class MacrosSpec extends FlatSpec {
   it should "allow a model to be specified" in {
 
 //    val sgd = new SGD()
-    val sgd = new Adam()
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
     val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
     val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
@@ -112,7 +112,7 @@ class MacrosSpec extends FlatSpec {
     }
 
 //    val sgd = new SGDMomentum(mass = 100)
-    val sgd = new Adam()
+    val sgd = new Adam(0.1, epsilon = 1e-4)
 
     def normalParams(): (Real, Real) = {
       (sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
@@ -187,7 +187,7 @@ class MacrosSpec extends FlatSpec {
     }
 
 //    val sgd = new SGDMomentum(mass = 100)
-    val sgd = new Adam()
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
     val pPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
     val mu1Post = ReparamGuide(Normal(sgd.param(-1.0, 1.0), exp(sgd.param(-1.0, 1.0))))
     val mu2Post = ReparamGuide(Normal(sgd.param(1.0, 1.0), exp(sgd.param(-1.0, 1.0))))
