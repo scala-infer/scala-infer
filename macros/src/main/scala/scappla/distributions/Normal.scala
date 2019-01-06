@@ -30,33 +30,50 @@ case class Normal[D, S](
 ) extends DDistribution[D] {
 
   import numX.mkNumericOps
+  private val shape = shapeOf(sigma.v)
+  private val two = numX.fromInt(2, shape)
 
   override def sample(): Buffered[D] = {
-    new Expr[D] {
-      val shape: S = shapeOf(sigma.v)
+    new Expr[D] with Buffered[D] {
+      var refCount = 1
+
       val e: Expr[D] = numX.const(rng.gaussian(shape))
+
+      val r: Buffered[D] = {
+        val sc = sigma.const
+        ((mu + e * sigma / two) / (sc * sc)).buffer
+      }
 
       override val v: D =
         (mu + e * sigma).v
 
-      override def dv(v: D): Unit = {
-        val sc = sigma.const
-        val r = (mu + e * sigma / numX.fromInt(2, shape)) / (sc * sc)
-        r.dv(v)
+      override def dv(x: D): Unit = {
+        assert(refCount > 0)
+        r.dv(x)
       }
 
-    }.buffer
+      override def buffer: Buffered[D] = {
+        refCount += 1
+        this
+      }
+
+      override def complete(): Unit = {
+        assert(refCount > 0)
+        refCount -= 1
+        if (refCount == 0) {
+          r.complete()
+        }
+      }
+    }
   }
 
   override def observe(x: Expr[D]): Score = {
-    val shape = shapeOf(sigma.v)
     val e = (x - mu) / sigma
-    sum(-log(sigma) - e * e / numX.fromInt(2, shape))
+    sum(-log(sigma) - e * e / two)
   }
 
   override def reparam_score(x: Expr[D]): Score = {
-    val shape = shapeOf(sigma.v)
     val e = (x - mu.const) / sigma.const
-    sum(-log(sigma).const - e * e / numX.fromInt(2, shape))
+    sum(-log(sigma).const - e * e / two)
   }
 }
