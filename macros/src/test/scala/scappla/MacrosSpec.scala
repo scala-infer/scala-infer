@@ -4,6 +4,7 @@ import org.scalatest.FlatSpec
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, ReparamGuide}
 import scappla.optimization.{Adam, SGD, SGDMomentum}
+import scappla.tensor.{Dim, TPlus, TTimes, Tensor}
 
 import scala.util.Random
 
@@ -141,15 +142,6 @@ class MacrosSpec extends FlatSpec {
           observe(Normal(a + b1 * x1 + b2 * x2, err), y: Real)
       }
 
-      /*
-      val cb = {
-        entry: ((Double, Double), Double) =>
-          val ((x1, x2), y) = entry
-          observe(Normal(a + b1 * x1 + b2 * x2, err), y: Real)
-      }
-      data.foreach[Unit](cb)
-      */
-
       (a, b1, b2, err)
     }
 
@@ -171,6 +163,89 @@ class MacrosSpec extends FlatSpec {
     }
   }
 
+  it should "allow linear regression to be specified using tensors" in {
+
+    val N = 1000
+
+    case class Batch(size: Int) extends Dim[Batch]
+    val batch = Batch(N)
+
+    import scappla.tensor.TensorExpr._
+
+    val (x1, x2, y) = {
+      val alpha = 1.0
+      val sigma = 1.0
+      val beta = (1.0, 2.5)
+
+      val x1 = new Array[Float](N)
+      val x2 = new Array[Float](N)
+      val y = new Array[Float](N)
+      for {i <- 0 until 1000} {
+        val X = (Random.nextGaussian(), 0.2 * Random.nextGaussian())
+        val Y = alpha + X._1 * beta._1 + X._2 * beta._2 + Random.nextGaussian() * sigma
+        x1(i) = X._1.toFloat
+        x2(i) = X._2.toFloat
+        y(i) = Y.toFloat
+      }
+      (Tensor(batch, x1), Tensor(batch, x2), Tensor(batch, y))
+    }
+
+    //    val sgd = new SGDMomentum(mass = 100)
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
+
+    def normalParams(): (Real, Real) = {
+      (sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+    }
+
+    val aParam = normalParams()
+    val aPost = ReparamGuide(Normal(aParam._1, aParam._2))
+
+    val b1Param = normalParams()
+    val b1Post = ReparamGuide(Normal(b1Param._1, b1Param._2))
+
+    val b2Param = normalParams()
+    val b2Post = ReparamGuide(Normal(b2Param._1, b2Param._2))
+
+    val sParam = normalParams()
+    val sPost = ReparamGuide(Normal(sParam._1, sParam._2))
+
+    val model = infer {
+      val a = sample(Normal(0.0, 1.0), aPost)
+      val b1 = sample(Normal(0.0, 1.0), b1Post)
+      val b2 = sample(Normal(0.0, 1.0), b2Post)
+      val err = exp(sample(Normal(0.0, 1.0), sPost))
+
+      val mu = TPlus(
+        broadcast(a, batch),
+          TPlus(
+            TTimes(broadcast(b1, batch), x1),
+            TTimes(broadcast(b2, batch), x2)
+          )
+      )
+      val sigma = broadcast(err, batch)
+      observe(Normal[Tensor[Batch,Array[Float]], Batch](mu, sigma), y.const)
+
+      (a, b1, b2, err)
+    }
+
+    // warm up
+    Range(0, 100).foreach { i =>
+      sample(model)
+    }
+
+    println(s"  A post: ${aParam._1.v} (${aParam._2.v})")
+    println(s" B1 post: ${b1Param._1.v} (${b1Param._2.v})")
+    println(s" B2 post: ${b2Param._1.v} (${b2Param._2.v})")
+    println(s"  E post: ${sParam._1.v} (${sParam._2.v})")
+
+    // print some samples
+    Range(0, 10).foreach { i =>
+      val l = sample(model)
+      val values = (l._1.v, l._2.v, l._3.v, l._4.v)
+      println(s" (Tensor LR) $values")
+    }
+  }
+
   it should "allow mixing discrete/continuous variables" in {
     val data = {
       val p = 0.75
@@ -188,10 +263,10 @@ class MacrosSpec extends FlatSpec {
 
 //    val sgd = new SGDMomentum(mass = 100)
     val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-    val pPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
-    val mu1Post = ReparamGuide(Normal(sgd.param(-1.0, 1.0), exp(sgd.param(-1.0, 1.0))))
-    val mu2Post = ReparamGuide(Normal(sgd.param(1.0, 1.0), exp(sgd.param(-1.0, 1.0))))
-    val sigmaPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val pPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+    val mu1Post = ReparamGuide(Normal(sgd.param(-1.0), exp(sgd.param(-1.0))))
+    val mu2Post = ReparamGuide(Normal(sgd.param(1.0), exp(sgd.param(-1.0))))
+    val sigmaPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
 
     val dataWithDist = data.map { datum =>
       (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0)))))

@@ -44,16 +44,16 @@ object TestChickweight extends App {
   }
 
 
-  val sgd = new Adam()
-  val aPost = ReparamGuide(Normal(sgd.param(40.0), exp(sgd.param(0.0))))
-  val atPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+  val sgd = new Adam(alpha = 0.05, epsilon = 1e-4)
+  val aPost = ReparamGuide(Normal(sgd.param(40.0, name=Some("a_mu")), exp(sgd.param(0.0))))
+  val atPost = ReparamGuide(Normal(sgd.param(0.0, name=Some("a_s")), exp(sgd.param(0.0))))
 
-  val data_with_guides = diets.map {
+  val data_with_guides = diets.zipWithIndex.map { case (d, i) =>
     (
-        _,
+        d,
         (
-            ReparamGuide(Normal(sgd.param(10.0), exp(sgd.param(1.0)))),
-            ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+            ReparamGuide(Normal(sgd.param(10.0, name=Some(s"b_mu_${i}")), exp(sgd.param(1.0)))),
+            ReparamGuide(Normal(sgd.param(0.0, name=Some(s"s_mu_${i}")), exp(sgd.param(0.0))))
         )
     )
   }
@@ -68,21 +68,18 @@ object TestChickweight extends App {
     val b = for {
       ((dim, times, weights), (muGuide, sGuide)) <- data_with_guides
     } yield {
-      val a_tensor = TensorExpr.broadcast(a, dim)
-      val a_t_tensor = TensorExpr.broadcast(a_t, dim)
+      val a_tensor = broadcast(a, dim)
+      val a_t_tensor = broadcast(a_t, dim)
 
       val b_mu = sample(Normal(10.0, 3.0), muGuide)
       val b_s = exp(sample(Normal(0.0, 1.0), sGuide))
 
       val tc = times.const
-      val mu_tensor = TensorExpr.broadcast(b_mu, dim)
-      val s_tensor = TensorExpr.broadcast(b_s, dim)
+      val mu_tensor = broadcast(b_mu, dim)
+      val s_tensor = broadcast(b_s, dim)
       val mc = numTE.plus(a_tensor, numTE.times(mu_tensor, tc))
       val sc = numTE.plus(a_t_tensor, numTE.times(s_tensor, tc))
-      observe(
-        Normal[Tensor[Diet, Array[Float]], Diet](mc, sc),
-        weights.const
-      )
+      observe(Normal(mc, sc), weights.const)
       (b_mu, b_s)
     }
 

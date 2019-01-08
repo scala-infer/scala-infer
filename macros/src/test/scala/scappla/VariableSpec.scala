@@ -3,7 +3,7 @@ package scappla
 import org.scalatest.FlatSpec
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, ReparamGuide}
-import scappla.optimization.{Adam, SGD, SGDMomentum}
+import scappla.optimization.Adam
 
 import scala.util.Random
 
@@ -15,7 +15,7 @@ class VariableSpec extends FlatSpec {
   it should "recover prior" in {
     val inferred = new Model[Boolean] {
 
-      val optimizer = new Adam()
+      val optimizer = new Adam(alpha = 0.1, epsilon = 1e-4)
       // p = 1 / (1 + exp(-x)) => x = -log(1 / p - 1)
       val p_guide = sigmoid(optimizer.param(0.0, 10.0))
       //      val p_guide = optimizer.param(0.4)
@@ -27,7 +27,7 @@ class VariableSpec extends FlatSpec {
 
     }
 
-    val N = 10000
+    val N = 1000
     Range(0, N).foreach { _ =>
       sample(inferred)
     }
@@ -43,7 +43,7 @@ class VariableSpec extends FlatSpec {
 
   it should "allow a discrete model to be executed" in {
 
-    val sgd = new Adam()
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
     val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
     val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
