@@ -64,6 +64,10 @@ case class Normal[D, S](
           r.complete()
         }
       }
+
+      override def toString: String = {
+        s"NormalSample(${hashCode()})"
+      }
     }
   }
 

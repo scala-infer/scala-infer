@@ -12,16 +12,21 @@ case class Tensor[S <: Shape, D: DataOps](shape: S, data: D) {
 
 trait TensorExpr[S <: Shape, D] extends Expr[Tensor[S, D]] {
 
-  @inline
-  private implicit def ops = v.dataOps
+  protected val ops: DataOps[D]
 
   override def buffer: TBuffer[S, D] = {
-    TBuffer(this)
+    TBuffer(this)(ops)
+  }
+
+  override def const: Constant[Tensor[S, D]] = {
+    TConst(v)(ops)
   }
 }
 
 case class TBuffer[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] with Buffered[Tensor[S, D]] {
+
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
 
   private var grad: Option[D] = None
 
@@ -39,120 +44,165 @@ case class TBuffer[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
     }
     grad = None
   }
+
+  override def toString: String = {
+    s"Buffer($upstream)"
+  }
 }
 
 case class TParam[S <: Shape, D: DataOps](
     var v: Tensor[S, D],
     update: Tensor[S, D] => Tensor[S, D]
 ) extends TensorExpr[S, D] {
+
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override def dv(gradient: Tensor[S, D]): Unit =
     v = update(gradient)
+
+  override def toString: String = {
+    "Param"
+  }
 }
 
 case class TConst[S <: Shape, D: DataOps](override val v: Tensor[S, D])
-    extends Constant[Tensor[S, D]](v)
+    extends Constant[Tensor[S, D]](v) {
+
+  override def toString: String = {
+    s"const(${v.hashCode()})"
+  }
+}
 
 case class TNeg[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = upstream.v.copy(
-    data = upstream.v.dataOps.negate(upstream.v.data)
+    data = ops.negate(upstream.v.data)
   )
 
   override def dv(dv: Tensor[S, D]): Unit = {
     upstream.dv(dv.copy(
-      data = upstream.v.dataOps.negate(dv.data)
+      data = ops.negate(dv.data)
     ))
+  }
+
+  override def toString: String = {
+    s"- $upstream"
   }
 }
 
 case class TPlus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
     val lt = left.v
     val rt = right.v
     assert(lt.shape == rt.shape)
-    assert(lt.dataOps == rt.dataOps)
 
-    Tensor(lt.shape, lt.dataOps.plus(lt.data, rt.data))
+    Tensor(lt.shape, ops.plus(lt.data, rt.data))
   }
 
   override def dv(dv: Tensor[S, D]): Unit = {
     left.dv(dv)
     right.dv(dv)
   }
+
+  override def toString: String = {
+    s"($left + $right)"
+  }
 }
 
 case class TMinus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
     val lt = left.v
     val rt = right.v
     assert(lt.shape == rt.shape)
-    assert(lt.dataOps == rt.dataOps)
 
-    Tensor(lt.shape, lt.dataOps.minus(lt.data, rt.data))
+    Tensor(lt.shape, ops.minus(lt.data, rt.data))
   }
 
   override def dv(dv: Tensor[S, D]): Unit = {
     left.dv(dv)
-    right.dv(dv.copy(data = dv.dataOps.negate(dv.data)))
+    right.dv(dv.copy(data = ops.negate(dv.data)))
+  }
+
+  override def toString: String = {
+    s"($left - $right)"
   }
 }
 
 case class TTimes[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
     val lt = left.v
     val rt = right.v
     assert(lt.shape == rt.shape)
 
-    Tensor(lt.shape, lt.dataOps.times(lt.data, rt.data))
+    Tensor(lt.shape, ops.times(lt.data, rt.data))
   }
 
   override def dv(gradient: Tensor[S, D]): Unit = {
     left.dv(gradient.copy(
-      data = gradient.dataOps.times(gradient.data, right.v.data)
+      data = ops.times(gradient.data, right.v.data)
     ))
     right.dv(gradient.copy(
-      data = gradient.dataOps.times(gradient.data, left.v.data)
+      data = ops.times(gradient.data, left.v.data)
     ))
+  }
+
+  override def toString: String = {
+    s"($left * $right)"
   }
 }
 
 case class TDiv[S <: Shape, D: DataOps](numer: Expr[Tensor[S, D]], denom: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
     val nt = numer.v
     val dt = denom.v
-    Tensor(nt.shape, nt.dataOps.div(nt.data, dt.data))
+    Tensor(nt.shape, ops.div(nt.data, dt.data))
   }
 
   override def dv(dv: Tensor[S, D]): Unit = {
     val shape = v.shape
-    val ops = v.dataOps
-    val nt = numer.v
-    val dt = denom.v
+    val dt = dv.data
+    val dent = denom.v.data
 
-    numer.dv(Tensor(shape, ops.div(dv.data, dt.data)))
+    numer.dv(Tensor(shape, ops.div(dt, dent)))
     denom.dv(Tensor(shape, ops.div(
-      ops.times(dv.data, nt.data),
-      ops.times(dt.data, dt.data)
+      ops.times(dt, v.data),
+      ops.negate(dent)
     )))
+  }
+
+  override def toString: String = {
+    s"($numer / $denom)"
   }
 }
 
 case class TPow[S <: Shape, D: DataOps](base: Expr[Tensor[S, D]], expo: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
     val nt = base.v
     val dt = expo.v
-    Tensor(nt.shape, nt.dataOps.pow(nt.data, dt.data))
+    Tensor(nt.shape, ops.pow(nt.data, dt.data))
   }
 
   override def dv(dx: Tensor[S, D]): Unit = {
@@ -165,7 +215,7 @@ case class TPow[S <: Shape, D: DataOps](base: Expr[Tensor[S, D]], expo: Expr[Ten
         ops.pow(
           base.v.data,
           ops.minus(
-            expo.v.data, ops.fill(1f, v.shape.sizes:_*)
+            expo.v.data, ops.fill(1f, v.shape.sizes: _*)
           )
         )
       )
@@ -178,33 +228,49 @@ case class TPow[S <: Shape, D: DataOps](base: Expr[Tensor[S, D]], expo: Expr[Ten
       )
     ))
   }
+
+  override def toString: String = {
+    s"($base ^ $expo)"
+  }
 }
 
 case class TLog[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
     val ut = upstream.v
-    ut.copy(data = ut.dataOps.log(ut.data))
+    ut.copy(data = ops.log(ut.data))
   }
 
   override def dv(dv: Tensor[S, D]): Unit = {
     val ut = upstream.v
     upstream.dv(
-      Tensor(ut.shape, ut.dataOps.div(dv.data, ut.data))
+      Tensor(ut.shape, ops.div(dv.data, ut.data))
     )
+  }
+
+  override def toString: String = {
+    s"log($upstream)"
   }
 }
 
 case class TExp[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
     val ut = upstream.v
-    Tensor(ut.shape, ut.dataOps.exp(ut.data))
+    Tensor(ut.shape, ops.exp(ut.data))
   }
 
   override def dv(dv: Tensor[S, D]): Unit = {
     val ut = upstream.v
-    upstream.dv(Tensor(ut.shape, ut.dataOps.times(dv.data, ut.data)))
+    upstream.dv(Tensor(ut.shape, ops.times(dv.data, ut.data)))
+  }
+
+  override def toString: String = {
+    s"exp($upstream)"
   }
 }
 
@@ -212,18 +278,24 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
     shape: R, index: Int, upstream: Expr[Tensor[S, D]]
 ) extends TensorExpr[R, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[R, D] = {
     val ut = upstream.v
     Tensor(shape,
-      ut.dataOps.sum(ut.data, index, ut.shape.sizes: _*)
+      ops.sum(ut.data, index, ut.shape.sizes: _*)
     )
   }
 
   override def dv(dv: Tensor[R, D]): Unit = {
     val ut = upstream.v
     upstream.dv(Tensor(ut.shape,
-      ut.dataOps.broadcast(dv.data, index, ut.shape.sizes(index), dv.shape.sizes: _*)
+      ops.broadcast(dv.data, index, ut.shape.sizes(index), dv.shape.sizes: _*)
     ))
+  }
+
+  override def toString: String = {
+    s"sum($upstream, $index)"
   }
 }
 
@@ -231,13 +303,20 @@ case class TSumAll[S <: Shape, D: DataOps](
     upstream: Expr[Tensor[S, D]]
 ) extends Real {
 
+  private val ops = implicitly[DataOps[D]]
+
   override val v: Double = {
-    upstream.v.dataOps.sumAll(upstream.v.data)
+    ops.sumAll(upstream.v.data)
   }
 
   override def dv(v: Double): Unit = {
     val shape = upstream.v.shape
-    upstream.dv(Tensor(shape, upstream.v.dataOps.fill(v.toFloat, shape.sizes: _*)))
+    val data = ops.fill(v.toFloat, shape.sizes: _*)
+    upstream.dv(Tensor(shape, data))
+  }
+
+  override def toString: String = {
+    s"sumAll($upstream)"
   }
 }
 
@@ -245,15 +324,19 @@ case class TBroadcast[S <: Shape, D: DataOps](
     upstream: Real, shape: S
 ) extends TensorExpr[S, D] {
 
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
   override val v: Tensor[S, D] = {
-    val ops = implicitly[DataOps[D]]
     val data = ops.fill(upstream.v.toFloat, shape.sizes: _*)
     Tensor(shape, data)
   }
 
   override def dv(v: Tensor[S, D]): Unit = {
-    val ops = implicitly[DataOps[D]]
     upstream.dv(ops.sumAll(v.data))
+  }
+
+  override def toString: String = {
+    s"broadcast($upstream, $shape)"
   }
 }
 
