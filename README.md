@@ -1,5 +1,4 @@
-Scala Infer
-===========
+# Scala Infer
 With the addition of a few keywords, `scala-infer` turns scala into a probabilistic programming language.
 To achieve scalability, inference is based on gradients of the (variational approximation to) the
 posterior distribution.  Each draw from a distribution is accompanied by a *guide* distribution.
@@ -27,32 +26,30 @@ the reparametrization trick can be used to obtain a low variance estimator.  Dis
 use black-box variational inference, which only requires gradients of the score function to the
 parameters.
 
-Running the project
--------------------
+## Running the project
 While intended to become a library to be used, so far the only used ways of triggering the
 macro expansion and execution is to use either
 * `sbt macros/test`, or
 * `sbt app/run`
 
-Example: Sprinkler system
--------------------------
+## Example: Sprinkler system
 This is the rain-sprinkler-wet-grass system from the Wikipedia entry on [Bayesian
 Networks](https://en.wikipedia.org/wiki/Bayesian_network).  It features a number of discrete
 (boolean) random variables, an observation (the grass is wet) and an variational posterior
 distribution that is optimized to approximate the exact posterior.
 
 ```scala
-// optimization algorithm: (stochastic) gradient descent
-val sgd = new SGD()
+// optimization algorithm: Adam
+val sgd = new Adam(alpha = 0.1)
 
 // posterior distribution for the sprinkler, conditional on rain.
 // The parameters run over the full real axis, they are mapped to the
 // domain [0,1] by the sigmoid transformation.
-val inRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
-val noRain = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
 // posterior distribution for the rain
-val rainPost = Bernoulli(sigmoid(sgd.param(0.0, 10.0)))
+val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
 // full model of the rain-sprinkler-grass system.  
 val model = infer {
@@ -89,8 +86,7 @@ The example shows a number of features:
 * control flow (`if (...) ... else ...`) can be based on random variables
 * it's possible to define functions of random variables
 
-Example: linear Regression
---------------------------
+## Example: linear Regression
 Here we showcase linear regression on 2 input variables.  All variables are continuous here, with
 some fixed values used to generate a data set and a model to infer these parameters from the data.
 ```scala
@@ -107,15 +103,15 @@ val data = {
   }
 }
 
-// choose an optimization algorithm, gradient descent with momentum
+// choose an optimization algorithm
 // each parameter could have its own optimizer
-val sgd = new SGDMomentum(mass = 100)
+val sgd = new Adam(alpha = 0.1)
 
 // set up variational approximation to the posterior distribution
-val aPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-val b1Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-val b2Post = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
-val errPost = Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+val aPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0)))))
+val b1Post = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+val b2Post = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+val errPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
 
 // the actual model.  Draw variables from prior distributions and link those variables to
 // the posterior approximation.
@@ -154,15 +150,14 @@ well.  Some things to note here
 * while real parameters and random variables run over the whole real axis, they can be
 mapped to the interval `(0, Inf)` by the `exp` function
 
-Example: Two component Mixture
---------------------------
+## Example: Two component Mixture
 So far, we've seen examples of global variables being fit to a variational posterior.  However, it's
 also possible to fit local variables.  Focussing on the model definition part:
 ```scala
 val data: Seq[Double] = ???
 
 val dataWithGuides = data.map { datum =>
-  (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0)))))
+  (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0)))))
 }
 
 val model = infer {
@@ -186,28 +181,32 @@ val model = infer {
 Here, we create a variational parameter for each data point - corresponding to the probability that
 the data point belongs to the first cluster.
 
-Automatic Differentiation
--------------------------
-To compute gradients, back propagation on the gradient of the (log) probability is used.  To be
-able to do this, a variant of scala's native `Double` is used.  A scala-infer `Real` not only has a
-value, but is also able to back-propagate gradients.  It is possible to use familiar scala syntax,
-with operators like
-`+`, `-`, `*` and `/`:
-```scala
-val x : Real = 0.0
-val y : Real = 1.0
-val z = x * y
-```
-A number of functions are available out of the box, `log`, `exp`, `pow` and `sigmoid`.  It is 
-possible to combine these in custom functions by using the `toReal` macro:
-```scala
-val realFn = toReal { x: Double => 2 * x }
-```
-This should not be needed for regular model definitions, though.  These functions are typically
-part of the likelihood, prior or posterior definitions.
+## Tensors
+While it is possible to treat every data point separately, as demonstrated above, this has some
+overhead associated with it.  Often variables and data have some regularity to them, such that
+control flow is the same for many data points.  In this case, it is possible to operate on tensor
+variables and data.
 
-Reparametrization Gradient
---------------------------
+In general, tensors are multi-dimensional arrays of data.  To deal with these multiple dimensions,
+`scala-infer` attaches a type to each dimension.  For instance, when dealing with a batch of data
+points:
+```scala
+case class Batch(size: Int) extends Dim[Batch]
+
+val shape = Batch(2)
+val data = Array(0.0f, 1.0f)
+val tensor: Tensor[Batch, Array[Float]] = Tensor(shape, data)
+```
+where the type of the final `tensor` variable has been added for clarity.  A tensor can be backed
+by different data structures.  Above the java native `Array[Float]` is used, but it is also possible
+to use Nd4j's `INDArray`'s for example.
+
+# Guides
+Guides inject the approximation to the posterior into the model definition.  When the (variational)
+inference algorithm runs, the difference between the approximation and the exact posterior is
+minimized.  When sampling from the model, variables are sampled from the (distributions in the) guide.
+
+## Reparametrization Gradient
 Continuous random variables from suitable distributions can be recast in a "reparametrized" form.
 A sample is obtained by sampling a fixed-parameter distribution, followed by a deterministic
 transformation specified by the parameters of the target distribution.
@@ -216,8 +215,7 @@ The variance of the gradient obtained for the parameters is reduced further by u
 Derivative", as detailed in [Sticking the Landing: Simple, Lower-Variance Gradient Estimators for
 Variational Inference](https://arxiv.org/abs/1703.09194) by Roeder, Wu and Duvenaud.
 
-Black-Box Variational Inference
--------------------------------
+## Black-Box Variational Inference
 Dealing with discrete random variables is necessary to support a general programming language,
 with control flow depending on sampled variables.  For discrete variables reparametrization is
 not possible and we resort to Black-Box Variational Inference.  This suffers from large variance
