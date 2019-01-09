@@ -6,9 +6,7 @@ import scappla.distributions.RandomGaussian
 import shapeless.Nat
 
 
-case class Tensor[S <: Shape, D: DataOps](shape: S, data: D) {
-  val dataOps: DataOps[D] = implicitly[DataOps[D]]
-}
+case class Tensor[S <: Shape, D](shape: S, data: D)
 
 trait TensorExpr[S <: Shape, D] extends Expr[Tensor[S, D]] {
 
@@ -34,7 +32,7 @@ case class TBuffer[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
 
   override def dv(gradient: Tensor[S, D]): Unit = {
     grad = grad.map {
-      gradient.dataOps.plus(_, gradient.data)
+      ops.plus(_, gradient.data)
     }.orElse(Some(gradient.data))
   }
 
