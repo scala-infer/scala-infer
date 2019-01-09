@@ -27,7 +27,7 @@ object TestChickweight extends App {
   val n_diets = data.map {
     _.diet
   }.max
-  val diets = for {diet <- 0 until n_diets} yield {
+  val diets = for {diet <- 1 to n_diets} yield {
     val diet_data = data.filter(_.diet == diet)
     val dim = Diet(diet_data.length)
     val times = Array.ofDim[Float](dim.size)
@@ -44,7 +44,7 @@ object TestChickweight extends App {
   }
 
 
-  val sgd = new Adam(alpha = 0.05, epsilon = 1e-4)
+  val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
   val aPost = ReparamGuide(Normal(sgd.param(40.0, name=Some("a_mu")), exp(sgd.param(0.0))))
   val atPost = ReparamGuide(Normal(sgd.param(0.0, name=Some("a_s")), exp(sgd.param(0.0))))
 
@@ -94,7 +94,7 @@ object TestChickweight extends App {
     val (v_a, v_a_t, v_b) = sample(model)
 
     println(s"${v_a.v}, ${v_a_t.v}, ${
-      v_b.sortBy(_._1).map {
+      v_b.map {
         case (m, s) => s"${m.v}, ${s.v}"
       }.mkString(", ")
     }")
