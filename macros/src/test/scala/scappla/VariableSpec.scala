@@ -49,16 +49,17 @@ class VariableSpec extends FlatSpec {
 
     val rainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 
-    val sprinkle: Variable[Boolean] => Variable[Boolean] = rainVar => {
-      val Variable(rain, node) = rainVar
+    val sprinkle = {
+      rainVar: Variable[Boolean] =>
+        val Variable(rain, node) = rainVar
 
-      val sprinkledVar = if (rain)
-        sprinkleInRainGuide.sample(Bernoulli(0.01))
-      else
-        sprinkleNoRainGuide.sample(Bernoulli(0.4))
-      node.addVariable(sprinkledVar.node.modelScore, sprinkledVar.node.guideScore)
+        val sprinkledVar = if (rain)
+          sprinkleInRainGuide.sample(Bernoulli(0.01))
+        else
+          sprinkleNoRainGuide.sample(Bernoulli(0.4))
+        node.addVariable(sprinkledVar.node.modelScore, sprinkledVar.node.guideScore)
 
-      sprinkledVar
+        sprinkledVar
     }
 
     val inferred = new Model[Boolean] {
