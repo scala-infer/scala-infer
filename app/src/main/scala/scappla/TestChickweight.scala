@@ -91,7 +91,7 @@ object TestChickweight extends App {
   val startTime = System.currentTimeMillis()
   println("a,a_t,b1m,b1s,b2m,b2s,b3m,b3s,b4m,b4s")
   Range(0, N).foreach { i =>
-    val (v_a, v_a_t, v_b) = sample(model)
+    val (v_a, v_a_t, v_b) = model.sample()
 
     println(s"${v_a.v}, ${v_a_t.v}, ${
       v_b.map {

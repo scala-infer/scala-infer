@@ -670,7 +670,11 @@ class Macros(val c: blackbox.Context) {
       q"""new Model[$xType] {
 
         def sample() = {
-          ..${newStmts.map{_.tree}}
+          val Variable(value, node) = {
+            ..${newStmts.map{_.tree}}
+          }
+          node.complete()
+          value
         }
       }"""
     println("INFERRING")

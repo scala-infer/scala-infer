@@ -6,28 +6,11 @@ import scala.language.experimental.macros
 
 package object scappla {
 
-  type Real = Expr[Double]
-  type Score = Expr[Double]
-
   // API
 
-  trait Model[A] {
-
-    def sample(): Variable[A]
-  }
-
-  /**
-   * The outermost "sample" is public - it drives the inference.  Each sample that's obtained
-   * is used to further optimize the inferred distribution.  This can be by means of Monte Carlo,
-   * or Variational Inference.
-   */
-  def sample[X](model: Model[X]): X = {
-    val Variable(value, node) = model.sample()
-
-    // prepare for next sample - update approximation
-    node.complete()
-    value
-  }
+  type Real = Expr[Double]
+  type Score = Expr[Double]
+  type Model[X] = Sampleable[X]
 
   /**
     * Magic - transform "regular" scala code that produces a value into a model.
@@ -52,10 +35,6 @@ package object scappla {
   trait Observation extends Completeable {
 
     def score: Score
-  }
-
-  def sampleImpl[A](distribution: Model[A]): Variable[A] = {
-    distribution.sample()
   }
 
   def observeImpl[A](distribution: Distribution[A], value: A): Observation =

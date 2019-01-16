@@ -47,12 +47,12 @@ object TestLinearRegression extends App {
 
     // warm up
     Range(0, 10000).foreach { i =>
-      sample(model)
+      model.sample()
     }
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = sample(model)
+      val l = model.sample()
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s"  ${values}")
     }

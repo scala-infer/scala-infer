@@ -21,18 +21,20 @@ class VariableSpec extends FlatSpec {
       //      val p_guide = optimizer.param(0.4)
       val guide = BBVIGuide(Bernoulli(p_guide))
 
-      override def sample(): Variable[Boolean] = {
-        guide.sample(Bernoulli(0.2))
+      override def sample(): Boolean = {
+        val Variable(value, node) = guide.sample(Bernoulli(0.2))
+        node.complete()
+        value
       }
 
     }
 
     val N = 1000
     Range(0, N).foreach { _ =>
-      sample(inferred)
+      inferred.sample()
     }
     val n_hits = Range(0, N).map { _ =>
-      sample(inferred)
+      inferred.sample()
     }.count(identity)
 
     val p_expected = 0.2
@@ -64,7 +66,7 @@ class VariableSpec extends FlatSpec {
 
     val inferred = new Model[Boolean] {
 
-      override def sample(): Variable[Boolean] = {
+      override def sample(): Boolean = {
         val rainVar = rainGuide.sample(Bernoulli(0.2))
         val Variable(rain, rainNode) = rainVar
 
@@ -80,43 +82,23 @@ class VariableSpec extends FlatSpec {
         val observation = observeImpl(Bernoulli(p_wet), true)
         sprinkledNode.addObservation(observation.score)
         rainNode.addObservation(observation.score)
-        Variable[Boolean](rain, new BayesNode {
 
-          import Real._
+        observation.complete()
+        sprinkledNode.complete()
+        rainNode.complete()
 
-          override val modelScore: Score = {
-            rainNode.modelScore + sprinkledNode.modelScore + observation.score
-          }
-
-          override val guideScore: Score = {
-            rainNode.guideScore + sprinkledNode.guideScore
-          }
-
-          override def addObservation(score: Score): Unit = {
-            rainNode.addObservation(score)
-          }
-
-          override def addVariable(modelScore: Score, guideScore: Score): Unit = {
-            rainNode.addVariable(modelScore, guideScore)
-          }
-
-          override def complete(): Unit = {
-            observation.complete()
-            sprinkledNode.complete()
-            rainNode.complete()
-          }
-        })
+        rain
       }
     }
 
     for {_ <- 0 to 10000} {
-      sample(inferred)
+      inferred.sample()
     }
 
     val N = 10000
     val startTime = System.currentTimeMillis()
     val n_rain = Range(0, N).map { i =>
-      sample(inferred)
+      inferred.sample()
     }.count(identity)
     val endTime = System.currentTimeMillis()
     println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
@@ -140,7 +122,7 @@ class VariableSpec extends FlatSpec {
         exp(sgd.param(0.0, 1.0))
       ))
 
-      override def sample(): Variable[Real] = {
+      override def sample(): Real = {
 
         import Real._
 
@@ -149,37 +131,22 @@ class VariableSpec extends FlatSpec {
         val sigma = Real(1.0)
         val observation: Observation = observeImpl(Normal(mu, sigma), Real(2.0))
 
-        Variable(mu, new BayesNode {
+        observation.complete()
+        muNode.complete()
 
-          override def modelScore: Score =
-            muNode.modelScore + observation.score
-
-          override def guideScore: Score =
-            muNode.guideScore
-
-          override def addObservation(score: Score): Unit =
-            muNode.addObservation(score)
-
-          override def addVariable(modelScore: Score, guideScore: Score): Unit =
-            muNode.addVariable(modelScore, guideScore)
-
-          override def complete(): Unit = {
-            observation.complete()
-            muNode.complete()
-          }
-        })
+        mu
       }
     }
 
     // warm up
     Range(0, 10000).foreach { i =>
-      sample(inferred)
+      inferred.sample()
     }
 
     val N = 10000
     val startTime = System.currentTimeMillis()
     val (total_x, total_xx) = Range(0, N).map { i =>
-      sample(inferred).v
+      inferred.sample().v
     }.foldLeft((0.0, 0.0)) { case ((sum_x, sum_xx), x) =>
       (sum_x + x, sum_xx + x * x)
     }
@@ -209,7 +176,7 @@ class VariableSpec extends FlatSpec {
     val lr = 1000.0 / (data.size + 1)
 
     // find MAP
-//    val sgd = new SGDMomentum(mass = 100)
+    //    val sgd = new SGDMomentum(mass = 100)
     val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
     val aPost = Normal(sgd.param(0.0, lr, Some("a-m")), exp(sgd.param(0.0, lr, Some("a-s"))))
     val b1Post = Normal(sgd.param(0.0, lr, Some("b1-m")), exp(sgd.param(0.0, lr, Some("b1-s"))))
@@ -223,7 +190,7 @@ class VariableSpec extends FlatSpec {
       val b2Guide = ReparamGuide(b2Post)
       val sGuide = ReparamGuide(sPost)
 
-      override def sample(): Variable[(Real, Real, Real, Real)] = {
+      override def sample(): (Real, Real, Real, Real) = {
         val aVar = aGuide.sample(Normal(0.0, 1.0))
         val a = aVar.get.buffer
         val b1Var = b1Guide.sample(Normal(0.0, 1.0))
@@ -233,7 +200,7 @@ class VariableSpec extends FlatSpec {
         val sDraw = sGuide.sample(Normal(0.0, 1.0))
         val err = exp(sDraw.get).buffer
 
-        val cb : Variable[((Double, Double), Double)] => Variable[Unit] = {
+        val cb: Variable[((Double, Double), Double)] => Variable[Unit] = {
           entry =>
             import Real._
             val Variable(((x1, x2), y), node) = entry
@@ -270,37 +237,24 @@ class VariableSpec extends FlatSpec {
           }
         data.foreach(wrappedCb)
 
-        Variable((a, b1, b2, err), new BayesNode {
+        wrappedCb.complete()
+        err.complete()
+        sDraw.node.complete()
+        b2.complete()
+        b2Var.node.complete()
+        b1.complete()
+        b1Var.node.complete()
+        a.complete()
+        aVar.node.complete()
 
-          override val modelScore: Score = wrappedCb.nodes.map {
-            _.modelScore
-          }.reduce(DAdd)
-
-          override def guideScore: Score = Real(0.0)
-
-          override def addObservation(score: Score): Unit = {}
-
-          override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
-
-          override def complete(): Unit = {
-            wrappedCb.complete()
-            err.complete()
-            sDraw.node.complete()
-            b2.complete()
-            b2Var.node.complete()
-            b1.complete()
-            b1Var.node.complete()
-            a.complete()
-            aVar.node.complete()
-          }
-        })
+        (a, b1, b2, err)
       }
     }
 
     for {_ <- 0 until 10} {
       // warm up
       Range(0, 100).foreach { i =>
-        sample(model)
+        model.sample()
       }
 
       println(s"  A post: ${aPost.mu.v} (${aPost.sigma.v})")
@@ -311,7 +265,7 @@ class VariableSpec extends FlatSpec {
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = sample(model)
+      val l = model.sample()
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s"  ${values}")
     }

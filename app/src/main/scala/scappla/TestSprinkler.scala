@@ -46,12 +46,12 @@ object TestSprinkler extends App {
   val N = 10000
   // burn in
   for {_ <- 0 to N} {
-    sample(model)
+    model.sample()
   }
 
   // measure
   val n_rain = Range(0, N).map { _ =>
-    sample(model)
+    model.sample()
   }.count(identity)
 
   println(s"Expected number of rainy days: ${n_rain / 10000.0}")

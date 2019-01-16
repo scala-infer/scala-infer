@@ -53,12 +53,12 @@ class MacrosSpec extends FlatSpec {
     val N = 10000
     // burn in
     for {_ <- 0 to N} {
-      sample(model)
+      model.sample()
     }
 
     // measure
     val n_rain = Range(0, N).map { _ =>
-      sample(model)
+      model.sample()
     }.count(identity)
 
     println(s"Expected number of rainy days: ${n_rain / 10000.0}")
@@ -84,12 +84,12 @@ class MacrosSpec extends FlatSpec {
 
     // warm up
     Range(0, 10000).foreach { i =>
-      sample(model)
+      model.sample()
     }
 
     val N = 10000
     val (total_x, total_xx) = Range(0, N).map { i =>
-      sample(model).v
+      model.sample().v
     }.foldLeft((0.0, 0.0)) { case ((sum_x, sum_xx), x) =>
       (sum_x + x, sum_xx + x * x)
     }
@@ -147,7 +147,7 @@ class MacrosSpec extends FlatSpec {
 
     // warm up
     Range(0, 1000).foreach { i =>
-      sample(model)
+      model.sample()
     }
 
     println(s"  A post: ${aParam._1.v} (${aParam._2.v})")
@@ -157,7 +157,7 @@ class MacrosSpec extends FlatSpec {
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = sample(model)
+      val l = model.sample()
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s"  $values")
     }
@@ -230,7 +230,7 @@ class MacrosSpec extends FlatSpec {
 
     // warm up
     Range(0, 100).foreach { i =>
-      sample(model)
+      model.sample()
     }
 
     println(s"  A post: ${aParam._1.v} (${aParam._2.v})")
@@ -240,7 +240,7 @@ class MacrosSpec extends FlatSpec {
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = sample(model)
+      val l = model.sample()
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s" (Tensor LR) $values")
     }
@@ -292,19 +292,19 @@ class MacrosSpec extends FlatSpec {
 
     // warm up
     Range(0, 1000).foreach { i =>
-      sample(model)
+      model.sample()
     }
     val N = 5000
     val startTime = System.currentTimeMillis()
     Range(0, N).foreach { i =>
-      sample(model)
+      model.sample()
     }
     val endTime = System.currentTimeMillis()
     println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = sample(model)
+      val l = model.sample()
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s"  $values")
     }
