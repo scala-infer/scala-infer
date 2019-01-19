@@ -1,6 +1,7 @@
 name := "macro-ppl"
 
 version := "0.1"
+isSnapshot := false
 
 scalaVersion := "2.12.4"
 
@@ -19,12 +20,14 @@ lazy val macros = (project in file("macros")).settings(
     "com.github.tototoshi"       %% "scala-csv"          % "1.3.5",
     "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
   ),
-  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
+  licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0"))
 )
 
 lazy val app = (project in file("app")).settings(
   mainClass in Compile := Some("scappla.app.TestSprinkler"),
-  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
+  skip in publish := true
 //  scalacOptions ++= Seq("-Ymacro-debug-verbose")
 ) dependsOn macros
 
