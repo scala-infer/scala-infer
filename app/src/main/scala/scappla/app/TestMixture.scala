@@ -1,9 +1,10 @@
-package scappla
+package scappla.app
 
 import scappla.Functions.{exp, sigmoid}
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, Guide, ReparamGuide}
 import scappla.optimization.SGDMomentum
+import scappla.{Real, infer, observe, sample}
 
 import scala.util.Random
 

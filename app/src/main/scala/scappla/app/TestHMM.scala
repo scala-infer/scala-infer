@@ -1,9 +1,4 @@
-package scappla
-
-import scappla.Functions.sigmoid
-import scappla.distributions.{Bernoulli, Distribution}
-import scappla.guides.{BBVIGuide, Guide}
-import scappla.optimization.SGD
+package scappla.app
 
 object TestHMM extends App {
 /*

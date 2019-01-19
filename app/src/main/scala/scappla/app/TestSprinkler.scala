@@ -1,15 +1,16 @@
-package scappla
+package scappla.app
 
-import scappla.Functions._
+import scappla.Functions.sigmoid
 import scappla.distributions.Bernoulli
 import scappla.guides.BBVIGuide
-import scappla.optimization.SGD
+import scappla.optimization.{Adam, SGD}
+import scappla.{Real, infer, observe, sample}
 
 object TestSprinkler extends App {
 
   import Real._
 
-  val sgd = new SGD()
+  val sgd = new Adam(alpha=0.1)
   val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
   val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
 

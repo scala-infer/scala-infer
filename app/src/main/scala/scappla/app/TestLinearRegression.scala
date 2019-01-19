@@ -1,9 +1,10 @@
-package scappla
+package scappla.app
 
 import scappla.Functions.exp
 import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
 import scappla.optimization.SGDMomentum
+import scappla.{Real, infer, observe, sample}
 
 import scala.util.Random
 

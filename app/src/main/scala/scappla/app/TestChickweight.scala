@@ -1,4 +1,4 @@
-package scappla
+package scappla.app
 
 import java.io.InputStreamReader
 
@@ -8,6 +8,7 @@ import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
 import scappla.optimization.Adam
 import scappla.tensor.{Dim, Tensor, TensorExpr}
+import scappla.{Real, infer, observe, sample}
 
 object TestChickweight extends App {
 

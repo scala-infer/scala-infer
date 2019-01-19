@@ -1,17 +1,17 @@
-package scappla
+package scappla.test
 
 import org.scalatest.FlatSpec
+import scappla._
+import scappla.Functions._
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, ReparamGuide}
-import scappla.optimization.{Adam, SGD, SGDMomentum}
+import scappla.optimization.Adam
+import scappla.Real._
 import scappla.tensor.{Dim, TPlus, TTimes, Tensor}
 
 import scala.util.Random
 
 class MacrosSpec extends FlatSpec {
-
-  import Functions._
-  import Real._
 
   it should "allow a model to be specified" in {
 

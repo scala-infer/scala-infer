@@ -1,8 +1,9 @@
-package scappla
+package scappla.app
 
 import scappla.Functions.{exp, sigmoid}
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.optimization.Adam
+import scappla.{Model, Real, infer, observe}
 
 import scala.util.Random
 

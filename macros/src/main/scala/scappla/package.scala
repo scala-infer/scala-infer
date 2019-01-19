@@ -107,11 +107,9 @@ package object scappla {
 
     override def complete(): Unit = {}
 
-    override def addObservation(score: Score): Unit =
-      logger.debug("Adding observation to a constant variable")
+    override def addObservation(score: Score): Unit = {}
 
-    override def addVariable(modelScore: Score, guideScore: Score): Unit =
-      logger.debug("Adding dependant variable to a constant variable")
+    override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
   }
 
   class Dependencies(upstream: Seq[BayesNode]) extends BayesNode {
