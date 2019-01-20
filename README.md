@@ -26,10 +26,20 @@ the reparametrization trick can be used to obtain a low variance estimator.  Dis
 use black-box variational inference, which only requires gradients of the score function to the
 parameters.
 
+## Including it in your project
+To leverage `scala-infer` in your project, update `plugins.sbt` with
+```scala
+resolvers += Resolver.bintrayRepo("fvlankvelt", "maven")
+```
+and in `build.sbt`, add
+```scala
+libraryDependencies += "fvlankvelt" %% "scala-infer" % "0.1"
+```
+
 ## Running the project
 While intended to become a library to be used, so far the only used ways of triggering the
 macro expansion and execution is to use either
-* `sbt macros/test`, or
+* `sbt core/test`, or
 * `sbt app/run`
 
 ## Example: Sprinkler system
