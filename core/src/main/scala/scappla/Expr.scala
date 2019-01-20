@@ -6,6 +6,21 @@ trait Expr[X] {
 
   def dv(v: X): Unit
 
+  def unary_-()(implicit numE: Numeric[Expr[X]]): Expr[X] =
+    numE.negate(this)
+
+  def +(other: Expr[X])(implicit numE: Numeric[Expr[X]]): Expr[X] =
+    numE.plus(this, other)
+
+  def -(other: Expr[X])(implicit numE: Numeric[Expr[X]]): Expr[X] =
+    numE.minus(this, other)
+
+  def *(other: Expr[X])(implicit numE: Numeric[Expr[X]]): Expr[X] =
+    numE.times(this, other)
+
+  def /(other: Expr[X])(implicit numE: Fractional[Expr[X]]): Expr[X] =
+    numE.div(this, other)
+
   def buffer: Buffered[X] =
     NoopBuffer(this)
 

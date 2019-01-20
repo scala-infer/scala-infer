@@ -3,12 +3,14 @@ package scappla.app
 import java.io.InputStreamReader
 
 import com.github.tototoshi.csv.CSVReader
+
 import scappla.Functions.exp
 import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
 import scappla.optimization.Adam
-import scappla.tensor.{Dim, Tensor, TensorExpr}
-import scappla.{Real, infer, observe, sample}
+import scappla.tensor.{Dim, Tensor}
+import scappla.tensor.TensorExpr._
+import scappla._
 
 object TestChickweight extends App {
 
@@ -46,21 +48,18 @@ object TestChickweight extends App {
 
 
   val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-  val aPost = ReparamGuide(Normal(sgd.param(40.0, name=Some("a_mu")), exp(sgd.param(0.0))))
-  val atPost = ReparamGuide(Normal(sgd.param(0.0, name=Some("a_s")), exp(sgd.param(0.0))))
+  val aPost = ReparamGuide(Normal(sgd.param(40.0), exp(sgd.param(0.0))))
+  val atPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
 
   val data_with_guides = diets.zipWithIndex.map { case (d, i) =>
     (
         d,
         (
-            ReparamGuide(Normal(sgd.param(10.0, name=Some(s"b_mu_${i}")), exp(sgd.param(1.0)))),
-            ReparamGuide(Normal(sgd.param(0.0, name=Some(s"s_mu_${i}")), exp(sgd.param(0.0))))
+            ReparamGuide(Normal(sgd.param(10.0), exp(sgd.param(1.0)))),
+            ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
         )
     )
   }
-
-  import scappla.tensor.TensorExpr._
-  val numTE = TensorExpr.numTensor[Diet, Array[Float]]
 
   val model = infer {
     val a = sample(Normal(40.0, 1.0), aPost)
@@ -78,9 +77,12 @@ object TestChickweight extends App {
       val tc = times.const
       val mu_tensor = broadcast(b_mu, dim)
       val s_tensor = broadcast(b_s, dim)
-      val mc = numTE.plus(a_tensor, numTE.times(mu_tensor, tc))
-      val sc = numTE.plus(a_t_tensor, numTE.times(s_tensor, tc))
-      observe(Normal(mc, sc), weights.const)
+
+      observe(Normal(
+        a_tensor + mu_tensor * tc,
+        a_t_tensor + s_tensor * tc
+      ), weights.const)
+
       (b_mu, b_s)
     }
 
