@@ -4,7 +4,7 @@ import scappla.Real
 
 class Adam(alpha: Double = 0.001, beta1: Double = 0.9, beta2: Double = 0.999, epsilon: Double = 1e-8) extends Optimizer {
 
-  override def param(initial: Double, lr: Double = 1.0, name: Option[String]): Real = {
+  override def param(initial: Double, name: Option[String]): Real = {
     new Real {
 
       private var iter: Int = 1

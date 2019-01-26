@@ -2,9 +2,9 @@ package scappla.optimization
 
 import scappla.Real
 
-class SGD(val debug: Boolean = false) extends Optimizer {
+class SGD(val debug: Boolean = false, lr: Double) extends Optimizer {
 
-  override def param(initial: Double, lr: Double, name: Option[String]): Real = {
+  override def param(initial: Double, name: Option[String]): Real = {
     new Real {
 
       private var iter: Int = 0

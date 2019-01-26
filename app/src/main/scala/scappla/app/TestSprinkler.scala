@@ -11,10 +11,10 @@ object TestSprinkler extends App {
   import Real._
 
   val sgd = new Adam(alpha=0.1)
-  val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
-  val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+  val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+  val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
-  val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+  val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
   val model = infer {
 
