@@ -1,40 +1,29 @@
 package scappla.optimization
 
-import scappla.Real
+import scappla.{BaseField, Expr}
 
-class SGDMomentum(val mass: Int = 10, lr: Double, val debug: Boolean = false) extends Optimizer {
+class SGDMomentum(val mass: Int = 10, lr: Double) extends Optimizer {
 
-  override def param(initial: Double, name: Option[String]): Real = {
-    new Real {
+  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S]): Expr[X] = {
+    new Expr[X] {
 
       private var iter: Int = 0
 
-      private var value: Double = initial
-      private var momentum: Double = 0.0
+      private val shape = ev.shapeOf(initial)
+      private var value: X = initial
+      private var momentum: X = ev.fromInt(0, shape)
 
-      override def v: Double = value
+      private val massS = ev.fromDouble(mass, shape)
+      private val lrS = ev.fromDouble(lr, shape)
 
-      override def dv(dv: Double): Unit = {
+      override def v: X = value
+
+      override def dv(dv: X): Unit = {
+        import ev._
+
         iter += 1
-        momentum = ((mass - 1) * momentum + dv) / mass
-        val newValue = value + momentum * lr / iter
-        if (debug) {
-          println(s"    SGD (${name.getOrElse("")}) $iter: $value (dv: $dv, p: $momentum) => $newValue")
-          //          new Exception().printStackTrace()
-          scala.math.abs(dv) match {
-            case adv: Double if adv > 1.0E8 =>
-              assert(false)
-            case _ =>
-          }
-          newValue match {
-            case v: Double =>
-              if (v.isNaN || v.isInfinite) {
-                assert(false)
-              }
-            case _ =>
-          }
-        }
-        value = newValue
+        momentum = momentum  + (dv - momentum) / massS
+        value = value + momentum * lrS / ev.fromInt(iter, shape)
       }
 
       override def toString: String = s"Param@${hashCode()}"

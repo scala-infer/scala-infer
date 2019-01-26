@@ -1,21 +1,26 @@
 package scappla.optimization
 
-import scappla.Real
+import scappla.{BaseField, Expr}
 
 class SGD(val debug: Boolean = false, lr: Double) extends Optimizer {
 
-  override def param(initial: Double, name: Option[String]): Real = {
-    new Real {
+  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S]): Expr[X] = {
+    new Expr[X] {
 
       private var iter: Int = 0
 
-      private var value: Double = initial
+      private val shape = ev.shapeOf(initial)
+      private var value: X = initial
 
-      override def v: Double = value
+      private val lrS = ev.fromDouble(lr, shape)
 
-      override def dv(dv: Double): Unit = {
+      override def v: X = value
+
+      override def dv(dv: X): Unit = {
+        import ev._
+
         iter += 1
-        value = value + dv * lr / iter
+        value = value + dv * lrS / ev.fromInt(iter, shape)
         if (debug) {
           println(s"    SGD (${name.getOrElse("")}) $iter: $value ($dv)")
           //          new Exception().printStackTrace()

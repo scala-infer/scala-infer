@@ -9,6 +9,8 @@ import scappla.Real._
 
 case class Categorical(p: Seq[Real]) extends Distribution[Int] {
 
+  import scappla.InferField._
+
   private val total = p.reduce(DAdd)
 
   override def sample(): Int = {

@@ -1,34 +1,40 @@
 package scappla.optimization
-import scappla.{Expr, Real}
+import scappla.{BaseField, Expr, Real}
 
 /**
  * Optimizer that uses a decaying learning rate (starting at 1) to compute an optimal value
  */
 object Average extends Optimizer {
 
-  override def param(initial: Double, name: Option[String]): Real = {
-    new Expr[Double] {
+  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S]): Expr[X] = {
+    new Expr[X] {
+
+      private val shape = ev.shapeOf(initial)
 
       private var iter = 0
       private var weight: Double = 0.0
-      private var offset: Double = 0.0
+      private var offset: X = ev.fromInt(0, shape)
 
       private var control = initial
 
-      def v: Double = control
+      def v: X = control
 
-      def dv(delta: Double): Unit = {
+      def dv(delta: X): Unit = {
+        import ev._
+
         iter += 1
         val rho = math.pow(iter, -0.5)
         weight = (1.0 - rho) * weight + rho
-        offset = (1.0 - rho) * offset + rho * (delta + control)
+        offset = ev.fromDouble(1.0 - rho, shape) * offset +
+            ev.fromDouble(rho, shape) * (delta + control)
         control = if (weight < 1e-12) {
-          0.0
+          ev.fromInt(0, shape)
         }
         else {
-          offset / weight
+          offset / ev.fromDouble(weight, shape)
         }
       }
     }
   }
+
 }
