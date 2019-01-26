@@ -2,16 +2,12 @@ package scappla.guides
 
 import scappla._
 import scappla.distributions.Distribution
+import scappla.optimization.Average
 
-case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
-
-  var iter = 0
-
-  // control variate
-  // Since a constant delta between score_p and score_q has an expectation value of zero,
-  // the average value can be subtracted in order to reduce the variance.
-  var weight: Double = 0.0
-  var offset: Double = 0.0
+// control variate
+// Since a constant delta between score_p and score_q has an expectation value of zero,
+// the average value can be subtracted in order to reduce the variance.
+case class BBVIGuide[A](posterior: Distribution[A], control: Expr[Double] = Average.param(0.0)) extends Guide[A] {
 
   // samples the guide (= the approximation to the posterior)
   // use BBVI (with Rao Blackwellization)
@@ -64,24 +60,13 @@ case class BBVIGuide[A](posterior: Distribution[A]) extends Guide[A] {
     * (full) score.  The average difference is used as the control variate, to reduce
     * variance of the gradient.
     */
-  private def update(s: Score, logp: Score, logq: Score) = {
-    iter += 1
-    val rho = math.pow(iter, -0.5)
-
+  private def update(s: Score, logp: Score, logq: Score): Unit = {
     val delta = logp.v - logq.v
 
-    weight = (1.0 - rho) * weight + rho
-    offset = (1.0 - rho) * offset + rho * delta
-    val control = if (weight < 1e-12) {
-      0.0
-    }
-    else {
-      offset / weight
-    }
+    val gradient = delta - control.v
+    control.dv(gradient)
 
-    //      println(s" BBVI delta: ${delta}, control: ${control}  ($iter)")
-
-    s.dv(delta - control)
+    s.dv(gradient)
   }
 
 }

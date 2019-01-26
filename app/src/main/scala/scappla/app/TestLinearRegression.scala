@@ -24,11 +24,11 @@ object TestLinearRegression extends App {
       }
     }
 
-    val sgd = new SGDMomentum(mass = 100)
-    val aPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
-    val b1Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
-    val b2Post = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
-    val sPost = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val sgd = new SGDMomentum(mass = 100, lr = 1.0)
+    val aPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+    val b1Post = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+    val b2Post = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+    val sPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
 
     val model = infer {
       val a = sample(Normal(0.0, 1.0), aPost)

@@ -2,9 +2,9 @@ package scappla.optimization
 
 import scappla.Real
 
-class SGDMomentum(val mass: Int = 10, val debug: Boolean = false) extends Optimizer {
+class SGDMomentum(val mass: Int = 10, lr: Double, val debug: Boolean = false) extends Optimizer {
 
-  override def param(initial: Double, lr: Double, name: Option[String]): Real = {
+  override def param(initial: Double, name: Option[String]): Real = {
     new Real {
 
       private var iter: Int = 0
