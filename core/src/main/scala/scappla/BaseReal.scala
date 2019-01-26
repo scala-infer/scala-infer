@@ -144,16 +144,6 @@ case class DDiv(numer: Real, denom: Real) extends LazyReal(0.0) {
   override def toString: String = s"$numer / $denom"
 }
 
-class DVariable(var v: Double) extends BaseReal {
-
-  var grad = 0.0
-
-  override def dv(v: Double): Unit = {
-    grad += v
-  }
-
-}
-
 object Real {
 
   implicit def apply(value: Double): BaseReal = RealConstant(value)
