@@ -17,10 +17,10 @@ class MacrosSpec extends FlatSpec {
 
 //    val sgd = new SGD()
     val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-    val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
-    val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+    val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+    val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
-    val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+    val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
     val model = infer {
 
@@ -72,7 +72,7 @@ class MacrosSpec extends FlatSpec {
 
   it should "reparametrize doubles" in {
     val sgd = new Adam()
-    val muGuide = ReparamGuide(Normal(sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0))))
+    val muGuide = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
 
     val model: Model[Real] = infer {
       val mu = sample(Normal(0.0, 1.0), muGuide)
@@ -116,7 +116,7 @@ class MacrosSpec extends FlatSpec {
     val sgd = new Adam(0.1, epsilon = 1e-4)
 
     def normalParams(): (Real, Real) = {
-      (sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+      (sgd.param(0.0), exp(sgd.param(0.0)))
     }
 
     val aParam = normalParams()
@@ -130,6 +130,8 @@ class MacrosSpec extends FlatSpec {
 
     val sParam = normalParams()
     val sPost = ReparamGuide(Normal(sParam._1, sParam._2))
+
+    import InferField._
 
     val model = infer {
       val a = sample(Normal(0.0, 1.0), aPost)
@@ -194,7 +196,7 @@ class MacrosSpec extends FlatSpec {
     val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
 
     def normalParams(): (Real, Real) = {
-      (sgd.param(0.0, 1.0), exp(sgd.param(0.0, 1.0)))
+      (sgd.param(0.0), exp(sgd.param(0.0)))
     }
 
     val aParam = normalParams()
@@ -269,7 +271,7 @@ class MacrosSpec extends FlatSpec {
     val sigmaPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
 
     val dataWithDist = data.map { datum =>
-      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0)))))
+      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0)))))
     }
     val model = infer {
       val p = sigmoid(sample(Normal(0.0, 1.0), pPost))

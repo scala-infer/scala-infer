@@ -2,7 +2,6 @@ package scappla.tensor
 
 import scappla.Functions.{exp, log, pow, sum}
 import scappla._
-import scappla.distributions.RandomGaussian
 import shapeless.Nat
 
 
@@ -388,10 +387,7 @@ object TensorExpr {
       override def apply(base: Expr[Tensor[S, D]], exp: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] = TPow(base, exp)
     }
 
-  implicit def numTensor[S <: Shape, D: DataOps] = new LiftedFractional[Tensor[S, D], S] {
-
-    override def const(x: Tensor[S, D]): Expr[Tensor[S, D]] =
-      TConst(x)
+  implicit def numTensorExpr[S <: Shape, D: DataOps] = new InferField[Tensor[S, D], S] {
 
     override def div(x: Expr[Tensor[S, D]], y: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] =
       TDiv(x, y)
@@ -420,23 +416,75 @@ object TensorExpr {
 
     override def compare(x: Expr[Tensor[S, D]], y: Expr[Tensor[S, D]]): Int = ???
 
+    override def const(x: Tensor[S, D]): Expr[Tensor[S, D]] =
+      TConst(x)
+
     override def fromInt(x: Int, shape: S): Expr[Tensor[S, D]] =
       broadcast(Real(x), shape)
   }
 
-  implicit def shapeOf[S <: Shape, D: DataOps]: ShapeOf[Tensor[S, D], S] =
-    new ShapeOf[Tensor[S, D], S] {
-      override def apply(tensor: Tensor[S, D]): S = tensor.shape
+  implicit def numTensor[S <: Shape, D: DataOps] = new BaseField[Tensor[S, D], S] {
+
+    private val ops = implicitly[DataOps[D]]
+
+    override def shapeOf(tensor: Tensor[S, D]): S = tensor.shape
+
+    override def fromInt(x: Int, shape: S): Tensor[S, D] = {
+      val data = ops.fill(x.toFloat, shape.sizes: _*)
+      Tensor(shape, data)
     }
 
-  implicit def gaussian[S <: Shape, D: DataOps](
-      implicit so: ShapeOf[Tensor[S, D], S]
-  ): RandomGaussian[Tensor[S, D], S] =
-    new RandomGaussian[Tensor[S, D], S] {
-      override def gaussian(shape: S): Tensor[S, D] = {
-        val data = implicitly[DataOps[D]].gaussian(shape.sizes: _*)
-        Tensor(shape, data)
-      }
+    override def fromDouble(x: Double, shape: S): Tensor[S, D] = {
+      val data = ops.fill(x.toFloat, shape.sizes: _*)
+      Tensor(shape, data)
     }
+
+    override def sqrt(tensor: Tensor[S, D]): Tensor[S, D] = {
+      val data = ops.sqrt(tensor.data)
+      Tensor(tensor.shape, data)
+    }
+
+    override def gaussian(shape: S): Tensor[S, D] = {
+      val data = ops.gaussian(shape.sizes: _*)
+      Tensor(shape, data)
+    }
+
+    override def div(x: Tensor[S, D], y: Tensor[S, D]): Tensor[S, D] = {
+      val data = ops.div(x.data, y.data)
+      Tensor(x.shape, data)
+    }
+
+    override def plus(x: Tensor[S, D], y: Tensor[S, D]): Tensor[S, D] = {
+      val data = ops.plus(x.data, y.data)
+      Tensor(x.shape, data)
+    }
+
+    override def minus(x: Tensor[S, D], y: Tensor[S, D]): Tensor[S, D] = {
+      val data = ops.minus(x.data, y.data)
+      Tensor(x.shape, data)
+    }
+
+    override def times(x: Tensor[S, D], y: Tensor[S, D]): Tensor[S, D] = {
+      val data = ops.times(x.data, y.data)
+      Tensor(x.shape, data)
+    }
+
+    override def negate(x: Tensor[S, D]): Tensor[S, D] = {
+      val data = ops.negate(x.data)
+      Tensor(x.shape, data)
+    }
+
+    override def fromInt(x: Int): Tensor[S, D] = ???
+
+    override def toInt(x: Tensor[S, D]): Int = ???
+
+    override def toLong(x: Tensor[S, D]): Long = ???
+
+    override def toFloat(x: Tensor[S, D]): Float = ???
+
+    override def toDouble(x: Tensor[S, D]): Double = ???
+
+    override def compare(x: Tensor[S, D], y: Tensor[S, D]): Int = ???
+  }
 
 }

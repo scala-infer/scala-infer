@@ -34,6 +34,9 @@ object Nd4jTensor {
     override def negate(a: INDArray): INDArray =
       a.neg()
 
+    override def sqrt(a: INDArray): INDArray =
+      Transforms.sqrt(a)
+
     override def log(a: INDArray): INDArray =
       Transforms.log(a)
 
@@ -61,7 +64,6 @@ object Nd4jTensor {
     override def sumAll(a: INDArray): Float = {
       a.sumNumber().floatValue()
     }
-
   }
 
 }

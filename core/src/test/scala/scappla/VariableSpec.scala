@@ -17,7 +17,7 @@ class VariableSpec extends FlatSpec {
 
       val optimizer = new Adam(alpha = 0.1, epsilon = 1e-4)
       // p = 1 / (1 + exp(-x)) => x = -log(1 / p - 1)
-      val p_guide = sigmoid(optimizer.param(0.0, 10.0))
+      val p_guide = sigmoid(optimizer.param(0.0))
       //      val p_guide = optimizer.param(0.4)
       val guide = BBVIGuide(Bernoulli(p_guide))
 
@@ -46,10 +46,10 @@ class VariableSpec extends FlatSpec {
   it should "allow a discrete model to be executed" in {
 
     val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-    val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
-    val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+    val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+    val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
-    val rainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0, 10.0))))
+    val rainGuide = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
 
     val sprinkle = {
       rainVar: Variable[Boolean] =>
@@ -118,8 +118,8 @@ class VariableSpec extends FlatSpec {
       val sgd = new Adam()
 
       val muGuide = ReparamGuide(Normal(
-        sgd.param(0.0, 1.0),
-        exp(sgd.param(0.0, 1.0))
+        sgd.param(0.0),
+        exp(sgd.param(0.0))
       ))
 
       override def sample(): Real = {
@@ -178,10 +178,12 @@ class VariableSpec extends FlatSpec {
     // find MAP
     //    val sgd = new SGDMomentum(mass = 100)
     val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-    val aPost = Normal(sgd.param(0.0, lr, Some("a-m")), exp(sgd.param(0.0, lr, Some("a-s"))))
-    val b1Post = Normal(sgd.param(0.0, lr, Some("b1-m")), exp(sgd.param(0.0, lr, Some("b1-s"))))
-    val b2Post = Normal(sgd.param(0.0, lr, Some("b2-m")), exp(sgd.param(0.0, lr, Some("b2-s"))))
-    val sPost = Normal(sgd.param(0.0, lr, Some("e-m")), exp(sgd.param(0.0, lr, Some("e-s"))))
+    val aPost = Normal(sgd.param(0.0, Some("a-m")), exp(sgd.param(0.0, Some("a-s"))))
+    val b1Post = Normal(sgd.param(0.0, Some("b1-m")), exp(sgd.param(0.0, Some("b1-s"))))
+    val b2Post = Normal(sgd.param(0.0, Some("b2-m")), exp(sgd.param(0.0, Some("b2-s"))))
+    val sPost = Normal(sgd.param(0.0, Some("e-m")), exp(sgd.param(0.0, Some("e-s"))))
+
+    import InferField._
 
     val model = new Model[(Real, Real, Real, Real)] {
 

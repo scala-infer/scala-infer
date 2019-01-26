@@ -24,6 +24,8 @@ trait DataOps[D] {
 
   def negate(a: D): D
 
+  def sqrt(a: D): D
+
   def log(a: D): D
 
   def exp(a: D): D
@@ -114,6 +116,17 @@ object DataOps {
       result
     }
 
+    override def sqrt(a: Array[Float]): Array[Float] = {
+      val len = a.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = scala.math.sqrt(a(i)).toFloat
+        i += 1
+      }
+      result
+    }
+
     override def log(a: Array[Float]): Array[Float] = {
       val len = a.length
       val result = new Array[Float](len)
@@ -191,6 +204,5 @@ object DataOps {
       }
       result
     }
-
   }
 }

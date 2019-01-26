@@ -7,7 +7,7 @@ import scala.util.Random
 
 case class Bernoulli(p: Real) extends Distribution[Boolean] {
 
-  import Real._
+  import scappla.InferField._
 
   override def sample(): Boolean = {
     Random.nextDouble() < p.v
