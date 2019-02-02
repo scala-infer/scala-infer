@@ -350,6 +350,7 @@ class Macros(val c: blackbox.Context) {
           }
 
         case q"(..$bargs) => $body" =>
+          val arity = bargs.size
           val newArgs: Seq[(TermName, TermName, Tree, RichTree)] = bargs.map {
             case q"$mods val $arg: $tpt = $argExpr" =>
 //              println(s"    FN VALDEF ${showRaw(arg)}")
@@ -385,8 +386,20 @@ class Macros(val c: blackbox.Context) {
             case q"$mods val $arg: $tpt = $argExpr" =>
               tpt.tpe
           }
+          val argTpes = {tpes :+ body.tpe}
+          val fnTpe = arity match {
+            case 1 => tq"Function1[..$argTpes]"
+            case 2 => tq"Function2[..$argTpes]"
+            case 3 => tq"Function3[..$argTpes]"
+            case 4 => tq"Function4[..$argTpes]"
+            case 5 => tq"Function5[..$argTpes]"
+            case 6 => tq"Function6[..$argTpes]"
+            case 7 => tq"Function7[..$argTpes]"
+            case 8 => tq"Function8[..$argTpes]"
+            case 9 => tq"Function9[..$argTpes]"
+          }
           val wrapper =
-            q"""new Function1[..${tpes :+ body.tpe}] with scappla.Completeable {
+            q"""new $fnTpe with Completeable {
 
                 var nodes : List[scappla.BayesNode] = Nil
 
@@ -410,7 +423,7 @@ class Macros(val c: blackbox.Context) {
             }}
 
                 def complete(): Unit = {
-                  nodes.reverse.foreach(_.complete())
+                  nodes.foreach(_.complete())
                 }
               }"""
           scope.declare(varName, RichTree(q"$varName", newVars, Some(wrapper)))
