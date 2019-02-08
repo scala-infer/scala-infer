@@ -2,7 +2,6 @@ package scappla.tensor
 
 import shapeless.Nat
 
-/*
 
 trait SymDiff[A, B] {
   type Out
@@ -66,28 +65,58 @@ class ShapeSymDiffRight[A, B, C](m: ShapeSymDiffData) extends SymDiff[C, A] {
   override def recoverRight: SymDiff.Aux[B, C, A] = new ShapeSymDiffLeft(m)
 }
 
-object SymDiff {
+object SymDiff extends LowPrioSymDiff {
 
-  def apply[A, B](implicit o: SymDiff[A, B]): Aux[A, B, o.Out] = o
+  def apply[A <: Shape, B <: Shape](implicit o: SymDiff[A, B]): Aux[A, B, o.Out] = o
   type Aux[A, B, C] = SymDiff[A, B] { type Out = C }
 
   // A =:= Scalar
-  implicit def symDiffNil[B <: Shape](implicit bl: Len[B]): Aux[Scalar, B, B] =
+  implicit def symDiffScalarA[B <: Shape](implicit bl: Len[B]): Aux[Scalar, B, B] = {
     new ShapeSymDiff[Scalar, B, B](ShapeSymDiffData(0, bl.apply(), Nil))
+  }
 
-  // A.head ∉ B => A.head ∈ C
-  implicit def symDiffNoMatch[H, T <: Shape, B <: Shape, C <: Shape]
-  (implicit n: NotContains[B, H], s: SymDiff.Aux[T, B, C], bl: Len[B], tl: Len[T]): Aux[H :: T, B, H :: C] = {
-    val matched = s.matchedIndices map { case (i, j) => (i + 1, j) }
-    new ShapeSymDiff[H :: T, B, H :: C](ShapeSymDiffData(tl.apply() + 1, bl.apply(), matched))
+  // B =:= Scalar
+  implicit def symDiffScalarB[A <: Shape](implicit al: Len[A]): Aux[A, Scalar, A] = {
+    new ShapeSymDiff[A, Scalar, A](ShapeSymDiffData(al.apply(), 0, Nil))
+  }
+
+  // B =:= Scalar
+  implicit def symDiffIdent[A <: Shape](implicit al: Len[A]): Aux[A, A, Scalar] = {
+    new ShapeSymDiff[A, A, Scalar](ShapeSymDiffData(al(), al(), Range(0, al()).toList.map { i => (i, i)}))
   }
 
   // A.head ∈ B => A.head ∉ C
-  implicit def symDiffMatch[H, T <: Shape, B <: Shape, R <: Shape, N <: Nat, C <: Shape]
-  (implicit idx: IndexOf.Aux[B, H, N], r: RemoveAt.Aux[B, N, R], s: SymDiff.Aux[T, R, C], bl: Len[B], tl: Len[T]): Aux[H :: T, B, C] = {
-    val matched = (0, idx.toInt) :: (s.matchedIndices map { case (i, j) => (i + 1, if (j >= idx.toInt) j + 1 else j) })
-    new ShapeSymDiff[H :: T, B, C](ShapeSymDiffData(tl.apply() + 1, bl.apply(), matched))
+  implicit def symDiffHead[H <: Dim[_], B <: Shape, R <: Shape, N <: Nat, C <: Shape]
+  (implicit idx: IndexOf.Aux[B, H, N], r: RemoveAt.Aux[B, N, R], s: SymDiff.Aux[Scalar, R, C], bl: Len[B]): SymDiff.Aux[H, B, C] = {
+    val matched = (0, idx.toInt) :: (s.matchedIndices map {
+      case (i, j) => (i + 1, if (j >= idx.toInt) j + 1 else j)
+    })
+    new ShapeSymDiff[H, B, C](ShapeSymDiffData(1, bl.apply(), matched))
   }
 
 }
-*/
+
+trait LowPrioSymDiff {
+
+  // A =:= Dim
+  implicit def symDiffDimA[A <: Dim[_], B <: Shape](implicit bl: Len[B], n: NotContains[B, A]): SymDiff.Aux[A, B, A :#: B] = {
+    new ShapeSymDiff[A, B, A :#: B](ShapeSymDiffData(1, bl.apply(), Nil))
+  }
+
+  // A.head ∉ B => A.head ∈ C
+  implicit def symDiffNoMatch[H <: Dim[_], T <: Shape, B <: Shape, C <: Shape]
+  (implicit n: NotContains[B, H], s: SymDiff.Aux[T, B, C], bl: Len[B], tl: Len[T]): SymDiff.Aux[H :#: T, B, H :#: C] = {
+    val matched = s.matchedIndices map { case (i, j) => (i + 1, j) }
+    new ShapeSymDiff[H :#: T, B, H :#: C](ShapeSymDiffData(tl.apply() + 1, bl.apply(), matched))
+  }
+
+  // A.head ∈ B => A.head ∉ C
+  implicit def symDiffMatch[H <: Dim[_], T <: Shape, B <: Shape, R <: Shape, N <: Nat, C <: Shape]
+  (implicit idx: IndexOf.Aux[B, H, N], r: RemoveAt.Aux[B, N, R], s: SymDiff.Aux[T, R, C], bl: Len[B], tl: Len[T]): SymDiff.Aux[H :#: T, B, C] = {
+    val matched = (0, idx.toInt) :: (s.matchedIndices map {
+      case (i, j) => (i + 1, if (j >= idx.toInt) j + 1 else j)
+    })
+    new ShapeSymDiff[H :#: T, B, C](ShapeSymDiffData(tl.apply() + 1, bl.apply(), matched))
+  }
+
+}
