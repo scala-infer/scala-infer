@@ -7,7 +7,7 @@ import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, ReparamGuide}
 import scappla.optimization.Adam
 import scappla.Real._
-import scappla.tensor.{Dim, TPlus, TTimes, Tensor}
+import scappla.tensor._
 
 import scala.util.Random
 
@@ -189,7 +189,11 @@ class MacrosSpec extends FlatSpec {
         x2(i) = X._2.toFloat
         y(i) = Y.toFloat
       }
-      (Tensor(batch, x1), Tensor(batch, x2), Tensor(batch, y))
+      (
+          Tensor(batch, ArrayTensor(Seq(N), x1)),
+          Tensor(batch, ArrayTensor(Seq(N), x2)),
+          Tensor(batch, ArrayTensor(Seq(N), y))
+      )
     }
 
     //    val sgd = new SGDMomentum(mass = 100)
@@ -225,7 +229,7 @@ class MacrosSpec extends FlatSpec {
           )
       )
       val sigma = broadcast(err, batch)
-      observe(Normal[Tensor[Batch,Array[Float]], Batch](mu, sigma), y.const)
+      observe(Normal[Tensor[Batch, ArrayTensor], Batch](mu, sigma), y.const)
 
       (a, b1, b2, err)
     }

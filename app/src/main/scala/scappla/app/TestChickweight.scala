@@ -3,12 +3,11 @@ package scappla.app
 import java.io.InputStreamReader
 
 import com.github.tototoshi.csv.CSVReader
-
 import scappla.Functions.exp
 import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
 import scappla.optimization.Adam
-import scappla.tensor.{Dim, Tensor}
+import scappla.tensor.{ArrayTensor, Dim, Tensor}
 import scappla.tensor.TensorExpr._
 import scappla._
 
@@ -41,8 +40,8 @@ object TestChickweight extends App {
     }
     (
         dim,
-        Tensor(dim, times),
-        Tensor(dim, weights)
+        Tensor(dim, ArrayTensor(dim.sizes, times)),
+        Tensor(dim, ArrayTensor(dim.sizes, weights))
     )
   }
 

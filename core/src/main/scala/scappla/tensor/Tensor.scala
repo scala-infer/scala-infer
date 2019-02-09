@@ -280,14 +280,14 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
   override val v: Tensor[R, D] = {
     val ut = upstream.v
     Tensor(shape,
-      ops.sum(ut.data, index, ut.shape.sizes: _*)
+      ops.sum(ut.data, index)
     )
   }
 
   override def dv(dv: Tensor[R, D]): Unit = {
     val ut = upstream.v
     upstream.dv(Tensor(ut.shape,
-      ops.broadcast(dv.data, index, ut.shape.sizes(index), dv.shape.sizes: _*)
+      ops.broadcast(dv.data, index, ut.shape.sizes(index))
     ))
   }
 
@@ -487,4 +487,32 @@ object TensorExpr {
     override def compare(x: Tensor[S, D], y: Tensor[S, D]): Int = ???
   }
 
+  implicit def tensorOps[S <: Shape, D: DataOps](expr: Expr[Tensor[S, D]]) =
+    new TensorOps(expr)
+
+  class TensorOps[S <: Shape, D: DataOps](expr: Expr[Tensor[S, D]]) {
+
+    /*
+    def :*:[T <: Shape, R : Shape](
+        other: Expr[Tensor[T, D]]
+    )(implicit
+        sd: SymDiff.Aux[S, T, R]
+    ): Expr[Tensor[R, D]] = new Expr[Tensor[R, D]] {
+
+      override def v: Tensor[R, D] = {
+        val tensor = expr.v
+        val leftSizes = tensor.shape.sizes
+        val rightSizes = other.v.shape.sizes
+
+        val common = sd.matchedIndices
+        val outSizes =
+
+        val ops = implicitly[DataOps[D]]
+        ops.einsum(tensor.data, other.v.data, sd.matchedIndices)
+      }
+
+      override def dv(v: Tensor[R, D]): Unit = ???
+    }
+    */
+  }
 }
