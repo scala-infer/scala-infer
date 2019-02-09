@@ -34,122 +34,141 @@ trait DataOps[D] {
 
   def sumAll(a: D): Float
 
-  def sum(a: D, dim: Int, shape: Int*): D
+  def sum(a: D, dim: Int): D
 
-  def broadcast(a: D, dimIndex: Int, dimSize: Int, shape: Int*): D
+  def broadcast(a: D, dimIndex: Int, dimSize: Int): D
+
+  def einsum(a: D, b: D, dims: (Int, Int)*): D
 }
+
+case class ArrayTensor(shape: Seq[Int], data: Array[Float])
 
 object DataOps {
 
-  implicit val arrayOps = new DataOps[Array[Float]] {
+  implicit val arrayOps = new DataOps[ArrayTensor] {
 
-    override def fill(value: Float, shape: Int*): Array[Float] =
-      Array.fill(shape.product)(value)
+    override def fill(value: Float, shape: Int*): ArrayTensor =
+      ArrayTensor(shape.toSeq, Array.fill(shape.product)(value))
 
-    override def gaussian(shape: Int*): Array[Float] = {
-      Array.fill(shape.product)(Random.nextGaussian().toFloat)
+    override def gaussian(shape: Int*): ArrayTensor = {
+      ArrayTensor(shape.toSeq, Array.fill(shape.product)(Random.nextGaussian().toFloat))
     }
 
-    override def plus(a: Array[Float], b: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def plus(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
+      assert(a.shape == b.shape)
+      val (ad, bd) = (a.data, b.data)
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = a(i) + b(i)
+        result(i) = ad(i) + bd(i)
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def minus(a: Array[Float], b: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def minus(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
+      assert(a.shape == b.shape)
+      val (ad, bd) = (a.data, b.data)
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = a(i) - b(i)
+        result(i) = ad(i) - bd(i)
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def times(a: Array[Float], b: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def times(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
+      assert(a.shape == b.shape)
+      val (ad, bd) = (a.data, b.data)
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = a(i) * b(i)
+        result(i) = ad(i) * bd(i)
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def div(a: Array[Float], b: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def div(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
+      assert(a.shape == b.shape)
+      val (ad, bd) = (a.data, b.data)
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = a(i) / b(i)
+        result(i) = ad(i) / bd(i)
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def pow(a: Array[Float], b: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def pow(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
+      assert(a.shape == b.shape)
+      val (ad, bd) = (a.data, b.data)
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = scala.math.pow(a(i), b(i)).toFloat
+        result(i) = scala.math.pow(ad(i), bd(i)).toFloat
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def negate(a: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def negate(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = -a(i)
+        result(i) = -ad(i)
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def sqrt(a: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def sqrt(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = scala.math.sqrt(a(i)).toFloat
+        result(i) = scala.math.sqrt(ad(i)).toFloat
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def log(a: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def log(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = scala.math.log(a(i)).toFloat
+        result(i) = scala.math.log(ad(i)).toFloat
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def exp(a: Array[Float]): Array[Float] = {
-      val len = a.length
+    override def exp(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = scala.math.exp(a(i)).toFloat
+        result(i) = scala.math.exp(ad(i)).toFloat
         i += 1
       }
-      result
+      ArrayTensor(a.shape, result)
     }
 
-    override def sum(a: Array[Float], dimIndex: Int, shape: Int*): Array[Float] = {
+    override def sum(a: ArrayTensor, dimIndex: Int): ArrayTensor = {
+      val (shape, data) = (a.shape, a.data)
       val dimSize = shape(dimIndex)
       val outerShape = shape.take(dimIndex)
       val innerShape = shape.takeRight(shape.size - dimIndex - 1)
@@ -165,15 +184,16 @@ object DataOps {
           var value = 0f
           for {d <- Range(0, dimSize)} {
             val inputIdx = i + d * innerSize + outer * innerSize * dimSize
-            value += a(inputIdx)
+            value += data(inputIdx)
           }
           output(outputIdx) += value
         }
       }
-      output
+      ArrayTensor(newShape, output)
     }
 
-    override def broadcast(a: Array[Float], dimIndex: Int, dimSize: Int, shape: Int*): Array[Float] = {
+    override def broadcast(a: ArrayTensor, dimIndex: Int, dimSize: Int): ArrayTensor = {
+      val (shape, data) = (a.shape, a.data)
       val outerShape = shape.take(dimIndex)
       val innerShape = shape.takeRight(shape.size - dimIndex)
       val newShape = (outerShape :+ dimSize) ++ innerShape
@@ -184,25 +204,104 @@ object DataOps {
         val baseInput = outer * innerSize
         for {i <- Range(0, innerSize)} {
           val inputIdx = i + baseInput
-          val value = a(inputIdx)
+          val value = data(inputIdx)
           for {d <- Range(0, dimSize)} {
             val outputIdx = i + d * innerSize + outer * innerSize * dimSize
             output(outputIdx) = value
           }
         }
       }
-      output
+      ArrayTensor(newShape, output)
     }
 
-    override def sumAll(a: Array[Float]): Float = {
-      val len = a.length
+    override def sumAll(a: ArrayTensor): Float = {
+      val data = a.data
+      val len = data.length
       var result = 0f
       var i = 0
       while (i < len) {
-        result += a(i)
+        result += data(i)
         i += 1
       }
       result
     }
+
+    override def einsum(a: ArrayTensor, b: ArrayTensor, dims: (Int, Int)*): ArrayTensor = {
+      val aContract = dims.map {
+        _._1
+      }.toSet
+      val bContract = dims.map {
+        _._2
+      }.toSet
+      val aRemnants = a.shape.zipWithIndex.filterNot { ai => aContract.contains(ai._2) }
+      val bRemnants = b.shape.zipWithIndex.filterNot { bi => bContract.contains(bi._2) }
+      val newShape = aRemnants.map {
+        _._1
+      } ++ bRemnants.map {
+        _._1
+      }
+
+      val aDims = a.shape.scanRight(1) {
+        case (dimSize, stride) => dimSize * stride
+      }.drop(1).zipWithIndex.map {
+        _.swap
+      }.toMap
+
+      val bDims = b.shape.scanRight(1) {
+        case (dimSize, stride) => dimSize * stride
+      }.drop(1).zipWithIndex.map {
+        _.swap
+      }.toMap
+
+      val cDims = newShape.scanRight(1) {
+        case (dimSize, stride) => dimSize * stride
+      }.drop(1).zipWithIndex.map {
+        _.swap
+      }.toMap
+
+      val abDimensions = dims.map {
+        case (ai, bi) =>
+          ((aDims(ai), bDims(bi)), a.shape(ai))
+      }
+      val caDimensions = aRemnants.zipWithIndex.map {
+        case ((_, ai), ci) =>
+          ((cDims(ci), aDims(ai)), a.shape(ai))
+      }
+      val bcDimensions = bRemnants.zipWithIndex.map {
+        case ((_, bi), ci) =>
+          ((bDims(bi), cDims(ci + aRemnants.size)), b.shape(bi))
+      }
+
+      // take pairs of matching strides and dimension size, generate indices
+      def nestedIter(parts: Seq[((Int, Int), Int)]): Iterator[(Int, Int)] = {
+        parts.foldLeft(Iterator.single((0, 0))) {
+          case (current, ((strideLeft, strideRight), dimSize)) =>
+            current.flatMap { case (indexLeft, indexRight) =>
+              (0 until dimSize).iterator.map { i =>
+                (indexLeft + i * strideLeft, indexRight + i * strideRight)
+              }
+            }
+        }
+      }
+
+      val result = Array.ofDim[Float](newShape.product)
+      for { (cBaseIndex, aBaseIndex) <- nestedIter(caDimensions)} {
+        for { (aRelIndex, bBaseIndex) <- nestedIter(abDimensions)} {
+          val aIndex: Int = aBaseIndex + aRelIndex
+
+          val aValue = a.data(aIndex)
+          for {(bRelIndex, cRelIndex) <- nestedIter(bcDimensions)} {
+            val bIndex: Int = bBaseIndex + bRelIndex
+            val cIndex: Int = cBaseIndex + cRelIndex
+
+            val bValue = b.data(bIndex)
+            result(cIndex) += aValue * bValue
+          }
+        }
+      }
+
+      ArrayTensor(newShape, result)
+    }
   }
+
 }

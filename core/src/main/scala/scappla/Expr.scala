@@ -72,19 +72,6 @@ trait InferField[X, S] extends Fractional[Expr[X]] {
   def fromInt(x: Int, shape: S): Expr[X]
 }
 
-trait BaseField[X, S] extends Fractional[X] {
-
-  def shapeOf(x: X): S
-
-  def fromInt(x: Int, shape: S): X
-
-  def fromDouble(x: Double, shape: S): X
-
-  def sqrt(x: X): X
-
-  def gaussian(shape: S): X
-}
-
 object InferField {
 
   implicit val scalarNumeric: InferField[Double, Unit] =
@@ -126,6 +113,19 @@ object InferField {
 
       override def fromInt(x: Int, shape: Unit): Expr[Double] = Real(x)
     }
+}
+
+trait BaseField[X, S] extends Fractional[X] {
+
+  def shapeOf(x: X): S
+
+  def fromInt(x: Int, shape: S): X
+
+  def fromDouble(x: Double, shape: S): X
+
+  def sqrt(x: X): X
+
+  def gaussian(shape: S): X
 }
 
 object BaseField {
