@@ -36,8 +36,8 @@ object TestMixture extends App {
 
   def newGlobal(mu: Double, logSigma: Double): Guide[Real] = {
     ReparamGuide(Normal(
-      sgd.param(mu, 1.0),
-      exp(sgd.param(logSigma, 1.0))
+      sgd.param(mu),
+      exp(sgd.param(logSigma))
     ))
   }
 
@@ -48,7 +48,7 @@ object TestMixture extends App {
   val sigmaPost = newGlobal(0.0, 0.0)
 
   val dataWithDist = data.map { datum =>
-    val param = sgd.param(0.0, 10.0)
+    val param = sgd.param(0.0)
     (datum, param, BBVIGuide(Bernoulli(sigmoid(param))))
   }
   val model = infer {

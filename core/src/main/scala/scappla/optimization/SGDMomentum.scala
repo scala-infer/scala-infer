@@ -2,7 +2,7 @@ package scappla.optimization
 
 import scappla.{BaseField, Expr}
 
-class SGDMomentum(val mass: Int = 10, lr: Double) extends Optimizer {
+class SGDMomentum(val mass: Int = 10, lr: Double = 1.0) extends Optimizer {
 
   override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S]): Expr[X] = {
     new Expr[X] {
