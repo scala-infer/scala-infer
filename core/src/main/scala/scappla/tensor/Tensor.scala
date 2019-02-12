@@ -492,8 +492,7 @@ object TensorExpr {
 
   class TensorOps[S <: Shape, D: DataOps](expr: Expr[Tensor[S, D]]) {
 
-    /*
-    def :*:[T <: Shape, R : Shape](
+    def :*:[T <: Shape, R <: Shape](
         other: Expr[Tensor[T, D]]
     )(implicit
         sd: SymDiff.Aux[S, T, R]
@@ -501,18 +500,15 @@ object TensorExpr {
 
       override def v: Tensor[R, D] = {
         val tensor = expr.v
-        val leftSizes = tensor.shape.sizes
-        val rightSizes = other.v.shape.sizes
-
-        val common = sd.matchedIndices
-        val outSizes =
-
         val ops = implicitly[DataOps[D]]
-        ops.einsum(tensor.data, other.v.data, sd.matchedIndices)
+        Tensor(
+          sd.mapper.ab(expr.v.shape, other.v.shape),
+          ops.einsum(tensor.data, other.v.data, sd.matchedIndices: _*)
+        )
       }
 
       override def dv(v: Tensor[R, D]): Unit = ???
     }
-    */
   }
+
 }
