@@ -2,6 +2,7 @@ package scappla.tensor
 
 import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
+import scappla.Expr
 import scappla.Functions.log
 
 class TensorSpec extends FlatSpec {
@@ -55,7 +56,7 @@ class TensorSpec extends FlatSpec {
     )
 
     TensorExpr.sumAlong(param)
-        .dv(Tensor(Scalar, ArrayTensor(Seq(1), Array(1f))))
+        .dv(Tensor(Scalar, ArrayTensor(Seq.empty, Array(1f))))
 
     val dataArray = update.get
     assert(dataArray.data(0) == 2f)
@@ -79,7 +80,7 @@ class TensorSpec extends FlatSpec {
 
     val buffer = param.buffer
     TensorExpr.sumAlong(buffer)
-        .dv(Tensor(Scalar, ArrayTensor(Seq(1), Array(1f))))
+        .dv(Tensor(Scalar, ArrayTensor(Scalar.sizes, Array(1f))))
 
     assert(update.isEmpty)
 
@@ -105,6 +106,32 @@ class TensorSpec extends FlatSpec {
     val result = sum.v.data.data().asFloat()(0)
 
     assert(result == 1f)
+  }
+
+  it should "einsum when multiplying" in {
+    val inputDim = Input(2)
+    val batchDim = Batch(3)
+    val outDim = Other(2)
+    val inputShape = inputDim :#: batchDim
+    val outShape = outDim :#: batchDim
+
+    val data = ArrayTensor(inputShape.sizes, Array(
+      0f, 1f, 2f, 3f, 4f, 5f
+    ))
+    val matrix = ArrayTensor(outShape.sizes, Array(
+      0f, 1f, 2f, 3f, 4f, 5f
+    ))
+
+    val input = TensorExpr(inputShape, data)
+    val mTensor = TensorExpr(outShape, matrix)
+
+    import TensorExpr._
+
+    val out: Expr[Tensor[Input :#: Other, ArrayTensor]] = mTensor :*: input
+    val outData = out.v.data
+    val expected = ArrayTensor(Seq(2, 2), Array(5f, 14f, 14f, 50f))
+    assert(outData.shape == expected.shape)
+    assert(outData.data sameElements expected.data)
   }
 
 }

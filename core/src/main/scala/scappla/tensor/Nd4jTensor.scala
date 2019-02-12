@@ -46,7 +46,7 @@ object Nd4jTensor {
     // reshaping operations
 
     override def sum(a: INDArray, dim: Int): INDArray = {
-      val oldShape = a.shapeInfo().array().map {_.toInt}
+      val oldShape = a.shape().map {_.toInt}
       val result = a.sum(dim)
       val newShape = oldShape.take(dim) ++ oldShape.drop(dim + 1)
       val finalResult = result.reshape(newShape)
@@ -54,7 +54,7 @@ object Nd4jTensor {
     }
 
     override def broadcast(a: INDArray, dimIndex: Int, dimSize: Int): INDArray = {
-      val oldShape = a.shapeInfo().array().map {_.toInt}
+      val oldShape = a.shape().map {_.toInt}
       val newTmp: Seq[Int] = (oldShape.take(dimIndex) :+ 1) ++ oldShape.drop(dimIndex)
       val reshaped = a.reshape(newTmp.toArray)
       val newShape: Seq[Int] = (oldShape.take(dimIndex) :+ dimSize) ++ oldShape.drop(dimIndex)
