@@ -118,20 +118,36 @@ class TensorSpec extends FlatSpec {
     val data = ArrayTensor(inputShape.sizes, Array(
       0f, 1f, 2f, 3f, 4f, 5f
     ))
+    val input = TensorExpr(inputShape, data)
+
+    var update: Option[ArrayTensor] = None
     val matrix = ArrayTensor(outShape.sizes, Array(
       0f, 1f, 2f, 3f, 4f, 5f
     ))
-
-    val input = TensorExpr(inputShape, data)
-    val mTensor = TensorExpr(outShape, matrix)
+    val param = TensorExpr.param(Tensor(outShape, matrix),
+      (gradient: Tensor[Other :#: Batch, ArrayTensor]) => {
+        val result = DataOps.arrayOps.plus(data, gradient.data)
+        update = Some(result)
+        Tensor(outShape, result)
+      }
+    )
 
     import TensorExpr._
 
-    val out: Expr[Tensor[Input :#: Other, ArrayTensor]] = mTensor :*: input
+    val out: Expr[Tensor[Input :#: Other, ArrayTensor]] = param :*: input
     val outData = out.v.data
     val expected = ArrayTensor(Seq(2, 2), Array(5f, 14f, 14f, 50f))
     assert(outData.shape == expected.shape)
     assert(outData.data sameElements expected.data)
+
+    val grad = Tensor(
+      out.v.shape,
+      ArrayTensor(out.v.shape.sizes, Array(1f, 1f, 1f, 1f))
+    )
+    out.dv(grad)
+
+    val dataArray = update.get
+    assert(dataArray.data sameElements Array(3f, 6f, 9f, 6f, 9f, 12f))
   }
 
 }

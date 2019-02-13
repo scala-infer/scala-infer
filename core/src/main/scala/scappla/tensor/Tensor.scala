@@ -507,7 +507,21 @@ object TensorExpr {
         )
       }
 
-      override def dv(v: Tensor[R, D]): Unit = ???
+      override def dv(v: Tensor[R, D]): Unit = {
+        val ops = implicitly[DataOps[D]]
+        expr.dv(
+          Tensor(
+            sd.mapper.bc(other.v.shape, v.shape),
+            ops.einsum(other.v.data, v.data, sd.recoverLeft.matchedIndices: _*)
+          )
+        )
+        other.dv(
+          Tensor(
+            sd.mapper.ca(v.shape, expr.v.shape),
+            ops.einsum(v.data, expr.v.data, sd.recoverRight.matchedIndices: _*)
+          )
+        )
+      }
     }
   }
 
