@@ -399,7 +399,7 @@ class Macros(val c: blackbox.Context) {
             case 9 => tq"Function9[..$argTpes]"
           }
           val wrapper =
-            q"""new $fnTpe with Completeable {
+            q"""new $fnTpe with scappla.Completeable {
 
                 var nodes : List[scappla.BayesNode] = Nil
 

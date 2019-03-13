@@ -262,8 +262,8 @@ case class TExp[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends Te
   }
 
   override def dv(dv: Tensor[S, D]): Unit = {
-    val ut = upstream.v
-    upstream.dv(Tensor(ut.shape, ops.times(dv.data, ut.data)))
+    val tv = this.v
+    upstream.dv(Tensor(tv.shape, ops.times(dv.data, tv.data)))
   }
 
   override def toString: String = {
@@ -348,7 +348,7 @@ object TensorExpr {
   ): Expr[Tensor[S, D]] = TConst(Tensor(shape, data))
 
   def sumAlong[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: DataOps](
-      tensor: Expr[Tensor[S, X]]
+      tensor: Expr[Tensor[S, X]], dim: D
   )(implicit
       indexOf: IndexOf.Aux[S, D, I],
       removeAt: RemoveAt.Aux[S, I, R]
