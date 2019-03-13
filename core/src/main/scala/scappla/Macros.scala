@@ -601,12 +601,9 @@ class Macros(val c: blackbox.Context) {
           }
 
         case q"$mods val $tname : $tpt = $rhs" =>
-          // FIXME: just pass tname to toANF?
           val TermName(name) = tname
-//          println(s"  RECURRING into ${showCode(rhs)}")
           visitExpr(rhs) { exprName =>
               val fullExpr = if (rhs.tpe <:< typeOf[scappla.Expr[_]]) {
-//                println(s"  DIFFERENTIABLE ${showCode(rhs)}")
                 builder.buffer(TermName(name))
                 exprName.map { t => q"$t.buffer"}
               } else {
