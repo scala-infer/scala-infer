@@ -1,34 +1,29 @@
 package scappla.distributions
 
-import scappla.Functions.log
-import scappla.{Real, Score, DAdd}
+import scappla.Real._
+import scappla.Functions.{log, sum}
+import scappla.tensor.{DataOps, Dim, GreaterThan, Tensor}
+import scappla.{Expr, Score}
 
 import scala.util.Random
 
-import scappla.Real._
+case class Categorical[S <: Dim[_], D: DataOps](p: Expr[Tensor[S, D]]) extends Distribution[Int] {
 
-case class Categorical(p: Seq[Real]) extends Distribution[Int] {
+  import scappla.Real._
+  import scappla.tensor.TensorExpr._
 
-  import scappla.InferField._
-
-  private val total = p.reduce(DAdd)
+  private val total = sum(p)
 
   override def sample(): Int = {
     val draw = Random.nextDouble() * total.v
-    val (_, index) = p.zipWithIndex.foldLeft((draw, 0)) {
-      case ((curDraw, curIdx), (p_i, idx)) =>
-        val newDraw = curDraw - p_i.v
-        if (curDraw > 0) {
-          (newDraw, idx)
-        } else {
-          (newDraw, curIdx)
-        }
-    }
-    index
+    val cs = cumsum(p, p.v.shape) - broadcast(draw.const, p.v.shape)
+    count(cs, GreaterThan(0f))
   }
 
   override def observe(value: Int): Score = {
-    log(p(value) / total)
+    import scappla.InferField._
+    val vals = collect(p.v)
+    log(vals(value) / total)
   }
 
 }

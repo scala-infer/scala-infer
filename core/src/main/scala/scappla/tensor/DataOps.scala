@@ -2,6 +2,9 @@ package scappla.tensor
 
 import scala.util.Random
 
+sealed trait Condition
+case class GreaterThan(value: Float) extends Condition
+
 trait DataOps[D] {
 
   // (de)constructing values
@@ -9,6 +12,8 @@ trait DataOps[D] {
   def fill(value: Float, dims: Int*): D
 
   def gaussian(shape: Int*): D
+
+  def count(d: D, cond: Condition): Int
 
   // element-wise operations
 
@@ -29,6 +34,10 @@ trait DataOps[D] {
   def log(a: D): D
 
   def exp(a: D): D
+
+  def sigmoid(a: D): D
+
+  def cumsum(a: D, dim: Int): D
 
   // shape-affecting operations
 
@@ -167,6 +176,25 @@ object DataOps {
       ArrayTensor(a.shape, result)
     }
 
+    override def sigmoid(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = (1.0 / (1.0 + scala.math.exp(-ad(i)))).toFloat
+        i += 1
+      }
+      ArrayTensor(a.shape, result)
+    }
+
+    override def count(d: ArrayTensor, cond: Condition): Int = {
+      cond match {
+        case GreaterThan(value) =>
+          d.data.count(_ > value)
+      }
+    }
+
     override def sum(a: ArrayTensor, dimIndex: Int): ArrayTensor = {
       val (shape, data) = (a.shape, a.data)
       val dimSize = shape(dimIndex)
@@ -190,6 +218,28 @@ object DataOps {
         }
       }
       ArrayTensor(newShape, output)
+    }
+
+    override def cumsum(a: ArrayTensor, dimIndex: Int): ArrayTensor = {
+      val (shape, data) = (a.shape, a.data)
+      val dimSize = shape(dimIndex)
+      val outerShape = shape.take(dimIndex)
+      val innerShape = shape.takeRight(shape.size - dimIndex - 1)
+
+      val totalSize = shape.product
+      val innerSize = innerShape.product
+      val output = Array.fill(totalSize)(0F)
+      for {outer <- Range(0, outerShape.product)} {
+        for {i <- Range(0, innerSize)} {
+          var value = 0f
+          for {d <- Range(0, dimSize)} {
+            val inputIdx = i + innerSize * (d + outer * dimSize)
+            value += data(inputIdx)
+            output(inputIdx) = value
+          }
+        }
+      }
+      ArrayTensor(shape, output)
     }
 
     override def broadcast(a: ArrayTensor, dimIndex: Int, dimSize: Int): ArrayTensor = {

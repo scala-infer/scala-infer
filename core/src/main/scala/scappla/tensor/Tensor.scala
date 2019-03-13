@@ -1,6 +1,6 @@
 package scappla.tensor
 
-import scappla.Functions.{exp, log, pow, sum}
+import scappla.Functions._
 import scappla._
 import shapeless.Nat
 
@@ -271,6 +271,34 @@ case class TExp[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends Te
   }
 }
 
+case class TSigmoid[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends TensorExpr[S, D] {
+
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
+  override val v: Tensor[S, D] = {
+    val ut = upstream.v
+    Tensor(ut.shape, ops.sigmoid(ut.data))
+  }
+
+  override def dv(dv: Tensor[S, D]): Unit = {
+    val ut = upstream.v
+    upstream.dv(Tensor(
+      ut.shape,
+      ops.times(
+        dv.data,
+        ops.times(
+          this.v.data,
+          ops.sigmoid(ops.negate(ut.data))
+        )
+      )
+    ))
+  }
+
+  override def toString: String = {
+    s"sigmoid($upstream)"
+  }
+}
+
 case class TSum[R <: Shape, S <: Shape, D: DataOps](
     shape: R, index: Int, upstream: Expr[Tensor[S, D]]
 ) extends TensorExpr[R, D] {
@@ -293,6 +321,42 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
 
   override def toString: String = {
     s"sum($upstream, $index)"
+  }
+}
+
+case class TAt[R <: Shape, S <: Shape, D: DataOps](
+
+) extends TensorExpr[R, D] {
+
+}
+
+case class TCumSum[S <: Shape, D: DataOps](
+    index: Int, upstream: Expr[Tensor[S, D]]
+) extends TensorExpr[S, D] {
+
+  override val ops: DataOps[D] = implicitly[DataOps[D]]
+
+  override val v: Tensor[S, D] = {
+    val ut = upstream.v
+    Tensor(
+      upstream.v.shape,
+      ops.cumsum(ut.data, index)
+    )
+  }
+
+  override def dv(dv: Tensor[S, D]): Unit = {
+    val summed_dv = ops.sum(dv.data, index)
+    val sum_s = ops.broadcast(summed_dv, index, dv.shape.sizes(index))
+
+    val ut = upstream.v
+    upstream.dv(Tensor(
+      ut.shape,
+      ops.minus(sum_s, ops.minus(ops.cumsum(dv.data, index), dv.data))
+    ))
+  }
+
+  override def toString: String = {
+    s"cumsum($upstream, $index)"
   }
 }
 
@@ -347,6 +411,20 @@ object TensorExpr {
       shape: S, data: D
   ): Expr[Tensor[S, D]] = TConst(Tensor(shape, data))
 
+  def count[S <: Shape, X : DataOps](
+      tensor: Expr[Tensor[S, X]], cond: Condition
+  ): Int = {
+    implicitly[DataOps[X]].count(tensor.v.data, cond)
+  }
+
+  def cumsum[S <: Shape, D <: Dim[_], I <: Nat, X: DataOps](
+      tensor: Expr[Tensor[S, X]], dim: D
+  )(implicit
+      indexOf: IndexOf.Aux[S, D, I]
+  ): TensorExpr[S, X] = {
+    TCumSum(indexOf.toInt, tensor)
+  }
+
   def sumAlong[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: DataOps](
       tensor: Expr[Tensor[S, X]], dim: D
   )(implicit
@@ -354,6 +432,16 @@ object TensorExpr {
       removeAt: RemoveAt.Aux[S, I, R]
   ): TensorExpr[R, X] = {
     TSum[R, S, X](removeAt.apply(tensor.v.shape), indexOf.toInt, tensor)
+  }
+
+  def at[S <: Shape, X: DataOps, D <: Dim[_], I <: Nat, R <: Shape](
+      tensor: Expr[Tensor[S, X]],
+      index: D
+  )(implicit
+      indexOf: IndexOf.Aux[S, D, I],
+      removeAt: RemoveAt.Aux[S, I, R]
+  ): TensorExpr[R, X] = {
+    TAt[R, S, X](removeAt.apply(tensor.v.shape), indexOf.toInt, tensor)
   }
 
   def broadcast[S <: Shape, D: DataOps](
@@ -375,6 +463,11 @@ object TensorExpr {
   implicit def expTensor[S <: Shape, D: DataOps]: exp.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
     new Functions.exp.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
       def apply(in: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] = TExp(in)
+    }
+
+  implicit def sigmoidTensor[S <: Shape, D: DataOps]: sigmoid.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
+    new Functions.sigmoid.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
+      override def apply(in: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] = TSigmoid(in)
     }
 
   implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[Expr[Tensor[S, D]]] =
