@@ -1,6 +1,7 @@
 package scappla.tensor
 
 import org.scalatest.FlatSpec
+import scappla.tensor.SymDiff.Aux
 
 class SymDiffSpec extends FlatSpec {
 
@@ -81,6 +82,18 @@ class SymDiffSpec extends FlatSpec {
     val two = sd.matchedIndices(1)
     assert(two._1 == 1)
     assert(two._2 == 0)
+  }
+
+  it should "find nested contraction" in {
+
+    case class Height(size: Int) extends Dim[Height]
+
+    case class Channel(size: Int) extends Dim[Channel]
+
+    val lr: Aux[Height :#: Channel, Channel, Height] =
+      SymDiff[Height :#: Channel, Channel]
+
+    assert(lr.matchedIndices == List((1, 0)))
   }
 
 }

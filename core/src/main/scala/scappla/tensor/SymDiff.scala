@@ -133,7 +133,7 @@ object SymDiff extends LowPrioSymDiff {
     new ShapeSymDiff[A, Scalar, A](ShapeSymDiffIndices(al.apply(), 0, Nil), mapper)
   }
 
-  // B =:= Scalar
+  // C =:= Scalar
   implicit def symDiffIdent[A <: Shape](implicit al: Len[A]): Aux[A, A, Scalar] = {
     val mapper = new ShapeDiffMappers[A, A, Scalar] {
       override def ab(a: A, b: A): Scalar = Scalar
@@ -165,6 +165,23 @@ object SymDiff extends LowPrioSymDiff {
       }
     }
     new ShapeSymDiff[H, B, C](indices, mapper)
+  }
+
+  // A.head ∉ B => A.head ∈ C
+  implicit def symDiffHeadNoMatch[H <: Dim[_], B <: Shape]
+  (implicit
+      n: NotContains[B, H],
+      s: SymDiff.Aux[B, B, Scalar],
+      bl: Len[B]
+  ): SymDiff.Aux[H :#: B, B, H] = {
+    val mapper = new ShapeDiffMappers[H :#: B, B, H] {
+      override def ab(a: H :#: B, b: B): H = a.head
+      override def bc(b: B, c: H): H :#: B = c :#: b
+      override def ca(c: H, a: H :#: B): B = a.tail
+    }
+    val matched = s.matchedIndices map { case (i, j) => (i + 1, j) }
+    val indices = ShapeSymDiffIndices(bl.apply() + 1, bl.apply(), matched)
+    new ShapeSymDiff[H :#: B, B, H](indices, mapper)
   }
 
 }

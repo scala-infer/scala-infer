@@ -33,7 +33,7 @@ class TensorSpec extends FlatSpec {
     val data = ArrayTensor(shape.sizes, Array(0.0f, 1.0f))
 
     val tensor = TensorExpr(shape, data)
-    val sum = TensorExpr.sumAlong(tensor)
+    val sum = TensorExpr.sumAlong(tensor, shape)
     val result = sum.v.data.data(0)
 
     print(s"Result $result")
@@ -55,7 +55,7 @@ class TensorSpec extends FlatSpec {
       }
     )
 
-    TensorExpr.sumAlong(param)
+    TensorExpr.sumAlong(param, shape)
         .dv(Tensor(Scalar, ArrayTensor(Seq.empty, Array(1f))))
 
     val dataArray = update.get
@@ -79,7 +79,7 @@ class TensorSpec extends FlatSpec {
     )
 
     val buffer = param.buffer
-    TensorExpr.sumAlong(buffer)
+    TensorExpr.sumAlong(buffer, shape)
         .dv(Tensor(Scalar, ArrayTensor(Scalar.sizes, Array(1f))))
 
     assert(update.isEmpty)
@@ -102,11 +102,13 @@ class TensorSpec extends FlatSpec {
     )
 
     val tensor = TensorExpr(shape, data)
-    val sum = TensorExpr.sumAlong(tensor)
+    val sum = TensorExpr.sumAlong(tensor, shape)
     val result = sum.v.data.data().asFloat()(0)
 
     assert(result == 1f)
   }
+
+
 
   it should "einsum when multiplying" in {
     val inputDim = Input(2)
