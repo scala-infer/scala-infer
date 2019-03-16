@@ -29,7 +29,7 @@ parameters.
 ## Including it in your project
 To leverage `scala-infer` in your project, update `plugins.sbt` with
 ```scala
-resolvers += Resolver.bintrayRepo("fvlankvelt", "maven")
+resolvers += Resolver.bintrayRepo("scala-infer", "maven")
 ```
 and in `build.sbt`, add
 ```scala
