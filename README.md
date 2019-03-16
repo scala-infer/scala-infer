@@ -205,7 +205,7 @@ case class Batch(size: Int) extends Dim[Batch]
 
 val shape = Batch(2)
 val data = Array(0.0f, 1.0f)
-val tensor: Tensor[Batch, Array[Float]] = Tensor(shape, data)
+val tensor: Tensor[Batch, ArrayTensor] = Tensor(shape, ArrayTensor(shape.sizes, data))
 ```
 where the type of the final `tensor` variable has been added for clarity.  A tensor can be backed
 by different data structures.  Above the java native `Array[Float]` is used, but it is also possible
