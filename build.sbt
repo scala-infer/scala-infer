@@ -1,10 +1,10 @@
 name := "scala-infer-parent"
 
-ThisBuild / organization := "fvlankvelt"
+ThisBuild / organization := "scala-infer"
 ThisBuild / scalaVersion := "2.12.8"
 ThisBuild / skip in publish := true
 
-bintrayOrganization := Some("scala-infer")
+ThisBuild / bintrayOrganization := Some("scala-infer")
 
 lazy val core = (project in file("core")).settings(
   moduleName := "scala-infer",
