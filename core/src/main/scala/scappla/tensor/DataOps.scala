@@ -15,6 +15,8 @@ trait DataOps[D] {
 
   def count(d: D, cond: Condition): Int
 
+  def get(d: D, indices: Int*): Float
+
   // element-wise operations
 
   def plus(a: D, b: D): D
@@ -61,6 +63,22 @@ object DataOps {
 
     override def gaussian(shape: Int*): ArrayTensor = {
       ArrayTensor(shape.toSeq, Array.fill(shape.product)(Random.nextGaussian().toFloat))
+    }
+
+    override def count(d: ArrayTensor, cond: Condition): Int = {
+      cond match {
+        case GreaterThan(value) =>
+          d.data.count(_ > value)
+      }
+    }
+
+    override def get(d: ArrayTensor, indices: Int*): Float = {
+      val (shape, data) = (d.shape, d.data)
+      val index = shape.zip(indices).foldLeft(0) {
+        case (cum, (dimShape, dimIdx)) =>
+          cum * dimShape + dimIdx
+      }
+      data(index)
     }
 
     override def plus(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
@@ -186,13 +204,6 @@ object DataOps {
         i += 1
       }
       ArrayTensor(a.shape, result)
-    }
-
-    override def count(d: ArrayTensor, cond: Condition): Int = {
-      cond match {
-        case GreaterThan(value) =>
-          d.data.count(_ > value)
-      }
     }
 
     override def sum(a: ArrayTensor, dimIndex: Int): ArrayTensor = {

@@ -324,10 +324,24 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
   }
 }
 
-case class TAt[R <: Shape, S <: Shape, D: DataOps](
+case class TAt[S <: Dim[_], D: DataOps](
+    upstream: Expr[Tensor[S, D]],
+    index: Int
+) extends Expr[Double] {
 
-) extends TensorExpr[R, D] {
+  override def v: Double = {
+    implicitly[DataOps[D]].get(upstream.v.data, index)
+  }
 
+  override def dv(dv: Double): Unit = {
+    val shape = upstream.v.shape
+    upstream.dv(
+      Tensor(
+        shape,
+        implicitly[DataOps[D]].fill(dv.toFloat, shape.sizes: _*)
+      )
+    )
+  }
 }
 
 case class TCumSum[S <: Shape, D: DataOps](
@@ -434,14 +448,11 @@ object TensorExpr {
     TSum[R, S, X](removeAt.apply(tensor.v.shape), indexOf.toInt, tensor)
   }
 
-  def at[S <: Shape, X: DataOps, D <: Dim[_], I <: Nat, R <: Shape](
-      tensor: Expr[Tensor[S, X]],
-      index: D
-  )(implicit
-      indexOf: IndexOf.Aux[S, D, I],
-      removeAt: RemoveAt.Aux[S, I, R]
-  ): TensorExpr[R, X] = {
-    TAt[R, S, X](removeAt.apply(tensor.v.shape), indexOf.toInt, tensor)
+  def at[X: DataOps, D <: Dim[_]](
+      tensor: Expr[Tensor[D, X]],
+      index: Int
+  ): Expr[Double] = {
+    TAt[D, X](tensor, index)
   }
 
   def broadcast[S <: Shape, D: DataOps](
