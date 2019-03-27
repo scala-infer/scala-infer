@@ -108,8 +108,6 @@ class TensorSpec extends FlatSpec {
     assert(result == 1f)
   }
 
-
-
   it should "einsum when multiplying" in {
     val inputDim = Input(2)
     val batchDim = Batch(3)
@@ -150,6 +148,23 @@ class TensorSpec extends FlatSpec {
 
     val dataArray = update.get
     assert(dataArray.data sameElements Array(3f, 6f, 9f, 6f, 9f, 12f))
+  }
+
+  it should "find imax" in {
+    val inputDim = Input(2)
+    val batchDim = Batch(3)
+    type Shape = Input :#: Batch
+    val shape = inputDim :#: batchDim
+
+    val data = ArrayTensor(shape.sizes, Array(
+      0f, 1f, 2f, 3f, 4f, 5f
+    ))
+    val input = TensorExpr(shape, data)
+
+    import TensorExpr._
+
+    val index = maxIndex(input)
+    assert(index == Index[Shape](List(1, 2)))
   }
 
 }

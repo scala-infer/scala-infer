@@ -1,7 +1,9 @@
 package scappla.tensor
 
 import org.nd4j.linalg.api.ndarray.INDArray
+import org.nd4j.linalg.api.ops.impl.accum.MatchCondition
 import org.nd4j.linalg.factory.Nd4j
+import org.nd4j.linalg.indexing.conditions.Conditions
 import org.nd4j.linalg.ops.transforms.Transforms
 
 object Nd4jTensor {
@@ -13,6 +15,31 @@ object Nd4jTensor {
 
     override def gaussian(shape: Int*): INDArray =
       Nd4j.rand(shape.toArray)
+
+    // bridge data to/from JVM
+
+    override def count(d: INDArray, cond: Condition): Int = {
+      cond match {
+        case GreaterThan(value) =>
+          val op = new MatchCondition(d, Conditions.greaterThan(value))
+
+          // MAX_VALUE = "along all dimensions" or equivalently "for entire array"
+          Nd4j.getExecutioner.exec(op, Integer.MAX_VALUE).getInt(0)
+      }
+    }
+
+    override def get(d: INDArray, indices: Int*): Float = {
+      d.getFloat(indices.toArray)
+    }
+
+    override def imax(d: INDArray): Seq[Int] = {
+      val indices = d.argMax(d.shape().indices: _*)
+      (for {
+        (_, idx) <- d.shape().zipWithIndex
+      } yield {
+        indices.getInt(idx)
+      }).toSeq
+    }
 
     // elementwise operations
 
@@ -72,6 +99,7 @@ object Nd4jTensor {
     }
 
     override def einsum(a: INDArray, b: INDArray, dims: (Int, Int)*): INDArray = ???
+
   }
 
 }

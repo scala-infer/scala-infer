@@ -27,9 +27,9 @@ trait Dim[Self <: Dim[_]] extends Shape {
 
 final case class :#:[H <: Dim[_], +T <: Shape](head: H, tail: T) extends Shape {
 
-  val size = head.size * tail.size
+  val size: Int = head.size * tail.size
 
-  val sizes = head.size :: tail.sizes
+  val sizes: List[Int] = head.size :: tail.sizes
 }
 
 sealed trait Scalar extends Shape {
@@ -41,3 +41,4 @@ sealed trait Scalar extends Shape {
 
 object Scalar extends Scalar
 
+case class Index[S <: Shape](indices: List[Int])
