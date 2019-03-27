@@ -455,6 +455,13 @@ object TensorExpr {
     TAt[D, X](tensor, index)
   }
 
+  def maxIndex[S <: Shape, D: DataOps](
+      tensor: Expr[Tensor[S, D]]
+  ): Index[S] = {
+    val indices = implicitly[DataOps[D]].imax(tensor.v.data)
+    Index[S](indices.toList)
+  }
+
   def broadcast[S <: Shape, D: DataOps](
       real: Real, shape: S
   ): Expr[Tensor[S, D]] = TBroadcast(real, shape)

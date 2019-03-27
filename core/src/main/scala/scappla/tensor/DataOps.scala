@@ -17,6 +17,8 @@ trait DataOps[D] {
 
   def get(d: D, indices: Int*): Float
 
+  def imax(d: D): Seq[Int]
+
   // element-wise operations
 
   def plus(a: D, b: D): D
@@ -79,6 +81,18 @@ object DataOps {
           cum * dimShape + dimIdx
       }
       data(index)
+    }
+
+    override def imax(d: ArrayTensor): Seq[Int] = {
+      val (_, index) = d.data.zipWithIndex.maxBy(_._1)
+      val accs = d.shape.scanRight(1) {
+        case (dimSize, acc) => dimSize * acc
+      }
+      for {
+        (dimProd, dimSize) <- accs.drop(1).zip(d.shape)
+      } yield {
+        (index / dimProd) % dimSize
+      }
     }
 
     override def plus(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
