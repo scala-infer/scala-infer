@@ -1,4 +1,11 @@
-.idea/
 target/
 project/target/
+
+.idea/
 */*.iml
+
+.metals/
+.bloop/
+
+.ensime
+.ensime_cache/
