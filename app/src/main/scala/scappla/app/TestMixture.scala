@@ -3,7 +3,7 @@ package scappla.app
 import scappla.Functions.{exp, sigmoid}
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, Guide, ReparamGuide}
-import scappla.optimization.SGDMomentum
+import scappla.optimization.Adam
 import scappla.{Real, infer, observe, sample}
 
 import scala.util.Random
@@ -41,15 +41,21 @@ object TestMixture extends App {
     ))
   }
 
-  val sgd = new SGDMomentum(mass = 100)
+  // val sgd = new SGDMomentum(mass = 100)
+  val sgd = new Adam(0.1)
   val pPost = newGlobal(0.0, 0.0)
   val mu1Post = newGlobal(-1.0, 0.0)
   val mu2Post = newGlobal(1.0, 0.0)
   val sigmaPost = newGlobal(0.0, 0.0)
 
+  val intercept = sgd.param(0.0).buffer
+  val slope = sgd.param(1.0).buffer
+
+  import scappla.InferField._
+
   val dataWithDist = data.map { datum =>
-    val param = sgd.param(0.0)
-    (datum, param, BBVIGuide(Bernoulli(sigmoid(param))))
+    val local = intercept + slope * datum
+    (datum, BBVIGuide(Bernoulli(sigmoid(local))))
   }
   val model = infer {
     val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
@@ -58,7 +64,7 @@ object TestMixture extends App {
     val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))
 
     dataWithDist.foreach[Unit] {
-      case (value, _, guide) =>
+      case (value, guide) =>
         if (sample(Bernoulli(p), guide)) {
           observe(Normal(mu1, sigma), value: Real)
         } else {
@@ -70,8 +76,10 @@ object TestMixture extends App {
   }
 
   // prepare
-  Range(0, 10000).foreach { i =>
+  Range(0, 1000).foreach { i =>
     model.sample()
+    intercept.complete()
+    slope.complete()
   }
 
   // print some samples
@@ -81,6 +89,8 @@ object TestMixture extends App {
     val values = (l._1.v, l._2.v, l._3.v, l._4.v)
     println(s"${sigmoid(values._1)}, ${values._2}, ${values._3}, ${exp(values._4)}")
   }
+
+  println(s"INTERCEPT: ${intercept.v}, SLOPE: ${slope.v}")
 
   /*
   // print assignments
