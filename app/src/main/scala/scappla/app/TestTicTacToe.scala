@@ -7,15 +7,26 @@ import scappla.distributions._
 import scappla.optimization._
 import scappla.tensor._
 
+import scala.collection.mutable
+
 object TestTicTacToe extends App {
 
-  sealed trait Occupant
+  sealed trait Occupant {
 
-  case object Neither extends Occupant
+    def flip: Occupant
+  }
 
-  case object Cross extends Occupant
+  case object Neither extends Occupant {
+    val flip = Neither
+  }
 
-  case object Circle extends Occupant
+  case object Cross extends Occupant {
+    val flip = Circle
+  }
+
+  case object Circle extends Occupant {
+    val flip = Cross
+  }
 
   case class Width(size: Int) extends Dim[Width]
   val width = Width(3)
@@ -26,12 +37,13 @@ object TestTicTacToe extends App {
   case class Channel(size: Int) extends Dim[Channel]
   val channel = Channel(20)
 
-  val grid = (0 to 9).map { _ => Neither }
-  val p = (0 to 9).map { _ => Real(1.0) }
+  val gridShape = width :#: height
+
+  type GridShape = Width :#: Height
+  type Position = Index[GridShape]
+  type Grid = Map[Position, Occupant]
 
   val opt = new Adam(0.1)
-  val q = (0 to 9).map { _ => sigmoid(opt.param(1.0)) }
-  val initialGuide = BBVIGuide(Categorical(q))
 
   import TensorExpr._
 
@@ -41,54 +53,127 @@ object TestTicTacToe extends App {
 
   val toGridInit = TensorExpr.numTensor[Width :#: Height :#: Channel, ArrayTensor]
       .gaussian(width :#: height :#: channel)
-  val toGrid = opt.param(toGridInit)
+  val toMus = opt.param(toGridInit)
+  val toSigmas = opt.param(toGridInit)
 
-  val guides = Map.empty[Seq[Occupant], BBVIGuide[Int]]
-      .withDefault(grid => {
-        val values = grid.toArray.map {
+  import TensorExpr._
+
+  val guides = mutable.Map.empty[Grid, GridState]
+
+  class GridState(
+      val grid: Grid,
+      val player: Occupant,
+      init_pos: Tensor[GridShape, ArrayTensor] =
+        Tensor(gridShape, ArrayTensor(List(3, 3), Array.fill(9)(0f))),
+      init_var: Tensor[GridShape, ArrayTensor] =
+        Tensor(gridShape, ArrayTensor(List(3, 3), Array.fill(9)(0f)))
+  ) {
+    val (post_pos, post_var, guide) = {
+      val values = Array.ofDim[Float](9)
+      for {
+        i <- 0 until width.size
+        j <- 0 until height.size
+      } {
+        val index = Index[Width :#: Height](List(i, j))
+        values(i * 3 + j) = grid(index) match {
           case Neither => 0f
           case Cross => 1f
           case Circle => -1f
         }
-        val input = Tensor(
-          width :#: height,
-          ArrayTensor(Seq(width.size, height.size), values)
+      }
+      val input = Tensor(
+        gridShape,
+        ArrayTensor(gridShape.sizes, values)
+      )
+      val hidden = sigmoid(toChannel :*: input.const)
+      val p_pos = hidden :*: toMus
+      val p_var = hidden :*: toSigmas
+      (p_pos, p_var, ReparamGuide(Normal(p_pos, exp(p_var))))
+    }
+
+    private var prior_pos = init_pos
+    private var prior_var = init_var
+    def prior: DDistribution[Tensor[GridShape, ArrayTensor]] =
+      Normal[Tensor[GridShape, ArrayTensor], GridShape](
+        prior_pos.const, exp(prior_var.const)
+      )
+
+    def updatePrior(lr: Double): Unit = {
+      val ops = implicitly[DataOps[ArrayTensor]]
+      prior_pos = Tensor(
+        gridShape,
+        ops.times(
+          ops.minus(
+            post_pos.v.data,
+            prior_pos.data
+          ),
+          ops.fill(lr.toFloat, gridShape.sizes: _*)
         )
-        val hidden = sigmoid(toChannel :*: input.const)
-        val p_grid = hidden :*: toGrid
-        BBVIGuide(Categorical())
-      })
+      )
+      prior_var = Tensor(
+        gridShape,
+        ops.times(
+          ops.minus(
+            post_var.v.data,
+            prior_var.data
+          ),
+          ops.fill(lr.toFloat, gridShape.sizes: _*)
+        )
+      )
+    }
 
-  val model = infer {
-
-    val nextStep = { grid: Seq[Occupant] =>
-      val w = winner(grid)
-      if (w != Neither) {
-        w
-      } else if (isFull(grid)) {
-        Neither
+    def select(position: Position): GridState = {
+      val newGrid = grid.updated(position, player)
+      if (!guides.contains(newGrid)) {
+        val newState = new GridState(newGrid, player.flip)
+        guides.update(newGrid, newState)
+        newState
       } else {
-        val place = sample(Categorical(p), initialGuide)
-        val newGrid = grid.updated(place, Cross)
-        nextStep(newGrid)
+        guides(newGrid)
       }
     }
   }
 
+  val emptyGrid: Grid = Map.empty[Position, Occupant]
+      .withDefaultValue(Neither)
+  val startState = new GridState(emptyGrid, Cross)
+
+  val model = infer {
+    def nextStep(state: GridState): Occupant = {
+      val w = winner(state.grid)
+      if (w != Neither) {
+        w
+      } else if (isFull(state.grid)) {
+        Neither
+      } else {
+        val rates = sample(state.prior, state.guide)
+        val index = maxIndex(rates)
+        nextStep(state.select(index))
+      }
+    }
+    nextStep(startState)
+  }
+
+  def toIdx(i: Int, j: Int): Position = {
+    Index[GridShape](List(i,j))
+  }
+
   val seqs = Seq(
-    Seq(0, 1, 2),
-    Seq(3, 4, 5),
-    Seq(6, 7, 8),
-    Seq(0, 3, 6),
-    Seq(1, 4, 7),
-    Seq(2, 5, 8),
-    Seq(0, 4, 8),
-    Seq(6, 4, 2)
+    Seq(toIdx(0, 0), toIdx(0, 1), toIdx(0, 2)),
+    Seq(toIdx(1, 0), toIdx(1, 1), toIdx(1, 2)),
+    Seq(toIdx(2, 0), toIdx(2, 1), toIdx(2, 2)),
+    Seq(toIdx(0, 0), toIdx(1, 0), toIdx(2, 0)),
+    Seq(toIdx(0, 0), toIdx(1, 0), toIdx(2, 0)),
+    Seq(toIdx(0, 1), toIdx(1, 1), toIdx(2, 1)),
+    Seq(toIdx(0, 2), toIdx(1, 2), toIdx(2, 2)),
+    Seq(toIdx(0, 0), toIdx(1, 1), toIdx(2, 2)),
+    Seq(toIdx(0, 2), toIdx(1, 1), toIdx(2, 0))
   )
 
-  def isFull(grid: Seq[Occupant]): Boolean = !grid.contains(Neither)
+  def isFull(grid: Grid): Boolean =
+    !grid.exists(_._2 == Neither)
 
-  def winner(grid: Seq[Occupant]): Occupant = {
+  def winner(grid: Grid): Occupant = {
     seqs.foldLeft[Occupant](Neither) { case (cur, s) =>
       cur match {
         case Neither =>

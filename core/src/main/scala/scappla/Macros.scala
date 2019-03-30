@@ -80,6 +80,15 @@ class Macros(val c: blackbox.Context) {
     }
   }
 
+  case class RichArg(
+    mods: Modifiers,
+    tpe: Tree,
+    origName: TermName,
+    newName: TermName,
+    newArgDecl: Tree,
+    inlTree: RichTree
+  )
+
 
 /*
   case class VariableAggregator(
@@ -255,7 +264,7 @@ class Macros(val c: blackbox.Context) {
       }
     }
 
-    def visitExpr(expr: Tree, doVar: Boolean = false)(fn: RichTree => Seq[RichTree]): Seq[RichTree] = {
+    def visitExpr(expr: Tree, resultVarName: Option[String] = None)(fn: RichTree => Seq[RichTree]): Seq[RichTree] = {
       expr match {
         case Ident(TermName(name)) =>
 //          println(s"   REFERNECE ${showRaw(expr, printTypes = true)}")
@@ -286,7 +295,7 @@ class Macros(val c: blackbox.Context) {
               })
 
         case q"if ($cond) $tExpr else $fExpr" =>
-          visitExpr(cond, true) { condRef =>
+          visitExpr(cond) { condRef =>
 //            println(s"  MATCHING IF ELSE $condRef")
 
             val ifVar = TermName(c.freshName())
@@ -320,7 +329,7 @@ class Macros(val c: blackbox.Context) {
             val richResult = visitSubExpr(result)
             (richResult, cq"${reIdentPat(when)} => ${richResult.tree}")
           }
-          visitExpr(expr, true) { matchName =>
+          visitExpr(expr) { matchName =>
             val matchVar = TermName(c.freshName())
             builder.variable(matchVar)
             val resultTree = q"$matchVar.get"
@@ -335,8 +344,8 @@ class Macros(val c: blackbox.Context) {
           }
 
         case q"scappla.`package`.sample[$tDist]($prior, $guide)" =>
-          visitExpr(prior, doVar = true) { priorName =>
-            visitExpr(guide, doVar = true) { guideName =>
+          visitExpr(prior) { priorName =>
+            visitExpr(guide) { guideName =>
               val tVarName = TermName(c.freshName())
 //              println(s"MATCHING ${showRaw(tDist.tpe)} (${showCode(tDist)})")
               builder.variable(tVarName)
@@ -352,129 +361,8 @@ class Macros(val c: blackbox.Context) {
           }
 
         case q"(..$bargs) => $body" =>
-          val arity = bargs.size
-          val newArgs: Seq[(TermName, TermName, Tree, RichTree)] = bargs.map {
-            case q"$mods val $arg: $tpt = $argExpr" =>
-             println(s"    FN VALDEF ${showRaw(arg)}")
-              val TermName(tname) = arg
-              val varName = TermName(c.freshName(tname))
-              val inlExpr = toExpr(visitExpr(argExpr)(Seq(_)), scope)
-              (
-                  TermName(tname),
-                  varName,
-                  q"$mods val $varName: ${tq"scappla.Variable[$tpt]"} = ${inlExpr.tree}",
-                  inlExpr
-              )
-          }
-
-          val newScope = scope.push()
-
-          val visitor = new BlockVisitor(newScope)
-          val argDecls = newArgs.map { arg =>
-            RichTree(q"val ${arg._1} = ${arg._2}.get", Set(arg._2))
-          }
-          newArgs.foreach { arg => 
-            newScope.argument(arg._2, RichTree(q"${arg._2}", Set(arg._2)))
-            newScope.declare(arg._1, RichTree(q"${arg._1}", Set(arg._2)))
-          }
-
-          val q"{..$stmts}" = body
-          val newStmts = argDecls ++ visitor.visitBlockStmts(stmts)
-          val newBody = q"{..${newStmts.map { _.tree }}}"
-          val newVars = newStmts.flatMap { _.vars }.toSet.filter(scope.isDefined)
-          println(s"NEW VARS: ${newVars}")
-
           val varName = TermName(c.freshName())
-          val tpes: Seq[Type] = bargs.map {
-            case q"$mods val $arg: $tpt = $argExpr" =>
-              tpt.tpe
-          }
-          val argTpes = {tpes :+ body.tpe}
-          val fnWrapperTpe = arity match {
-            case 1 => tq"Function1[..$argTpes]"
-            case 2 => tq"Function2[..$argTpes]"
-            case 3 => tq"Function3[..$argTpes]"
-            case 4 => tq"Function4[..$argTpes]"
-            case 5 => tq"Function5[..$argTpes]"
-            case 6 => tq"Function6[..$argTpes]"
-            case 7 => tq"Function7[..$argTpes]"
-            case 8 => tq"Function8[..$argTpes]"
-            case 9 => tq"Function9[..$argTpes]"
-            case 10 => tq"Function10[..$argTpes]"
-            case 11 => tq"Function11[..$argTpes]"
-            case 12 => tq"Function12[..$argTpes]"
-            case 13 => tq"Function13[..$argTpes]"
-            case 14 => tq"Function14[..$argTpes]"
-            case 15 => tq"Function15[..$argTpes]"
-            case 16 => tq"Function16[..$argTpes]"
-            case 17 => tq"Function17[..$argTpes]"
-            case 18 => tq"Function18[..$argTpes]"
-            case 19 => tq"Function19[..$argTpes]"
-            case 20 => tq"Function20[..$argTpes]"
-            case 21 => tq"Function21[..$argTpes]"
-            case 22 => tq"Function22[..$argTpes]"
-          }
-          val argVarTpes = argTpes.map {t => tq"scappla.Variable[$t]"}
-          val fnTpe = arity match {
-            case 1 => tq"Function1[..$argVarTpes]"
-            case 2 => tq"Function2[..$argVarTpes]"
-            case 3 => tq"Function3[..$argVarTpes]"
-            case 4 => tq"Function4[..$argVarTpes]"
-            case 5 => tq"Function5[..$argVarTpes]"
-            case 6 => tq"Function6[..$argVarTpes]"
-            case 7 => tq"Function7[..$argVarTpes]"
-            case 8 => tq"Function8[..$argVarTpes]"
-            case 9 => tq"Function9[..$argVarTpes]"
-            case 10 => tq"Function10[..$argVarTpes]"
-            case 11 => tq"Function11[..$argVarTpes]"
-            case 12 => tq"Function12[..$argVarTpes]"
-            case 13 => tq"Function13[..$argVarTpes]"
-            case 14 => tq"Function14[..$argVarTpes]"
-            case 15 => tq"Function15[..$argVarTpes]"
-            case 16 => tq"Function16[..$argVarTpes]"
-            case 17 => tq"Function17[..$argVarTpes]"
-            case 18 => tq"Function18[..$argVarTpes]"
-            case 19 => tq"Function19[..$argVarTpes]"
-            case 20 => tq"Function20[..$argVarTpes]"
-            case 21 => tq"Function21[..$argVarTpes]"
-            case 22 => tq"Function22[..$argVarTpes]"
-          }
-          val wrapper =
-            q"""new $fnWrapperTpe with scappla.Completeable {
-
-                var nodes : List[scappla.BayesNode] = Nil
-
-              def apply(..${
-              bargs.map {
-                case q"$mods val $arg: $tpt = $argExpr" =>
-                  val inlExpr = toExpr(visitExpr(argExpr)(Seq(_)), scope)
-                  q"$mods val $arg: $tpt = ${inlExpr.tree}"
-              }
-            }): ${body.tpe} = {${
-              q"""val result = $varName(..${
-                bargs.map {
-                  case q"$mods val $arg: $tpt = $argExpr" =>
-                    q"scappla.Variable($arg, scappla.ConstantNode)"
-                }
-              })
-              val value = result.get
-              nodes = result.node :: nodes
-              value
-              """
-            }}
-
-                def complete(): Unit = {
-                  nodes.foreach(_.complete())
-                }
-              }"""
-          scope.declare(varName, RichTree(q"$varName", newVars, Some(wrapper)))
-
-          val newDefTree = q"val $varName : $fnTpe = (..${newArgs.map(_._3)}) => $newBody"
-          Seq(RichTree.join(
-                newDefTree,
-                RichTree(newDefTree, newVars),
-                newArgs.map {_._4}.reduce(RichTree.join(newDefTree, _, _))
-              )) ++ fn(scope.reference(varName))
+          visitFunction(varName, bargs, body)(fn)
 
         /*
          * local f: A => B
@@ -570,6 +458,33 @@ class Macros(val c: blackbox.Context) {
             ))
           }
 
+        case q"$f($o)" =>
+          f match {
+            case Ident(TermName(fname))
+                if scope.isDefined(fname) && scope.reference(fname).isFn =>
+              println(s"APPLYING METHOD ${fname}")
+              visitExpr(f) { richFn =>
+                visitExpr(o) { richO =>
+                  val varResult = TermName(c.freshName())
+                  builder.variable(varResult)
+                  val result = q"$varResult.get"
+                  val nodes = richO.vars.map { t => q"$t.node" }
+                  Seq(RichTree(
+                    q"val $varResult = ${richFn.tree}(scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
+                  )) ++ fn(
+                    RichTree(result, richFn.vars ++ richO.vars + varResult)
+                  )
+                }
+              }
+            case _ =>
+              visitExpr(f) { richFn =>
+                visitExpr(o) { richO =>
+                  val result = q"${richFn.tree}(${richO.tree})"
+                  fn(RichTree.join(result, richFn, richO))
+                }
+              }
+          }
+
         case q"$subject.this" =>
 //          println(s"  MATCH THIS ${showCode(expr)}")
           fn(RichTree(expr))
@@ -625,7 +540,7 @@ class Macros(val c: blackbox.Context) {
       expr match {
         // observe needs to produce (resultVar, dependentVars..)
         case q"scappla.`package`.observe[$tDist]($oDist, $o)" =>
-          visitExpr(oDist, true) { richDistName =>
+          visitExpr(oDist) { richDistName =>
             visitExpr(o) { richO =>
               val obName = TermName(c.freshName())
               val resultTree = q"val $obName : scappla.Observation = scappla.observeImpl[$tDist](${richDistName.tree}, ${richO.tree})"
@@ -642,16 +557,17 @@ class Macros(val c: blackbox.Context) {
             }
           }
 
+        // allow function name to be used when expanding rhs
+        // full definition (with expanded tree) follows later
+        // NOTE: no type parameterization or multiple argument lists
+        case q"$mods def $tname(..$bargs): $rtpt = $body" =>
+          val TermName(name) = tname
+          scope.declare(TermName(name), RichTree(q"${TermName(name)}", Set.empty, Some(q"")))
+          visitMethod(TermName(name), bargs, body)
+
+        // rewrite non-function assignments
         case q"$mods val $tname : $tpt = $rhs" =>
           val TermName(name) = tname
-          // allow val name to be used when expanding rhs
-          // full definition (with expanded tree) follows later
-          // FIXME: we'll only rewrite Function<N> rhs values
-          rhs match {
-            case q"(..$bargs) => $body" =>
-              scope.declare(TermName(name), RichTree(q"${TermName(name)}", Set.empty, Some(q"")))
-            case _ =>
-          }
           visitExpr(rhs) { exprName =>
               val fullExpr = if (rhs.tpe <:< typeOf[scappla.Expr[_]]) {
                 builder.buffer(TermName(name))
@@ -669,6 +585,144 @@ class Macros(val c: blackbox.Context) {
           visitExpr(expr)(Seq(_))
       }
 
+    }
+
+    def visitMethod(varName: TermName, bargs: Seq[Tree], body: Tree): Seq[RichTree] = {
+      val newArgs = parseArgs(bargs)
+
+      val newScope = scope.push()
+
+      val visitor = new BlockVisitor(newScope)
+      val argDecls = newArgs.map { arg =>
+        RichTree(q"val ${arg.origName} = ${arg.newName}.get", Set(arg.newName))
+      }
+      newArgs.foreach { arg => 
+        newScope.argument(arg.newName, RichTree(q"${arg.newName}", Set(arg.newName)))
+        newScope.declare(arg.origName, RichTree(q"${arg.origName}", Set(arg.newName)))
+      }
+
+      val q"{..$stmts}" = body
+      val newStmts = argDecls ++ visitor.visitBlockStmts(stmts)
+      val newBody = q"{..${newStmts.map { _.tree }}}"
+      val newVars = newStmts.flatMap { _.vars }.toSet.filter(scope.isDefined)
+    
+      val newDefTree = q"def $varName(..${newArgs.map(_.newArgDecl)}): Variable[${body.tpe}] = $newBody"
+      Seq(RichTree.join(
+          newDefTree,
+          RichTree(newDefTree, newVars),
+          newArgs.map {_.inlTree}.reduce(RichTree.join(newDefTree, _, _))
+        ))
+    }
+
+    def visitFunction(varName: TermName, bargs: Seq[Tree], body: Tree)(fn: RichTree => Seq[RichTree]): Seq[RichTree] = {
+      val newArgs = parseArgs(bargs)
+
+      val newScope = scope.push()
+
+      val visitor = new BlockVisitor(newScope)
+      val argDecls = newArgs.map { arg =>
+        RichTree(q"val ${arg.origName} = ${arg.newName}.get", Set(arg.newName))
+      }
+      newArgs.foreach { arg => 
+        newScope.argument(arg.newName, RichTree(q"${arg.newName}", Set(arg.newName)))
+        newScope.declare(arg.origName, RichTree(q"${arg.origName}", Set(arg.newName)))
+      }
+
+      val q"{..$stmts}" = body
+      val newStmts = argDecls ++ visitor.visitBlockStmts(stmts)
+      val newBody = q"{..${newStmts.map { _.tree }}}"
+      val newVars = newStmts.flatMap { _.vars }.toSet.filter(scope.isDefined)
+      println(s"NEW VARS: ${newVars}")
+
+      val argVarTpes = newArgs.map {arg => tq"scappla.Variable[${arg.tpe}]"}
+      val fnTpe = treesToFunctionDef(argVarTpes :+ tq"scappla.Variable[${body.tpe}]")
+      println(s"FN TPE: ${fnTpe}")
+
+      val wrapper = fnWrapper(varName, newArgs, body.tpe)
+      println(s"WRAPPER: ${showCode(wrapper)}")
+      scope.declare(varName, RichTree(q"$varName", newVars, Some(wrapper)))
+
+      val newDefTree = q"val $varName : $fnTpe = (..${newArgs.map(_.newArgDecl)}) => $newBody"
+      println(s"NEW DEF: ${showCode(newDefTree)}")
+      Seq(RichTree.join(
+          newDefTree,
+          RichTree(newDefTree, newVars),
+          newArgs.map {_.inlTree}.reduce(RichTree.join(newDefTree, _, _))
+        )) ++ fn(scope.reference(varName))
+    }
+
+    def fnWrapper(varName: TermName, newArgs: Seq[RichArg], bodyTpe: Type): Tree = {
+      val tpes: Seq[Tree] = newArgs.map { _.tpe }
+      val argTpes = tpes :+ tq"${bodyTpe}"
+      val fnWrapperTpe = treesToFunctionDef(argTpes)
+      q"""new $fnWrapperTpe with scappla.Completeable {
+
+            var nodes : List[scappla.BayesNode] = Nil
+
+          def apply(..${newArgs.map { arg =>
+              q"${arg.mods} val ${arg.origName}: ${arg.tpe} = ${arg.inlTree.tree}"
+          }}): ${bodyTpe} = {${
+          q"""val result = $varName(..${
+            newArgs.map { arg =>
+              q"scappla.Variable(${arg.origName}, scappla.ConstantNode)"
+            }
+          })
+          val value = result.get
+          nodes = result.node :: nodes
+          value
+          """
+        }}
+
+            def complete(): Unit = {
+              nodes.foreach(_.complete())
+            }
+          }"""
+    }
+
+    def parseArgs(bargs: Seq[Tree]): Seq[RichArg] = {
+      bargs.map {
+        case q"$mods val $arg: $tpt = $argExpr" =>
+          println(s"    FN VALDEF ${showRaw(arg)}")
+          val TermName(tname) = arg
+          val newArgName = TermName(c.freshName(tname))
+          val inlExpr = toExpr(visitExpr(argExpr)(Seq(_)), scope)
+          RichArg(
+            mods,
+            tpt,
+            TermName(tname),
+            newArgName,
+            q"$mods val $newArgName: ${tq"scappla.Variable[$tpt]"} = ${inlExpr.tree}",
+            inlExpr
+          )
+      }
+    }
+
+    def treesToFunctionDef(argTpes: Seq[Tree]): Tree = {
+      argTpes.size match {
+        case 1 => tq"Function0[..$argTpes]"
+        case 2 => tq"Function1[..$argTpes]"
+        case 3 => tq"Function2[..$argTpes]"
+        case 4 => tq"Function3[..$argTpes]"
+        case 5 => tq"Function4[..$argTpes]"
+        case 6 => tq"Function5[..$argTpes]"
+        case 7 => tq"Function6[..$argTpes]"
+        case 8 => tq"Function7[..$argTpes]"
+        case 9 => tq"Function8[..$argTpes]"
+        case 10 => tq"Function9[..$argTpes]"
+        case 11 => tq"Function10[..$argTpes]"
+        case 12 => tq"Function11[..$argTpes]"
+        case 13 => tq"Function12[..$argTpes]"
+        case 14 => tq"Function13[..$argTpes]"
+        case 15 => tq"Function14[..$argTpes]"
+        case 16 => tq"Function15[..$argTpes]"
+        case 17 => tq"Function16[..$argTpes]"
+        case 18 => tq"Function17[..$argTpes]"
+        case 19 => tq"Function18[..$argTpes]"
+        case 20 => tq"Function19[..$argTpes]"
+        case 21 => tq"Function20[..$argTpes]"
+        case 22 => tq"Function21[..$argTpes]"
+        case 23 => tq"Function22[..$argTpes]"
+      }
     }
 
     def visitSubExpr(tExpr: Tree) = {
