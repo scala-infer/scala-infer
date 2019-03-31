@@ -49,7 +49,9 @@ object TestMixture extends App {
   val sigmaPost = newGlobal(0.0, 0.0)
 
   val intercept = sgd.param(0.0).buffer
+  intercept.complete()
   val slope = sgd.param(1.0).buffer
+  slope.complete()
 
   import scappla.InferField._
 
@@ -77,17 +79,18 @@ object TestMixture extends App {
 
   // prepare
   Range(0, 1000).foreach { i =>
+    val h_i = intercept.buffer
+    val h_s = slope.buffer
     model.sample()
-    intercept.complete()
-    slope.complete()
+    h_i.complete()
+    h_s.complete()
   }
 
   // print some samples
   println("SAMPLES:")
   Range(0, 10).foreach { i =>
-    val l = model.sample()
-    val values = (l._1.v, l._2.v, l._3.v, l._4.v)
-    println(s"${sigmoid(values._1)}, ${values._2}, ${values._3}, ${exp(values._4)}")
+    val (p, mu1, mu2, sigma) = model.sample()
+    println(s"${sigmoid(p.v)}, ${mu1.v}, ${mu2.v}, ${sigma.v}")
   }
 
   println(s"INTERCEPT: ${intercept.v}, SLOPE: ${slope.v}")

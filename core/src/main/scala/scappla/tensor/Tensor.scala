@@ -532,6 +532,9 @@ object TensorExpr {
 
     override def fromInt(x: Int, shape: S): Expr[Tensor[S, D]] =
       broadcast(Real(x), shape)
+
+    override def buffer(ex: Expr[Tensor[S, D]]) =
+      TBuffer(ex)
   }
 
   implicit def numTensor[S <: Shape, D: DataOps] = new BaseField[Tensor[S, D], S] {

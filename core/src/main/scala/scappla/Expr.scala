@@ -70,6 +70,8 @@ trait InferField[X, S] extends Fractional[Expr[X]] {
   def const(x: X): Expr[X]
 
   def fromInt(x: Int, shape: S): Expr[X]
+
+  def buffer(ex: Expr[X]): Buffered[X]
 }
 
 object InferField {
@@ -112,6 +114,8 @@ object InferField {
       override def const(x: Double): Expr[Double] = Real(x)
 
       override def fromInt(x: Int, shape: Unit): Expr[Double] = Real(x)
+
+      override def buffer(ex: Expr[Double]) = RealBuffer(ex)
     }
 }
 
