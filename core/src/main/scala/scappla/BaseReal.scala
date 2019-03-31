@@ -38,6 +38,7 @@ case class RealBuffer(upstream: Real)
     refCount -= 1
     if (refCount == 0) {
       upstream.dv(grad)
+      grad = 0.0
     }
   }
 
