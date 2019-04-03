@@ -96,4 +96,24 @@ class SymDiffSpec extends FlatSpec {
     assert(lr.matchedIndices == List((1, 0)))
   }
 
+  it should "recover indices" in {
+ 
+    case class Height(size: Int) extends Dim[Height]
+
+    case class Channel(size: Int) extends Dim[Channel]
+
+    val lr: Aux[Height :#: Channel, Channel, Height] =
+      SymDiff[Height :#: Channel, Channel]
+
+    // Height :#: Channel  :*:  Channel  =>  Height
+
+    // recoverLeft:
+    // Channel  :*:  Height  =>  Height :#: Channel
+    assert(lr.recoverLeft.matchedIndices == List())
+
+    // recoverRight:
+    // Height  :*:  Height :#: Channel  =>  Channel
+    assert(lr.recoverRight.matchedIndices == List((0, 0)))
+  }
+
 }

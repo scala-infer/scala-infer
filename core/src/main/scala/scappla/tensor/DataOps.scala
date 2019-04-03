@@ -17,6 +17,8 @@ trait DataOps[D] {
 
   def get(d: D, indices: Int*): Float
 
+  def put(d: D, value: Float, indices: Int*): Unit
+
   def imax(d: D): Seq[Int]
 
   // element-wise operations
@@ -51,7 +53,7 @@ trait DataOps[D] {
 
   def broadcast(a: D, dimIndex: Int, dimSize: Int): D
 
-  def einsum(a: D, b: D, dims: (Int, Int)*): D
+  def einsum(a: D, b: D, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): D
 }
 
 case class ArrayTensor(shape: Seq[Int], data: Array[Float])
@@ -81,6 +83,15 @@ object DataOps {
           cum * dimShape + dimIdx
       }
       data(index)
+    }
+
+    override def put(d: ArrayTensor, value: Float, indices: Int*): Unit = {
+      val (shape, data) = (d.shape, d.data)
+      val index = shape.zip(indices).foldLeft(0) {
+        case (cum, (dimShape, dimIdx)) =>
+          cum * dimShape + dimIdx
+      }
+      data(index) = value
     }
 
     override def imax(d: ArrayTensor): Seq[Int] = {
@@ -122,6 +133,9 @@ object DataOps {
     }
 
     override def times(a: ArrayTensor, b: ArrayTensor): ArrayTensor = {
+      if(a.shape != b.shape) {
+        println(s"SHAPE A: ${a.shape}, B: ${b.shape}")
+      }
       assert(a.shape == b.shape)
       val (ad, bd) = (a.data, b.data)
       val len = ad.length
@@ -301,51 +315,53 @@ object DataOps {
       result
     }
 
-    override def einsum(a: ArrayTensor, b: ArrayTensor, dims: (Int, Int)*): ArrayTensor = {
-      val aContract = dims.map {
-        _._1
-      }.toSet
-      val bContract = dims.map {
-        _._2
-      }.toSet
-      val aRemnants = a.shape.zipWithIndex.filterNot { ai => aContract.contains(ai._2) }
-      val bRemnants = b.shape.zipWithIndex.filterNot { bi => bContract.contains(bi._2) }
-      val newShape = aRemnants.map {
-        _._1
-      } ++ bRemnants.map {
-        _._1
-      }
+    override def einsum(a: ArrayTensor, b: ArrayTensor, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): ArrayTensor = {
+//      println(s"AB: ${ab}")
+//      println(s"BC: ${bc}")
+//      println(s"CA: ${ca}")
+      val newShape: Seq[Int] = (bc.map {
+          case (bi, ci) => (ci, b.shape(bi))
+        } ++ ca.map {
+          case (ci, ai) => (ci, a.shape(ai))
+        }).sortBy { _._1 }
+          .map { _._2 }
 
       val aDims = a.shape.scanRight(1) {
         case (dimSize, stride) => dimSize * stride
       }.drop(1).zipWithIndex.map {
         _.swap
       }.toMap
+//      println(s"A DIMS: ${aDims}")
 
       val bDims = b.shape.scanRight(1) {
         case (dimSize, stride) => dimSize * stride
       }.drop(1).zipWithIndex.map {
         _.swap
       }.toMap
+//      println(s"B DIMS: ${bDims}")
 
       val cDims = newShape.scanRight(1) {
         case (dimSize, stride) => dimSize * stride
       }.drop(1).zipWithIndex.map {
         _.swap
       }.toMap
+//      println(s"C DIMS: ${cDims}")
 
-      val abDimensions = dims.map {
+      val abDimensions = ab.map {
         case (ai, bi) =>
           ((aDims(ai), bDims(bi)), a.shape(ai))
       }
-      val caDimensions = aRemnants.zipWithIndex.map {
-        case ((_, ai), ci) =>
+//      println(s"AB DIMS: ${abDimensions}")
+      val caDimensions = ca.map {
+        case (ci, ai) =>
           ((cDims(ci), aDims(ai)), a.shape(ai))
       }
-      val bcDimensions = bRemnants.zipWithIndex.map {
-        case ((_, bi), ci) =>
-          ((bDims(bi), cDims(ci + aRemnants.size)), b.shape(bi))
+//      println(s"CA DIMS: ${caDimensions}")
+      val bcDimensions = bc.map {
+        case (bi, ci) =>
+          ((bDims(bi), cDims(ci)), b.shape(bi))
       }
+//      println(s"BC DIMS: ${bcDimensions}")
 
       // take pairs of matching strides and dimension size, generate indices
       def nestedIter(parts: Seq[((Int, Int), Int)]): Iterator[(Int, Int)] = {
@@ -363,11 +379,15 @@ object DataOps {
       for { (cBaseIndex, aBaseIndex) <- nestedIter(caDimensions)} {
         for { (aRelIndex, bBaseIndex) <- nestedIter(abDimensions)} {
           val aIndex: Int = aBaseIndex + aRelIndex
+//          println(s"A: $aBaseIndex + $aRelIndex => $aIndex")
 
           val aValue = a.data(aIndex)
           for {(bRelIndex, cRelIndex) <- nestedIter(bcDimensions)} {
             val bIndex: Int = bBaseIndex + bRelIndex
+//            println(s"B: $bBaseIndex + $bRelIndex => $bIndex")
+
             val cIndex: Int = cBaseIndex + cRelIndex
+//            println(s"C: $cBaseIndex + $cRelIndex => $cIndex")
 
             val bValue = b.data(bIndex)
             result(cIndex) += aValue * bValue

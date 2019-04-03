@@ -74,11 +74,11 @@ object TestTicTacToe extends App {
         i <- 0 until width.size
         j <- 0 until height.size
       } {
-        val index = Index[Width :#: Height](List(i, j))
+        val index = Index[GridShape](List(i, j))
         values(i * 3 + j) = grid(index) match {
-          case Neither => 0f
-          case Cross => 1f
-          case Circle => -1f
+          case Neither  =>  0f
+          case `player` =>  1f
+          case _        => -1f
         }
       }
       val input = Tensor(
@@ -148,14 +148,13 @@ object TestTicTacToe extends App {
       } else {
         val rates = sample(state.prior, state.guide)
         val index = maxIndex(rates)
-        nextStep(state.select(index))
+        val rate = at(rates, index)
+        val result = nextStep(state.select(index))
+        observe(Bernoulli(sigmoid(rate)), result == state.player)
+        result
       }
     }
     nextStep(startState)
-  }
-
-  def toIdx(i: Int, j: Int): Position = {
-    Index[GridShape](List(i,j))
   }
 
   val seqs = Seq(
@@ -170,16 +169,22 @@ object TestTicTacToe extends App {
     Seq(toIdx(0, 2), toIdx(1, 1), toIdx(2, 0))
   )
 
+  def toIdx(i: Int, j: Int): Position = {
+    Index[GridShape](List(i,j))
+  }
+
   def isFull(grid: Grid): Boolean =
-    !grid.exists(_._2 == Neither)
+    grid.size == gridShape.size
 
   def winner(grid: Grid): Occupant = {
+    println(s"WINNER $grid ($seqs)")
     seqs.foldLeft[Occupant](Neither) { case (cur, s) =>
+      println(s"CHECKING $s")
       cur match {
         case Neither =>
-          if (s.forall(grid(_) == Cross))
+          if (s.forall(grid.get(_).contains(Cross)))
             Cross
-          else if (s.forall(grid(_) == Circle))
+          else if (s.forall(grid.get(_).contains(Circle)))
             Circle
           else
             Neither
@@ -187,4 +192,6 @@ object TestTicTacToe extends App {
       }
     }
   }
+
+  val s = model.sample()
 }

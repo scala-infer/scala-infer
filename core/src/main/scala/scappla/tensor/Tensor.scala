@@ -324,21 +324,24 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
   }
 }
 
-case class TAt[S <: Dim[_], D: DataOps](
+case class TAt[S <: Shape, D: DataOps](
     upstream: Expr[Tensor[S, D]],
-    index: Int
+    index: Index[S]
 ) extends Expr[Double] {
 
   override def v: Double = {
-    implicitly[DataOps[D]].get(upstream.v.data, index)
+    implicitly[DataOps[D]].get(upstream.v.data, index.indices: _*)
   }
 
   override def dv(dv: Double): Unit = {
+    val ops = implicitly[DataOps[D]]
     val shape = upstream.v.shape
+    val tensorData = ops.fill(0f, shape.sizes: _*)
+    ops.put(tensorData, dv.toFloat, index.indices: _*)
     upstream.dv(
       Tensor(
         shape,
-        implicitly[DataOps[D]].fill(dv.toFloat, shape.sizes: _*)
+        tensorData
       )
     )
   }
@@ -448,11 +451,11 @@ object TensorExpr {
     TSum[R, S, X](removeAt.apply(tensor.v.shape), indexOf.toInt, tensor)
   }
 
-  def at[X: DataOps, D <: Dim[_]](
-      tensor: Expr[Tensor[D, X]],
-      index: Int
+  def at[D: DataOps, S <: Shape](
+      tensor: Expr[Tensor[S, D]],
+      index: Index[S]
   ): Expr[Double] = {
-    TAt[D, X](tensor, index)
+    TAt[S, D](tensor, index)
   }
 
   def maxIndex[S <: Shape, D: DataOps](
@@ -612,27 +615,50 @@ object TensorExpr {
         sd: SymDiff.Aux[S, T, R]
     ): Expr[Tensor[R, D]] = new Expr[Tensor[R, D]] {
 
+      // S :*: T => R
       override def v: Tensor[R, D] = {
         val tensor = expr.v
         val ops = implicitly[DataOps[D]]
         Tensor(
           sd.mapper.ab(expr.v.shape, other.v.shape),
-          ops.einsum(tensor.data, other.v.data, sd.matchedIndices: _*)
+          ops.einsum(
+            tensor.data,
+            other.v.data,
+            sd.matchedIndices,              // (S T) R
+            sd.recoverLeft.matchedIndices,  // (T R) S
+            sd.recoverRight.matchedIndices  // (R S) T
+          )
         )
       }
 
       override def dv(v: Tensor[R, D]): Unit = {
         val ops = implicitly[DataOps[D]]
+        // T :*: R => S
+//        println(s"dv ${other.v.shape}, ${v.shape} => ${expr.v.shape} (${sd.recoverLeft.matchedIndices.toSeq})")
         expr.dv(
           Tensor(
             sd.mapper.bc(other.v.shape, v.shape),
-            ops.einsum(other.v.data, v.data, sd.recoverLeft.matchedIndices: _*)
+            ops.einsum(
+              other.v.data,
+              v.data,
+              sd.recoverLeft.matchedIndices,  // (T R) S
+              sd.recoverRight.matchedIndices, // (R S) T
+              sd.matchedIndices               // (S T) R
+            )
           )
         )
+        // R :*: S => T
+//        println(s"dv ${v.shape}, ${expr.v.shape} => ${other.v.shape} (${sd.recoverRight.matchedIndices.toSeq})")
         other.dv(
           Tensor(
             sd.mapper.ca(v.shape, expr.v.shape),
-            ops.einsum(v.data, expr.v.data, sd.recoverRight.matchedIndices: _*)
+            ops.einsum(
+              v.data,
+              expr.v.data,
+              sd.recoverRight.matchedIndices, // (R S) T
+              sd.matchedIndices,               // (S T) R
+              sd.recoverLeft.matchedIndices  // (T R) S
+            )
           )
         )
       }

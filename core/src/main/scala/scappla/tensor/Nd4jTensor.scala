@@ -32,6 +32,10 @@ object Nd4jTensor {
       d.getFloat(indices.toArray)
     }
 
+    override def put(d: INDArray, value: Float, indices: Int*): Unit = {
+      d.putScalar(indices.toArray, value)
+    }
+
     override def imax(d: INDArray): Seq[Int] = {
       val indices = d.argMax(d.shape().indices: _*)
       (for {
@@ -98,7 +102,13 @@ object Nd4jTensor {
       a.sumNumber().floatValue()
     }
 
-    override def einsum(a: INDArray, b: INDArray, dims: (Int, Int)*): INDArray = ???
+    override def einsum(
+        a: INDArray,
+        b: INDArray,
+        ab: List[(Int, Int)],
+        bc: List[(Int, Int)],
+        ca: List[(Int, Int)]
+    ): INDArray = ???
 
   }
 

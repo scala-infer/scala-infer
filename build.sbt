@@ -26,10 +26,13 @@ lazy val core = (project in file("core")).settings(
 
 lazy val app = (project in file("app")).settings(
   moduleName := "infer-app",
-  mainClass in Compile := Some("scappla.app.TestChickweight"),
+//  mainClass in Compile := Some("scappla.app.TestChickweight"),
+  // mainClass in Compile := Some("scappla.app.TestMixture"),
+  mainClass in Compile := Some("scappla.app.TestTicTacToe"),
   libraryDependencies ++= Seq(
     "com.github.tototoshi"       %% "scala-csv"          % "1.3.5"
   ),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
+  scalacOptions += "-Ymacro-debug-lite",
 ) dependsOn core
 
