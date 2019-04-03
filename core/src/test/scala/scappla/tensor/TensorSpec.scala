@@ -167,4 +167,29 @@ class TensorSpec extends FlatSpec {
     assert(index == Index[Shape](List(1, 2)))
   }
 
+  it should "order indices correctly" in {
+
+    case class A(size: Int) extends Dim[A]
+    case class B(size: Int) extends Dim[B]
+    case class C(size: Int) extends Dim[C]
+
+    val a = A(1)
+    val b = B(2)
+    val c = C(3)
+
+    val xShape = a :#: b
+    val xData = ArrayTensor(xShape.sizes, Array(1f, 2f))
+
+    val yShape = b :#: c
+    val yData = ArrayTensor(yShape.sizes, Array(1f, 2f, 3f, 4f, 5f, 6f))
+
+    val x = TensorExpr(xShape, xData)
+    val y = TensorExpr(yShape, yData)
+
+    import TensorExpr._
+
+    val z: Expr[Tensor[C :#: A, ArrayTensor]] = x :*: y
+    z.dv(Tensor.apply(c :#: a, ArrayTensor((c :#: a).sizes, Array(1f, 2f, 3f))))
+  }
+
 }

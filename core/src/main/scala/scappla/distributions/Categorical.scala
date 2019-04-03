@@ -1,7 +1,7 @@
 package scappla.distributions
 
 import scappla.Functions.{log, sum}
-import scappla.tensor.{DataOps, Dim, GreaterThan, Tensor}
+import scappla.tensor.{DataOps, Dim, GreaterThan, Tensor, Index}
 import scappla.{Expr, Score}
 
 import scala.util.Random
@@ -20,7 +20,7 @@ case class Categorical[S <: Dim[_], D: DataOps](p: Expr[Tensor[S, D]]) extends D
 
   override def observe(index: Int): Score = {
     import scappla.InferField._
-    val value = at(p.v, index)
+    val value = at(p.v, Index[S](List(index)))
     log(value / total)
   }
 
