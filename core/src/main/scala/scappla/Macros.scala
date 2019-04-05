@@ -606,7 +606,7 @@ class Macros(val c: blackbox.Context) {
       val newBody = q"{..${newStmts.map { _.tree }}}"
       val newVars = newStmts.flatMap { _.vars }.toSet.filter(scope.isDefined)
     
-      val newDefTree = q"def $varName(..${newArgs.map(_.newArgDecl)}): Variable[${body.tpe}] = $newBody"
+      val newDefTree = q"def $varName(..${newArgs.map(_.newArgDecl)}): scappla.Variable[${body.tpe}] = $newBody"
       Seq(RichTree.join(
           newDefTree,
           RichTree(newDefTree, newVars),
