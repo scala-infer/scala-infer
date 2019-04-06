@@ -18,8 +18,8 @@ object TestSprinkler extends App {
 
   val model = infer {
 
-    val sprinkle = (arg: Boolean) => {
-      if (arg) {
+    def sprinkle(rain: Boolean): Boolean = {
+      if (rain) {
         sample(Bernoulli(0.01), inRain)
       } else {
         sample(Bernoulli(0.4), noRain)
