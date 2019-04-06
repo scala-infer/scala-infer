@@ -26,7 +26,7 @@ trait Expr[X] {
   def buffer: Buffered[X] =
     NoopBuffer(this)
 
-  def const: Constant[X] =
+  def const: Expr[X] =
     Constant(this.v)
 }
 
