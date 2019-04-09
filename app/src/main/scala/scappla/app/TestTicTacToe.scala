@@ -1,5 +1,7 @@
 package scappla.app
 
+import scala.util.Random
+
 import scappla._
 import scappla.Functions._
 import scappla.guides._
@@ -37,58 +39,97 @@ object TestTicTacToe extends App {
   case class Channel(size: Int) extends Dim[Channel]
   val channel = Channel(20)
 
+  type GridShape = Width :#: Height
   val gridShape = width :#: height
 
-  type GridShape = Width :#: Height
   type Position = Index[GridShape]
   type Grid = Map[Position, Occupant]
 
   val opt = new Adam(0.1)
 
+  import Tensor._
   import TensorExpr._
 
-  val toChannelInit = TensorExpr.numTensor[Width :#: Height :#: Channel, ArrayTensor]
-      .gaussian(width :#: height :#: channel)
-  val toChannel = opt.param(toChannelInit)
+  private val gridField = implicitly[TensorField[GridShape, ArrayTensor]]
 
-  val toGridInit = TensorExpr.numTensor[Width :#: Height :#: Channel, ArrayTensor]
-      .gaussian(width :#: height :#: channel)
-  val toMus = opt.param(toGridInit)
-  val toSigmas = opt.param(toGridInit)
+  private def newBias(value: Float): Buffered[Tensor[GridShape, ArrayTensor]] = {
+    import gridField._
+    val result = opt.param(
+      gridField.gaussian(gridShape) * gridField.fromDouble(value, gridShape)
+    ).buffer
+    result.complete()
+    result
+  }
 
-  import TensorExpr._
+  type LayerShape = Width :#: Height :#: Channel
+  val layerShape = width :#: height :#: channel
+
+  private val layerField = implicitly[TensorField[LayerShape, ArrayTensor]]
+
+  private def newLayer(): Buffered[Tensor[LayerShape, ArrayTensor]] = {
+    import layerField._
+    val result = opt.param(
+      layerField.gaussian(layerShape) * layerField.fromDouble(0.1, layerShape)
+    ).buffer
+    result.complete()
+    result
+  }
+
+  val toChannel = newLayer
+  val channelBias = {
+    val channelField = implicitly[TensorField[Channel, ArrayTensor]]
+    import channelField._
+    val result = opt.param(
+      channelField.gaussian(channel) * channelField.fromDouble(0.0, channel),
+      Some("channel-bias")
+    ).buffer
+    result.complete()
+    result
+  }
+
+  val toMus = newLayer
+  val muBias = newBias(0f)
+
+  val toSigmas = newLayer
+  val sigmaBias = newBias(-2f)
 
   val guides = mutable.Map.empty[Grid, GridState]
 
   class GridState(
       val grid: Grid,
       val player: Occupant,
-      init_pos: Tensor[GridShape, ArrayTensor] =
-        Tensor(gridShape, ArrayTensor(List(3, 3), Array.fill(9)(0f))),
-      init_var: Tensor[GridShape, ArrayTensor] =
-        Tensor(gridShape, ArrayTensor(List(3, 3), Array.fill(9)(0f)))
+      init_pos: Tensor[GridShape, ArrayTensor] = gridField.fromDouble(0.0, gridShape),
+      init_var: Tensor[GridShape, ArrayTensor] = gridField.fromDouble(-2.0, gridShape)
   ) {
-    val (post_pos, post_var, guide) = {
-      val values = Array.ofDim[Float](9)
+    val (post_pos, post_var, mask, guide) = {
+      val board = Array.ofDim[Float](9)
+      val neither = Array.ofDim[Float](9)
       for {
         i <- 0 until width.size
         j <- 0 until height.size
       } {
         val index = Index[GridShape](List(i, j))
-        values(i * 3 + j) = grid(index) match {
-          case Neither  =>  0f
-          case `player` =>  1f
-          case _        => -1f
+        grid(index) match {
+          case Neither =>
+            neither(3 * i + j) = 1f
+          case `player` =>
+            board(3 * i + j) = 1f
+          case _ =>
+            board(3 * i + j) = -1f
         }
       }
       val input = Tensor(
         gridShape,
-        ArrayTensor(gridShape.sizes, values)
+        ArrayTensor(gridShape.sizes, board)
       )
-      val hidden = sigmoid(toChannel :*: input.const)
-      val p_pos = hidden :*: toMus
-      val p_var = hidden :*: toSigmas
-      (p_pos, p_var, ReparamGuide(Normal(p_pos, exp(p_var))))
+      val mask = Tensor(
+        gridShape,
+        ArrayTensor(gridShape.sizes, neither)
+      )
+      val hidden = sigmoid(channelBias + (toChannel :*: input.const))
+      val p_pos = muBias + (hidden :*: toMus)
+      val p_var = sigmaBias + (hidden :*: toSigmas)
+      (p_pos, p_var, mask, ReparamGuide(Normal(p_pos, exp(p_var))))
     }
 
     private var prior_pos = init_pos
@@ -100,33 +141,20 @@ object TestTicTacToe extends App {
 
     def updatePrior(lr: Double): Unit = {
       val ops = implicitly[DataOps[ArrayTensor]]
-      prior_pos = Tensor(
-        gridShape,
-        ops.times(
-          ops.minus(
-            post_pos.v.data,
-            prior_pos.data
-          ),
-          ops.fill(lr.toFloat, gridShape.sizes: _*)
-        )
-      )
-      prior_var = Tensor(
-        gridShape,
-        ops.times(
-          ops.minus(
-            post_var.v.data,
-            prior_var.data
-          ),
-          ops.fill(lr.toFloat, gridShape.sizes: _*)
-        )
-      )
+      import gridField._
+      prior_pos += (post_pos.v - prior_pos) * gridField.fromDouble(lr, gridShape)
+      prior_var += (post_var.v - prior_var) * gridField.fromDouble(lr, gridShape)
     }
 
     def select(position: Position): GridState = {
-      val newGrid = grid.updated(position, player)
+      // println(mask.data.data.mkString(","))
+      // println(s"Position: $position")
+      assert(grid(position) == Neither)
+
+      val newGrid = grid + (position -> player)
       if (!guides.contains(newGrid)) {
         val newState = new GridState(newGrid, player.flip)
-        guides.update(newGrid, newState)
+        guides += newGrid -> newState
         newState
       } else {
         guides(newGrid)
@@ -137,21 +165,27 @@ object TestTicTacToe extends App {
   val emptyGrid: Grid = Map.empty[Position, Occupant]
       .withDefaultValue(Neither)
   val startState = new GridState(emptyGrid, Cross)
+  guides += emptyGrid -> startState
 
   val model = infer {
-    def nextStep(state: GridState): Occupant = {
+
+    def nextStep(state: GridState): (Occupant, Seq[Grid]) = {
       val w = winner(state.grid)
       if (w != Neither) {
-        w
+        // printGrid(state.grid)
+        (w, Seq(state.grid))
       } else if (isFull(state.grid)) {
-        Neither
+        // printGrid(state.grid)
+        (Neither, Seq(state.grid))
       } else {
-        val rates = sample(state.prior, state.guide)
-        val index = maxIndex(rates)
+        val scale = gridField.fromDouble(10.0, gridShape)
+        val rates = sigmoid(scale * tanh(sample(state.prior, state.guide) / scale))
+        // println("RATES: " + rates.v.data.data.mkString(","))
+        val index = maxIndex(state.mask * rates)
         val rate = at(rates, index)
-        val result = nextStep(state.select(index))
-        observe(Bernoulli(sigmoid(rate)), result == state.player)
-        result
+        val (result, sequence) = nextStep(state.select(index))
+        observe(Bernoulli(rate), result == state.player)
+        (result, state.grid +: sequence)
       }
     }
     nextStep(startState)
@@ -177,9 +211,7 @@ object TestTicTacToe extends App {
     grid.size == gridShape.size
 
   def winner(grid: Grid): Occupant = {
-    println(s"WINNER $grid ($seqs)")
     seqs.foldLeft[Occupant](Neither) { case (cur, s) =>
-      println(s"CHECKING $s")
       cur match {
         case Neither =>
           if (s.forall(grid.get(_).contains(Cross)))
@@ -193,5 +225,43 @@ object TestTicTacToe extends App {
     }
   }
 
-  val s = model.sample()
+  def printGrid(grid: Grid): Unit = {
+    for {
+      i <- 0 until width.size
+      j <- 0 until height.size
+    } {
+      val sym = grid(Index[GridShape](List(i, j))) match {
+        case Neither => " "
+        case Circle => "O"
+        case Cross => "X"
+      }
+      print(s" $sym ")
+      if (((j + 1) % width.size) == 0) {
+        println()
+      }
+    }
+  }
+
+  for { _ <- Range(0, 100000)} {
+    muBias.buffer
+    toMus.buffer
+    sigmaBias.buffer
+    toSigmas.buffer
+    toChannel.buffer
+    channelBias.buffer
+    val (winner, sequence) = model.sample()
+    muBias.complete()
+    toMus.complete()
+    sigmaBias.complete()
+    toSigmas.complete()
+    toChannel.complete()
+    channelBias.complete()
+    println(s"WINNER: ${winner} (${sequence.size})")
+
+    for { grid <- sequence } {
+      val state = guides(grid)
+      state.updatePrior(0.1)
+    }
+
+  }
 }
