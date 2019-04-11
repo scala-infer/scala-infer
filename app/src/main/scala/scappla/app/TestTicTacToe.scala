@@ -45,62 +45,43 @@ object TestTicTacToe extends App {
   type Position = Index[GridShape]
   type Grid = Map[Position, Occupant]
 
+  type LayerShape = Width :#: Height :#: Channel
+  val layerShape = width :#: height :#: channel
+
   val opt = new Adam(0.1)
 
   import Tensor._
   import TensorExpr._
 
   private val gridField = implicitly[TensorField[GridShape, ArrayTensor]]
-
-  private def newBias(value: Float): Buffered[Tensor[GridShape, ArrayTensor]] = {
-    import gridField._
-    val result = opt.param(
-      gridField.gaussian(gridShape) * gridField.fromDouble(value, gridShape)
-    ).buffer
-    result.complete()
-    result
-  }
-
-  type LayerShape = Width :#: Height :#: Channel
-  val layerShape = width :#: height :#: channel
-
   private val layerField = implicitly[TensorField[LayerShape, ArrayTensor]]
 
-  private def newLayer(): Buffered[Tensor[LayerShape, ArrayTensor]] = {
-    import layerField._
+  private def newTensor[S <: Shape](
+    value: Float,
+    shape: S
+  )(implicit
+    field: TensorField[S, ArrayTensor]
+  ): Buffered[Tensor[S, ArrayTensor]] = {
+    import field._
     val result = opt.param(
-      layerField.gaussian(layerShape) * layerField.fromDouble(0.1, layerShape)
+      field.gaussian(shape) * field.fromDouble(value, shape)
     ).buffer
     result.complete()
     result
   }
 
-  val toChannel = newLayer
-  val channelBias = {
-    val channelField = implicitly[TensorField[Channel, ArrayTensor]]
-    import channelField._
-    val result = opt.param(
-      channelField.gaussian(channel) * channelField.fromDouble(0.0, channel),
-      Some("channel-bias")
-    ).buffer
-    result.complete()
-    result
-  }
+  val toChannel = newTensor(0.1f, layerShape)
+  val channelBias = newTensor(0.0f, channel)
 
-  val toMus = newLayer
-  val muBias = newBias(0f)
+  val toMus = newTensor(0.1f, layerShape)
+  val muBias = newTensor(0f, gridShape)
 
-  val toSigmas = newLayer
-  val sigmaBias = newBias(-2f)
+  val toSigmas = newTensor(0.1f, layerShape)
+  val sigmaBias = newTensor(-2f, gridShape)
 
   val guides = mutable.Map.empty[Grid, GridState]
 
-  class GridState(
-      val grid: Grid,
-      val player: Occupant,
-      init_pos: Tensor[GridShape, ArrayTensor] = gridField.fromDouble(0.0, gridShape),
-      init_var: Tensor[GridShape, ArrayTensor] = gridField.fromDouble(-2.0, gridShape)
-  ) {
+  class GridState(val grid: Grid, val player: Occupant) {
     val (post_pos, post_var, mask, guide) = {
       val board = Array.ofDim[Float](9)
       val neither = Array.ofDim[Float](9)
@@ -132,8 +113,8 @@ object TestTicTacToe extends App {
       (p_pos, p_var, mask, ReparamGuide(Normal(p_pos, exp(p_var))))
     }
 
-    private var prior_pos = init_pos
-    private var prior_var = init_var
+    private var prior_pos = gridField.fromDouble(0.0, gridShape)
+    private var prior_var = gridField.fromDouble(-2.0, gridShape)
     def prior: DDistribution[Tensor[GridShape, ArrayTensor]] =
       Normal[Tensor[GridShape, ArrayTensor], GridShape](
         prior_pos.const, exp(prior_var.const)
