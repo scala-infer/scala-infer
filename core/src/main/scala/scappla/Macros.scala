@@ -335,12 +335,12 @@ class Macros(val c: blackbox.Context) {
             val resultTree = q"$matchVar.get"
             val result = q"${matchName.tree} match { case ..${mappedCases.map{ _._2 }}}"
             val richResult = mappedCases.map { _._1 }.reduce(RichTree.join(result, _, _))
+            val ref = RichTree.join(resultTree, matchName, richResult)
+            scope.declare(matchVar, ref)
             Seq(RichTree(
               q"val $matchVar = $result",
               Set(matchVar)
-            )) ++ fn(
-              RichTree.join(resultTree, matchName, richResult)
-            )
+            )) ++ fn(ref)
           }
 
         case q"scappla.`package`.sample[$tDist]($prior, $guide)" =>
@@ -349,14 +349,14 @@ class Macros(val c: blackbox.Context) {
               val tVarName = TermName(c.freshName())
 //              println(s"MATCHING ${showRaw(tDist.tpe)} (${showCode(tDist)})")
               builder.variable(tVarName)
-              scope.declare(tVarName, RichTree(q"$tVarName", (priorName.vars ++ guideName.vars) + tVarName))
-              val ref = scope.reference(tVarName).map(tree => q"$tree.get")
+              val ref = RichTree(q"$tVarName", (priorName.vars ++ guideName.vars) + tVarName)
+              scope.declare(tVarName, ref)
               Seq(
                 RichTree(
                   q"val $tVarName = ${guideName.tree}.sample(${priorName.tree})",
                   priorName.vars ++ guideName.vars
                 )
-              ) ++ fn(ref)
+              ) ++ fn(ref.map { tree => q"$tree.get" })
             }
           }
 
@@ -386,11 +386,12 @@ class Macros(val c: blackbox.Context) {
           f match {
             case Ident(TermName(fname))
                 if scope.isDefined(fname) && scope.reference(fname).isFn =>
-              println(s"APPLYING FN ${fname}")
+              // println(s"APPLYING FN ${fname}")
               visitExpr(f) { richFn =>
                 visitExpr(o) { richO =>
                   val varResult = TermName(c.freshName())
                   builder.variable(varResult)
+                  scope.declare(varResult, RichTree.join(q"$varResult", richFn, richO))
                   val result = q"$varResult.get"
                   val nodes = richO.vars.map { t => q"$t.node" }
                   Seq(RichTree(
@@ -467,6 +468,7 @@ class Macros(val c: blackbox.Context) {
                 visitExpr(o) { richO =>
                   val varResult = TermName(c.freshName())
                   builder.variable(varResult)
+                  scope.declare(varResult, RichTree.join(q"$varResult", richFn, richO))
                   val result = q"$varResult.get"
                   val nodes = richO.vars.map { t => q"$t.node" }
                   Seq(RichTree(
