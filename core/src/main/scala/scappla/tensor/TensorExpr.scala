@@ -194,11 +194,13 @@ object TensorExpr {
 case class TBuffer[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
     extends TensorExpr[S, D] with Buffered[Tensor[S, D]] {
 
+  private var refCount: Int = 1
+
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
   private var grad: Option[D] = None
 
-  override val v: Tensor[S, D] = upstream.v
+  override def v: Tensor[S, D] = upstream.v
 
   override def dv(gradient: Tensor[S, D]): Unit = {
     grad = grad.map {
@@ -206,9 +208,23 @@ case class TBuffer[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
     }.orElse(Some(gradient.data))
   }
 
+  /**
+    * basic refcounting; when a function needs a buffer instead of a plain Real
+    * (i.e. when it has potentially more than one use of the value), it further defers
+    * the backpropagation of the gradient.  When all references have completed, can the
+    * gradient be propagated further backwards.
+    */
+  override def buffer: TBuffer[S, D] = {
+    refCount += 1
+    this
+  }
+
   override def complete(): Unit = {
-    grad.foreach { g =>
-      upstream.dv(Tensor(v.shape, g))
+    refCount -= 1
+    if (refCount == 0) {
+      grad.foreach { g =>
+        upstream.dv(Tensor(v.shape, g))
+      }
     }
     grad = None
   }
