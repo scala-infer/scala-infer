@@ -172,7 +172,7 @@ class MacrosSpec extends FlatSpec {
     case class Batch(size: Int) extends Dim[Batch]
     val batch = Batch(N)
 
-    import scappla.tensor.TensorExpr._
+    import scappla.tensor.TensorValue._
 
     val (x1, x2, y) = {
       val alpha = 1.0

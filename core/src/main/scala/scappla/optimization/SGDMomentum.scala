@@ -1,11 +1,11 @@
 package scappla.optimization
 
-import scappla.{BaseField, InferField, Expr}
+import scappla.{BaseField, InferField, Value}
 
 class SGDMomentum(val mass: Int = 10, lr: Double = 1.0) extends Optimizer {
 
-  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S], expr: InferField[X, S]): Expr[X] = {
-    new Expr[X] {
+  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S], expr: InferField[X, S]): Value[X] = {
+    new Value[X] {
 
       private var iter: Int = 0
 

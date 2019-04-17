@@ -7,7 +7,7 @@ import scappla.optimization.Average
 // control variate
 // Since a constant delta between score_p and score_q has an expectation value of zero,
 // the average value can be subtracted in order to reduce the variance.
-case class BBVIGuide[A](posterior: Distribution[A], control: Expr[Double] = Average.param(0.0)) extends Guide[A] {
+case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double] = Average.param(0.0)) extends Guide[A] {
 
   // samples the guide (= the approximation to the posterior)
   // use BBVI (with Rao Blackwellization)

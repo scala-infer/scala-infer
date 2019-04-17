@@ -2,7 +2,7 @@ package scappla
 
 import scala.language.experimental.macros
 
-trait BaseReal extends Expr[Double] {
+trait BaseReal extends Value[Double] {
 
   override def buffer: RealBuffer = RealBuffer(this)
 

@@ -8,8 +8,8 @@ package object scappla {
 
   // API
 
-  type Real = Expr[Double]
-  type Score = Expr[Double]
+  type Real = Value[Double]
+  type Score = Value[Double]
   type Model[X] = Sampleable[X]
 
   /**

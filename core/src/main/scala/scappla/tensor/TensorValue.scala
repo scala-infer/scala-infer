@@ -5,7 +5,7 @@ import scappla._
 import shapeless.Nat
 import Tensor._
 
-trait TensorExpr[S <: Shape, D] extends Expr[Tensor[S, D]] {
+trait TensorValue[S <: Shape, D] extends Value[Tensor[S, D]] {
 
   protected val ops: DataOps[D]
 
@@ -18,48 +18,48 @@ trait TensorExpr[S <: Shape, D] extends Expr[Tensor[S, D]] {
   }
 }
 
-object TensorExpr {
+object TensorValue {
 
   implicit def toConst[S <: Shape, D: DataOps](
       tensor: Tensor[S, D]
-  ): Expr[Tensor[S, D]] = TConst(tensor)
+  ): Value[Tensor[S, D]] = TConst(tensor)
 
   def apply[S <: Shape, D: DataOps](
       shape: S, data: D
-  ): Expr[Tensor[S, D]] = TConst(Tensor(shape, data))
+  ): Value[Tensor[S, D]] = TConst(Tensor(shape, data))
 
   def count[S <: Shape, X : DataOps](
-      tensor: Expr[Tensor[S, X]], cond: Condition
+      tensor: Value[Tensor[S, X]], cond: Condition
   ): Int = {
     implicitly[DataOps[X]].count(tensor.v.data, cond)
   }
 
   def cumsum[S <: Shape, D <: Dim[_], I <: Nat, X: DataOps](
-      tensor: Expr[Tensor[S, X]], dim: D
+      tensor: Value[Tensor[S, X]], dim: D
   )(implicit
       indexOf: IndexOf.Aux[S, D, I]
-  ): TensorExpr[S, X] = {
+  ): TensorValue[S, X] = {
     TCumSum(indexOf.toInt, tensor)
   }
 
   def sumAlong[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: DataOps](
-      tensor: Expr[Tensor[S, X]], dim: D
+      tensor: Value[Tensor[S, X]], dim: D
   )(implicit
       indexOf: IndexOf.Aux[S, D, I],
       removeAt: RemoveAt.Aux[S, I, R]
-  ): TensorExpr[R, X] = {
+  ): TensorValue[R, X] = {
     TSum[R, S, X](removeAt.apply(tensor.v.shape), indexOf.toInt, tensor)
   }
 
   def at[D: DataOps, S <: Shape](
-      tensor: Expr[Tensor[S, D]],
+      tensor: Value[Tensor[S, D]],
       index: Index[S]
-  ): Expr[Double] = {
+  ): Value[Double] = {
     TAt[S, D](tensor, index)
   }
 
   def maxIndex[S <: Shape, D: DataOps](
-      tensor: Expr[Tensor[S, D]]
+      tensor: Value[Tensor[S, D]]
   ): Index[S] = {
     val indices = implicitly[DataOps[D]].imax(tensor.v.data)
     Index[S](indices.toList)
@@ -67,30 +67,30 @@ object TensorExpr {
 
   def broadcast[S <: Shape, D: DataOps](
       real: Real, shape: S
-  ): Expr[Tensor[S, D]] = TBroadcast(real, shape)
+  ): Value[Tensor[S, D]] = TBroadcast(real, shape)
 
   def param[S <: Shape, D: DataOps](
       values: Tensor[S, D],
       update: Tensor[S, D] => Tensor[S, D]
-  ): Expr[Tensor[S, D]] = TParam(values, update)
+  ): Value[Tensor[S, D]] = TParam(values, update)
 
   // FUNCTIONS
 
-  implicit def logTensor[S <: Shape, D: DataOps]: log.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
-    new Functions.log.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
-      def apply(in: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] = TLog(in)
+  implicit def logTensor[S <: Shape, D: DataOps]: log.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] =
+    new Functions.log.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] {
+      def apply(in: Value[Tensor[S, D]]): Value[Tensor[S, D]] = TLog(in)
     }
 
-  implicit def expTensor[S <: Shape, D: DataOps]: exp.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
-    new Functions.exp.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
-      def apply(in: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] = TExp(in)
+  implicit def expTensor[S <: Shape, D: DataOps]: exp.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] =
+    new Functions.exp.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] {
+      def apply(in: Value[Tensor[S, D]]): Value[Tensor[S, D]] = TExp(in)
     }
 
   implicit def tanhTensor[S <: Shape, D: DataOps](
     implicit field: TensorExprField[S, D]
-  ): tanh.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
-    new tanh.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
-      override def apply(x: Expr[Tensor[S, D]]) = {
+  ): tanh.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] =
+    new tanh.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] {
+      override def apply(x: Value[Tensor[S, D]]) = {
         val shape = x.v.shape
         val one = field.fromInt(1, shape)
         val two = field.fromInt(2, shape)
@@ -100,23 +100,23 @@ object TensorExpr {
 
   implicit def sigmoidTensor[S <: Shape, D: DataOps](
     implicit field: TensorExprField[S, D]
-  ): sigmoid.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
-    new Functions.sigmoid.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
-      override def apply(x: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] =  {
+  ): sigmoid.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] =
+    new Functions.sigmoid.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] {
+      override def apply(x: Value[Tensor[S, D]]): Value[Tensor[S, D]] =  {
         val shape = x.v.shape
         val one = field.fromInt(1, shape)
         TDiv(one, TPlus(TExp(field.negate(x)), one))
       }
     }
 
-  implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[Expr[Tensor[S, D]]] =
-    new sum.Apply[Expr[Tensor[S, D]]] {
-      override def apply(in: Expr[Tensor[S, D]]): Real = TSumAll(in)
+  implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[Value[Tensor[S, D]]] =
+    new sum.Apply[Value[Tensor[S, D]]] {
+      override def apply(in: Value[Tensor[S, D]]): Real = TSumAll(in)
     }
 
-  implicit def powTensor[S <: Shape, D: DataOps]: pow.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]], Expr[Tensor[S, D]]] =
-    new pow.Apply[Expr[Tensor[S, D]], Expr[Tensor[S, D]], Expr[Tensor[S, D]]] {
-      override def apply(base: Expr[Tensor[S, D]], exp: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] = TPow(base, exp)
+  implicit def powTensor[S <: Shape, D: DataOps]: pow.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]], Value[Tensor[S, D]]] =
+    new pow.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]], Value[Tensor[S, D]]] {
+      override def apply(base: Value[Tensor[S, D]], exp: Value[Tensor[S, D]]): Value[Tensor[S, D]] = TPow(base, exp)
     }
 
   implicit def numTensorExpr[S <: Shape, D: DataOps] = new TensorExprField[S, D]
@@ -125,51 +125,51 @@ object TensorExpr {
 
     private implicit val baseField = implicitly[TensorField[S, D]]
 
-    override def div(x: Expr[Tensor[S, D]], y: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] =
+    override def div(x: Value[Tensor[S, D]], y: Value[Tensor[S, D]]): Value[Tensor[S, D]] =
       TDiv(x, y)
 
-    override def plus(x: Expr[Tensor[S, D]], y: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] =
+    override def plus(x: Value[Tensor[S, D]], y: Value[Tensor[S, D]]): Value[Tensor[S, D]] =
       TPlus(x, y)
 
-    override def minus(x: Expr[Tensor[S, D]], y: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] =
+    override def minus(x: Value[Tensor[S, D]], y: Value[Tensor[S, D]]): Value[Tensor[S, D]] =
       TMinus(x, y)
 
-    override def times(x: Expr[Tensor[S, D]], y: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] =
+    override def times(x: Value[Tensor[S, D]], y: Value[Tensor[S, D]]): Value[Tensor[S, D]] =
       TTimes(x, y)
 
-    override def negate(x: Expr[Tensor[S, D]]): Expr[Tensor[S, D]] =
+    override def negate(x: Value[Tensor[S, D]]): Value[Tensor[S, D]] =
       TNeg(x)
 
-    override def fromInt(x: Int): Expr[Tensor[S, D]] = ???
+    override def fromInt(x: Int): Value[Tensor[S, D]] = ???
 
-    override def toInt(x: Expr[Tensor[S, D]]): Int = ???
+    override def toInt(x: Value[Tensor[S, D]]): Int = ???
 
-    override def toLong(x: Expr[Tensor[S, D]]): Long = ???
+    override def toLong(x: Value[Tensor[S, D]]): Long = ???
 
-    override def toFloat(x: Expr[Tensor[S, D]]): Float = ???
+    override def toFloat(x: Value[Tensor[S, D]]): Float = ???
 
-    override def toDouble(x: Expr[Tensor[S, D]]): Double = ???
+    override def toDouble(x: Value[Tensor[S, D]]): Double = ???
 
-    override def compare(x: Expr[Tensor[S, D]], y: Expr[Tensor[S, D]]): Int = ???
+    override def compare(x: Value[Tensor[S, D]], y: Value[Tensor[S, D]]): Int = ???
 
-    override def const(x: Tensor[S, D]): Expr[Tensor[S, D]] =
+    override def const(x: Tensor[S, D]): Value[Tensor[S, D]] =
       TConst(x)
 
-    override def fromInt(x: Int, shape: S): Expr[Tensor[S, D]] =
+    override def fromInt(x: Int, shape: S): Value[Tensor[S, D]] =
       broadcast(Real(x), shape)
 
-    override def buffer(ex: Expr[Tensor[S, D]]) =
+    override def buffer(ex: Value[Tensor[S, D]]) =
       TBuffer(ex)
 
-    override implicit def mkNumericOps(expr: Expr[Tensor[S, D]]) = new TensorExprOps(expr)
+    override implicit def mkNumericOps(expr: Value[Tensor[S, D]]) = new TensorExprOps(expr)
 
-    class TensorExprOps(lhs: Expr[Tensor[S, D]]) extends FractionalOps(lhs) {
+    class TensorExprOps(lhs: Value[Tensor[S, D]]) extends FractionalOps(lhs) {
 
       def :*:[T <: Shape, R <: Shape](
-          rhs: Expr[Tensor[T, D]]
+          rhs: Value[Tensor[T, D]]
       )(implicit
           sd: SymDiff.Aux[S, T, R]
-      ): Expr[Tensor[R, D]] = new Expr[Tensor[R, D]] {
+      ): Value[Tensor[R, D]] = new Value[Tensor[R, D]] {
 
         // S :*: T => R
         override def v: Tensor[R, D] = {
@@ -187,12 +187,12 @@ object TensorExpr {
     }
   }
 
-  implicit def infixTensorExprOps[S <: Shape, D: DataOps](expr: Expr[Tensor[S, D]])(implicit num: TensorExprField[S, D]) = new num.TensorExprOps(expr)
+  implicit def infixTensorExprOps[S <: Shape, D: DataOps](expr: Value[Tensor[S, D]])(implicit num: TensorExprField[S, D]) = new num.TensorExprOps(expr)
 
 }
 
-case class TBuffer[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
-    extends TensorExpr[S, D] with Buffered[Tensor[S, D]] {
+case class TBuffer[S <: Shape, D: DataOps](upstream: Value[Tensor[S, D]])
+    extends TensorValue[S, D] with Buffered[Tensor[S, D]] {
 
   private var refCount: Int = 1
 
@@ -237,7 +237,7 @@ case class TBuffer[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
 case class TParam[S <: Shape, D: DataOps](
     var v: Tensor[S, D],
     update: Tensor[S, D] => Tensor[S, D]
-) extends TensorExpr[S, D] {
+) extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -257,8 +257,8 @@ case class TConst[S <: Shape, D: DataOps](override val v: Tensor[S, D])
   }
 }
 
-case class TNeg[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
-    extends TensorExpr[S, D] {
+case class TNeg[S <: Shape, D: DataOps](upstream: Value[Tensor[S, D]])
+    extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -277,8 +277,8 @@ case class TNeg[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]])
   }
 }
 
-case class TPlus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
-    extends TensorExpr[S, D] {
+case class TPlus[S <: Shape, D: DataOps](left: Value[Tensor[S, D]], right: Value[Tensor[S, D]])
+    extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -300,8 +300,8 @@ case class TPlus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[T
   }
 }
 
-case class TMinus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
-    extends TensorExpr[S, D] {
+case class TMinus[S <: Shape, D: DataOps](left: Value[Tensor[S, D]], right: Value[Tensor[S, D]])
+    extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -323,8 +323,8 @@ case class TMinus[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[
   }
 }
 
-case class TTimes[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[Tensor[S, D]])
-    extends TensorExpr[S, D] {
+case class TTimes[S <: Shape, D: DataOps](left: Value[Tensor[S, D]], right: Value[Tensor[S, D]])
+    extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -350,8 +350,8 @@ case class TTimes[S <: Shape, D: DataOps](left: Expr[Tensor[S, D]], right: Expr[
   }
 }
 
-case class TDiv[S <: Shape, D: DataOps](numer: Expr[Tensor[S, D]], denom: Expr[Tensor[S, D]])
-    extends TensorExpr[S, D] {
+case class TDiv[S <: Shape, D: DataOps](numer: Value[Tensor[S, D]], denom: Value[Tensor[S, D]])
+    extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -378,8 +378,8 @@ case class TDiv[S <: Shape, D: DataOps](numer: Expr[Tensor[S, D]], denom: Expr[T
   }
 }
 
-case class TPow[S <: Shape, D: DataOps](base: Expr[Tensor[S, D]], expo: Expr[Tensor[S, D]])
-    extends TensorExpr[S, D] {
+case class TPow[S <: Shape, D: DataOps](base: Value[Tensor[S, D]], expo: Value[Tensor[S, D]])
+    extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -418,7 +418,7 @@ case class TPow[S <: Shape, D: DataOps](base: Expr[Tensor[S, D]], expo: Expr[Ten
   }
 }
 
-case class TLog[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends TensorExpr[S, D] {
+case class TLog[S <: Shape, D: DataOps](upstream: Value[Tensor[S, D]]) extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -439,7 +439,7 @@ case class TLog[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends Te
   }
 }
 
-case class TExp[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends TensorExpr[S, D] {
+case class TExp[S <: Shape, D: DataOps](upstream: Value[Tensor[S, D]]) extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -459,8 +459,8 @@ case class TExp[S <: Shape, D: DataOps](upstream: Expr[Tensor[S, D]]) extends Te
 }
 
 case class TSum[R <: Shape, S <: Shape, D: DataOps](
-    shape: R, index: Int, upstream: Expr[Tensor[S, D]]
-) extends TensorExpr[R, D] {
+    shape: R, index: Int, upstream: Value[Tensor[S, D]]
+) extends TensorValue[R, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -484,9 +484,9 @@ case class TSum[R <: Shape, S <: Shape, D: DataOps](
 }
 
 case class TAt[S <: Shape, D: DataOps](
-    upstream: Expr[Tensor[S, D]],
+    upstream: Value[Tensor[S, D]],
     index: Index[S]
-) extends Expr[Double] {
+) extends Value[Double] {
 
   override def v: Double = {
     implicitly[DataOps[D]].get(upstream.v.data, index.indices: _*)
@@ -507,8 +507,8 @@ case class TAt[S <: Shape, D: DataOps](
 }
 
 case class TCumSum[S <: Shape, D: DataOps](
-    index: Int, upstream: Expr[Tensor[S, D]]
-) extends TensorExpr[S, D] {
+    index: Int, upstream: Value[Tensor[S, D]]
+) extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 
@@ -537,7 +537,7 @@ case class TCumSum[S <: Shape, D: DataOps](
 }
 
 case class TSumAll[S <: Shape, D: DataOps](
-    upstream: Expr[Tensor[S, D]]
+    upstream: Value[Tensor[S, D]]
 ) extends Real {
 
   private val ops = implicitly[DataOps[D]]
@@ -559,7 +559,7 @@ case class TSumAll[S <: Shape, D: DataOps](
 
 case class TBroadcast[S <: Shape, D: DataOps](
     upstream: Real, shape: S
-) extends TensorExpr[S, D] {
+) extends TensorValue[S, D] {
 
   override val ops: DataOps[D] = implicitly[DataOps[D]]
 

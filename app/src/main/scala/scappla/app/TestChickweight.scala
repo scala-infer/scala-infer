@@ -8,7 +8,7 @@ import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
 import scappla.optimization.Adam
 import scappla.tensor.{ArrayTensor, Dim, Tensor}
-import scappla.tensor.TensorExpr._
+import scappla.tensor.TensorValue._
 import scappla._
 
 object TestChickweight extends App {

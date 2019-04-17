@@ -571,7 +571,7 @@ class Macros(val c: blackbox.Context) {
         case q"$mods val $tname : $tpt = $rhs" =>
           val TermName(name) = tname
           visitExpr(rhs) { exprName =>
-              val fullExpr = if (rhs.tpe <:< typeOf[scappla.Expr[_]]) {
+              val fullExpr = if (rhs.tpe <:< typeOf[scappla.Value[_]]) {
                 builder.buffer(TermName(name))
                 exprName.map { t => q"$t.buffer"}
               } else {

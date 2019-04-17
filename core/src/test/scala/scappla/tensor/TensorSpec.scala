@@ -2,7 +2,7 @@ package scappla.tensor
 
 import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
-import scappla.Expr
+import scappla.Value
 import scappla.Functions.log
 
 class TensorSpec extends FlatSpec {
@@ -20,9 +20,9 @@ class TensorSpec extends FlatSpec {
       0f, 1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10f, 11f
     ))
 
-    import TensorExpr._
+    import TensorValue._
 
-    val batch = TensorExpr(shape, data)
+    val batch = TensorValue(shape, data)
     val logBatch = log(batch)
     print(s"Result: ${logBatch.v.data.data.mkString(",")}")
   }
@@ -32,8 +32,8 @@ class TensorSpec extends FlatSpec {
 
     val data = ArrayTensor(shape.sizes, Array(0.0f, 1.0f))
 
-    val tensor = TensorExpr(shape, data)
-    val sum = TensorExpr.sumAlong(tensor, shape)
+    val tensor = TensorValue(shape, data)
+    val sum = TensorValue.sumAlong(tensor, shape)
     val result = sum.v.data.data(0)
 
     print(s"Result $result")
@@ -46,7 +46,7 @@ class TensorSpec extends FlatSpec {
 
     var update: Option[ArrayTensor] = None
 
-    val param = TensorExpr.param(
+    val param = TensorValue.param(
       Tensor(shape, data),
       (gradient: Tensor[Batch, ArrayTensor]) => {
         val result = DataOps.arrayOps.plus(data, gradient.data)
@@ -55,7 +55,7 @@ class TensorSpec extends FlatSpec {
       }
     )
 
-    TensorExpr.sumAlong(param, shape)
+    TensorValue.sumAlong(param, shape)
         .dv(Tensor(Scalar, ArrayTensor(Seq.empty, Array(1f))))
 
     val dataArray = update.get
@@ -70,7 +70,7 @@ class TensorSpec extends FlatSpec {
     val tensor = Tensor(shape, data)
     var update: Option[ArrayTensor] = None
 
-    val param = TensorExpr.param(tensor,
+    val param = TensorValue.param(tensor,
       (gradient: Tensor[Batch, ArrayTensor]) => {
         val result = DataOps.arrayOps.plus(data, gradient.data)
         update = Some(result)
@@ -79,7 +79,7 @@ class TensorSpec extends FlatSpec {
     )
 
     val buffer = param.buffer
-    TensorExpr.sumAlong(buffer, shape)
+    TensorValue.sumAlong(buffer, shape)
         .dv(Tensor(Scalar, ArrayTensor(Scalar.sizes, Array(1f))))
 
     assert(update.isEmpty)
@@ -101,8 +101,8 @@ class TensorSpec extends FlatSpec {
       shape.sizes.toArray
     )
 
-    val tensor = TensorExpr(shape, data)
-    val sum = TensorExpr.sumAlong(tensor, shape)
+    val tensor = TensorValue(shape, data)
+    val sum = TensorValue.sumAlong(tensor, shape)
     val result = sum.v.data.data().asFloat()(0)
 
     assert(result == 1f)
@@ -118,13 +118,13 @@ class TensorSpec extends FlatSpec {
     val data = ArrayTensor(inputShape.sizes, Array(
       0f, 1f, 2f, 3f, 4f, 5f
     ))
-    val input = TensorExpr(inputShape, data)
+    val input = TensorValue(inputShape, data)
 
     var update: Option[ArrayTensor] = None
     val matrix = ArrayTensor(outShape.sizes, Array(
       0f, 1f, 2f, 3f, 4f, 5f
     ))
-    val param = TensorExpr.param(Tensor(outShape, matrix),
+    val param = TensorValue.param(Tensor(outShape, matrix),
       (gradient: Tensor[Other :#: Batch, ArrayTensor]) => {
         val result = DataOps.arrayOps.plus(data, gradient.data)
         update = Some(result)
@@ -132,9 +132,9 @@ class TensorSpec extends FlatSpec {
       }
     )
 
-    import TensorExpr._
+    import TensorValue._
 
-    val out: Expr[Tensor[Input :#: Other, ArrayTensor]] = param :*: input
+    val out: Value[Tensor[Input :#: Other, ArrayTensor]] = param :*: input
     val outData = out.v.data
     val expected = ArrayTensor(Seq(2, 2), Array(5f, 14f, 14f, 50f))
     assert(outData.shape == expected.shape)
@@ -159,9 +159,9 @@ class TensorSpec extends FlatSpec {
     val data = ArrayTensor(shape.sizes, Array(
       0f, 1f, 2f, 3f, 4f, 5f
     ))
-    val input = TensorExpr(shape, data)
+    val input = TensorValue(shape, data)
 
-    import TensorExpr._
+    import TensorValue._
 
     val index = maxIndex(input)
     assert(index == Index[Shape](List(1, 2)))
@@ -183,12 +183,12 @@ class TensorSpec extends FlatSpec {
     val yShape = b :#: c
     val yData = ArrayTensor(yShape.sizes, Array(1f, 2f, 3f, 4f, 5f, 6f))
 
-    val x = TensorExpr(xShape, xData)
-    val y = TensorExpr(yShape, yData)
+    val x = TensorValue(xShape, xData)
+    val y = TensorValue(yShape, yData)
 
-    import TensorExpr._
+    import TensorValue._
 
-    val z: Expr[Tensor[C :#: A, ArrayTensor]] = x :*: y
+    val z: Value[Tensor[C :#: A, ArrayTensor]] = x :*: y
     z.dv(Tensor.apply(c :#: a, ArrayTensor((c :#: a).sizes, Array(1f, 2f, 3f))))
   }
 
