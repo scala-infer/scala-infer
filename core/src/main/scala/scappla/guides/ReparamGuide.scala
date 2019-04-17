@@ -3,9 +3,9 @@ package scappla.guides
 import scappla._
 import scappla.distributions.{DDistribution, Distribution}
 
-case class ReparamGuide[D](posterior: DDistribution[D]) extends Guide[Expr[D]] {
+case class ReparamGuide[D](posterior: DDistribution[D]) extends Guide[Value[D]] {
 
-  def sample(prior: Distribution[Expr[D]]): Variable[Expr[D]] = {
+  def sample(prior: Distribution[Value[D]]): Variable[Value[D]] = {
 
     val value = posterior.sample()
 

@@ -2,45 +2,45 @@ package scappla
 
 import scala.util.Random
 
-trait Expr[X] {
+trait Value[X] {
 
   def v: X
 
   def dv(v: X): Unit
 
-  def unary_-()(implicit numE: Numeric[Expr[X]]): Expr[X] =
+  def unary_-()(implicit numE: Numeric[Value[X]]): Value[X] =
     numE.negate(this)
 
-  def +(other: Expr[X])(implicit numE: Numeric[Expr[X]]): Expr[X] =
+  def +(other: Value[X])(implicit numE: Numeric[Value[X]]): Value[X] =
     numE.plus(this, other)
 
-  def -(other: Expr[X])(implicit numE: Numeric[Expr[X]]): Expr[X] =
+  def -(other: Value[X])(implicit numE: Numeric[Value[X]]): Value[X] =
     numE.minus(this, other)
 
-  def *(other: Expr[X])(implicit numE: Numeric[Expr[X]]): Expr[X] =
+  def *(other: Value[X])(implicit numE: Numeric[Value[X]]): Value[X] =
     numE.times(this, other)
 
-  def /(other: Expr[X])(implicit numE: Fractional[Expr[X]]): Expr[X] =
+  def /(other: Value[X])(implicit numE: Fractional[Value[X]]): Value[X] =
     numE.div(this, other)
 
   def buffer: Buffered[X] =
     NoopBuffer(this)
 
-  def const: Expr[X] =
+  def const: Value[X] =
     Constant(this.v)
 }
 
-object Expr {
+object Value {
 
   implicit def fromDouble(value: Double) = Real(value)
 
-  implicit def mkNumericOps[X](value: Expr[X])(implicit num: Fractional[Expr[X]]) =
+  implicit def mkNumericOps[X](value: Value[X])(implicit num: Fractional[Value[X]]) =
     num.mkNumericOps(value)
 }
 
-trait Buffered[X] extends Expr[X] with Completeable
+trait Buffered[X] extends Value[X] with Completeable
 
-case class NoopBuffer[X](upstream: Expr[X]) extends Buffered[X] {
+case class NoopBuffer[X](upstream: Value[X]) extends Buffered[X] {
 
   override def v: X = upstream.v
 
@@ -65,13 +65,13 @@ object Constant {
   def apply[X](v: X): Constant[X] = new Constant(v)
 }
 
-trait InferField[X, S] extends Fractional[Expr[X]] {
+trait InferField[X, S] extends Fractional[Value[X]] {
 
-  def const(x: X): Expr[X]
+  def const(x: X): Value[X]
 
-  def fromInt(x: Int, shape: S): Expr[X]
+  def fromInt(x: Int, shape: S): Value[X]
 
-  def buffer(ex: Expr[X]): Buffered[X]
+  def buffer(ex: Value[X]): Buffered[X]
 }
 
 object InferField {
@@ -111,11 +111,11 @@ object InferField {
 
       // InferField
 
-      override def const(x: Double): Expr[Double] = Real(x)
+      override def const(x: Double): Value[Double] = Real(x)
 
-      override def fromInt(x: Int, shape: Unit): Expr[Double] = Real(x)
+      override def fromInt(x: Int, shape: Unit): Value[Double] = Real(x)
 
-      override def buffer(ex: Expr[Double]) = RealBuffer(ex)
+      override def buffer(ex: Value[Double]) = RealBuffer(ex)
     }
 }
 

@@ -33,6 +33,6 @@ lazy val app = (project in file("app")).settings(
     "com.github.tototoshi"       %% "scala-csv"          % "1.3.5"
   ),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-  scalacOptions += "-Ymacro-debug-lite",
+  scalacOptions ++= Seq("-Ymacro-debug-lite", "-Xlog-implicits")
 ) dependsOn core
 

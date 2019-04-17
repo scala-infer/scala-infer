@@ -1,6 +1,6 @@
 package scappla.optimization
 
-import scappla.{BaseField, InferField, Expr}
+import scappla.{BaseField, InferField, Value}
 
 class Adam(alpha: Double = 0.001, beta1: Double = 0.9, beta2: Double = 0.999, epsilon: Double = 1e-8) extends Optimizer {
 
@@ -10,8 +10,8 @@ class Adam(alpha: Double = 0.001, beta1: Double = 0.9, beta2: Double = 0.999, ep
   )(implicit
     base: BaseField[X, S],
     expr: InferField[X, S]
-  ): Expr[X] = {
-    new Expr[X] {
+  ): Value[X] = {
+    new Value[X] {
 
       private var iter: Int = 1
 

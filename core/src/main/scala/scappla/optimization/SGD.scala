@@ -1,11 +1,11 @@
 package scappla.optimization
 
-import scappla.{BaseField, InferField, Expr}
+import scappla.{BaseField, InferField, Value}
 
 class SGD(val debug: Boolean = false, lr: Double) extends Optimizer {
 
-  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S], expr: InferField[X, S]): Expr[X] = {
-    new Expr[X] {
+  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S], expr: InferField[X, S]): Value[X] = {
+    new Value[X] {
 
       private var iter: Int = 0
 

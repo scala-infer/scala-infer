@@ -2,13 +2,13 @@ package scappla.distributions
 
 import scappla.Functions.{log, sum}
 import scappla.tensor.{DataOps, Dim, GreaterThan, Tensor, Index}
-import scappla.{Expr, Score}
+import scappla.{Value, Score}
 
 import scala.util.Random
 
-case class Categorical[S <: Dim[_], D: DataOps](p: Expr[Tensor[S, D]]) extends Distribution[Int] {
+case class Categorical[S <: Dim[_], D: DataOps](p: Value[Tensor[S, D]]) extends Distribution[Int] {
 
-  import scappla.tensor.TensorExpr._
+  import scappla.tensor.TensorValue._
 
   private val total = sum(p)
 

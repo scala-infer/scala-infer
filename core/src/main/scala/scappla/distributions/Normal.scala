@@ -4,22 +4,22 @@ import scappla.Functions.{log, sum}
 import scappla._
 
 case class Normal[D, S](
-    mu: Expr[D],
-    sigma: Expr[D]
+    mu: Value[D],
+    sigma: Value[D]
 )(implicit
     numE: InferField[D, S],
     numX: BaseField[D, S],
-    logImpl: log.Apply[Expr[D], Expr[D]],
-    sumImpl: sum.Apply[Expr[D]]
+    logImpl: log.Apply[Value[D], Value[D]],
+    sumImpl: sum.Apply[Value[D]]
 ) extends DDistribution[D] {
   private val shape = numX.shapeOf(sigma.v)
   private val two = numE.fromInt(2, shape)
 
   override def sample(): Buffered[D] = {
-    new Expr[D] with Buffered[D] {
+    new Value[D] with Buffered[D] {
       var refCount = 1
 
-      val e: Expr[D] = Constant(numX.gaussian(shape))
+      val e: Value[D] = Constant(numX.gaussian(shape))
 
       val r: Buffered[D] = {
         val sc = sigma.const
@@ -53,12 +53,12 @@ case class Normal[D, S](
     }
   }
 
-  override def observe(x: Expr[D]): Score = {
+  override def observe(x: Value[D]): Score = {
     val e = (x - mu) / sigma
     sum(-log(sigma) - e * e / two)
   }
 
-  override def reparam_score(x: Expr[D]): Score = {
+  override def reparam_score(x: Value[D]): Score = {
     val e = (x - mu.const) / sigma.const
     sum(-log(sigma).const - e * e / two)
   }

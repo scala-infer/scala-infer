@@ -48,10 +48,10 @@ object TestTicTacToe extends App {
   type LayerShape = Width :#: Height :#: Channel
   val layerShape = width :#: height :#: channel
 
-  val opt = new Adam(0.1)
+  val opt = new Adam(0.01)
 
   import Tensor._
-  import TensorExpr._
+  import TensorValue._
 
   private val gridField = implicitly[TensorField[GridShape, ArrayTensor]]
   private val layerField = implicitly[TensorField[LayerShape, ArrayTensor]]
@@ -63,11 +63,9 @@ object TestTicTacToe extends App {
     field: TensorField[S, ArrayTensor]
   ): Buffered[Tensor[S, ArrayTensor]] = {
     import field._
-    val result = opt.param(
+    opt.param(
       field.gaussian(shape) * field.fromDouble(value, shape)
     ).buffer
-    result.complete()
-    result
   }
 
   val toChannel = newTensor(0.1f, layerShape)
@@ -82,7 +80,7 @@ object TestTicTacToe extends App {
   val guides = mutable.Map.empty[Grid, GridState]
 
   class GridState(val grid: Grid, val player: Occupant) {
-    val (post_pos, post_var, mask, guide) = {
+    val (post_pos, post_var, hidden, mask, guide) = {
       val board = Array.ofDim[Float](9)
       val neither = Array.ofDim[Float](9)
       for {
@@ -107,10 +105,10 @@ object TestTicTacToe extends App {
         gridShape,
         ArrayTensor(gridShape.sizes, neither)
       )
-      val hidden = sigmoid(channelBias + (toChannel :*: input.const))
-      val p_pos = muBias + (hidden :*: toMus)
-      val p_var = sigmaBias + (hidden :*: toSigmas)
-      (p_pos, p_var, mask, ReparamGuide(Normal(p_pos, exp(p_var))))
+      val hidden = sigmoid(channelBias + (toChannel :*: input.const)).buffer
+      val p_pos = (muBias + (hidden :*: toMus)).buffer
+      val p_var = (sigmaBias + (hidden :*: toSigmas)).buffer
+      (p_pos, p_var, hidden, mask, ReparamGuide(Normal(p_pos, exp(p_var))))
     }
 
     private var prior_pos = gridField.fromDouble(0.0, gridShape)
@@ -119,6 +117,15 @@ object TestTicTacToe extends App {
       Normal[Tensor[GridShape, ArrayTensor], GridShape](
         prior_pos.const, exp(prior_var.const)
       )
+
+    def complete(): Unit = {
+      post_pos.complete()
+      post_var.complete()
+      hidden.complete()
+      hidden.buffer
+      post_pos.buffer
+      post_var.buffer
+    }
 
     def updatePrior(lr: Double): Unit = {
       val ops = implicitly[DataOps[ArrayTensor]]
@@ -159,7 +166,7 @@ object TestTicTacToe extends App {
         // printGrid(state.grid)
         (Neither, Seq(state.grid))
       } else {
-        val scale = gridField.fromDouble(10.0, gridShape)
+        val scale = gridField.fromDouble(8.0, gridShape)
         val rates = sigmoid(scale * tanh(sample(state.prior, state.guide) / scale))
         // println("RATES: " + rates.v.data.data.mkString(","))
         val index = maxIndex(state.mask * rates)
@@ -224,12 +231,6 @@ object TestTicTacToe extends App {
   }
 
   for { _ <- Range(0, 100000)} {
-    muBias.buffer
-    toMus.buffer
-    sigmaBias.buffer
-    toSigmas.buffer
-    toChannel.buffer
-    channelBias.buffer
     val (winner, sequence) = model.sample()
     muBias.complete()
     toMus.complete()
@@ -237,12 +238,23 @@ object TestTicTacToe extends App {
     toSigmas.complete()
     toChannel.complete()
     channelBias.complete()
+
     println(s"WINNER: ${winner} (${sequence.size})")
+    // printGrid(sequence.last)
 
     for { grid <- sequence } {
       val state = guides(grid)
       state.updatePrior(0.1)
     }
+    // println(s"MU BIAS: ${muBias.v.data}")
+
+    // prepare for next sample
+    muBias.buffer
+    toMus.buffer
+    sigmaBias.buffer
+    toSigmas.buffer
+    toChannel.buffer
+    channelBias.buffer
 
   }
 }
