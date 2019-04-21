@@ -28,12 +28,12 @@ object Functions {
 
     implicit val logReal: Apply[Real, Real] = new Apply[Real, Real] {
 
-      def apply(x: Real): Real = new LazyReal(0.0) {
+      def apply(x: Real): Real = new Value[Double] {
 
-        override def _v: Double =
+        override val v: Double =
           scala.math.log(x.v)
 
-        override def _dv(dx: Double): Unit = {
+        override def dv(dx: Double): Unit = {
           x.dv(dx / x.v)
         }
 
@@ -49,12 +49,12 @@ object Functions {
     }
 
     implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
-      override def apply(x: Real): Real = new LazyReal(0.0) {
+      override def apply(x: Real): Real = new Value[Double] {
 
-        override def _v: Double =
+        override val v: Double =
           scala.math.exp(x.v)
 
-        override def _dv(dx: Double): Unit = {
+        override def dv(dx: Double): Unit = {
           x.dv(dx * v)
         }
 
@@ -99,12 +99,12 @@ object Functions {
     }
 
     implicit val forReal: Apply[Real, Real, Real] = new Apply[Real, Real, Real] {
-      def apply(base: Real, exp: Real) = new LazyReal(0.0) {
+      def apply(base: Real, exp: Real) = new Value[Double] {
 
-        override def _v: Double =
+        override val v: Double =
           scala.math.pow(base.v, exp.v)
 
-        override def _dv(dx: Double): Unit = {
+        override def dv(dx: Double): Unit = {
           val ev = exp.v
           base.dv(dx * ev * scala.math.pow(base.v, ev - 1))
           exp.dv(dx * scala.math.log(base.v) * v)
@@ -115,19 +115,13 @@ object Functions {
     }
   }
 
-  object sum {
+  object sum extends Op1 {
 
-    trait Apply[-A] extends Function1[A, Real]
-
-    def apply[A](in: A)(implicit fn: Apply[A]): Real = {
-      fn.apply(in)
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(value: Double): Double = value
     }
 
-    implicit val forDouble: Apply[Double] = new Apply[Double] {
-      def apply(value: Double): Real = Real(value)
-    }
-
-    implicit val forReal: Apply[Real] = new Apply[Real] {
+    implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
       override def apply(value: Score): Real = value
     }
 

@@ -4,30 +4,33 @@ import scappla.Functions.{log, sum}
 import scappla._
 
 case class Normal[D, S](
-    mu: Value[D],
-    sigma: Value[D]
+    mu: Expr[D, S],
+    sigma: Expr[D, S]
 )(implicit
-    numE: InferField[D, S],
+    numE: ValueField[D, S],
     numX: BaseField[D, S],
     logImpl: log.Apply[Value[D], Value[D]],
-    sumImpl: sum.Apply[Value[D]]
+    sumImpl: sum.Apply[Value[D], Value[Double]]
 ) extends DDistribution[D] {
-  private val shape = numX.shapeOf(sigma.v)
-  private val two = numE.fromInt(2, shape)
 
-  override def sample(): Buffered[D] = {
+  override def sample(interpreter: Interpreter): Buffered[D] = {
+    val sigmaVal = interpreter.eval(sigma)
+    val muVal = interpreter.eval(mu)
+
+    val shape = numX.shapeOf(sigmaVal.v)
+    val two = numE.fromInt(2, shape)
     new Value[D] with Buffered[D] {
       var refCount = 1
 
       val e: Value[D] = Constant(numX.gaussian(shape))
 
       val r: Buffered[D] = {
-        val sc = sigma.const
-        ((mu + e * sigma / two) / (sc * sc)).buffer
+        val sc = sigmaVal.const
+        ((muVal + e * sigmaVal / two) / (sc * sc)).buffer
       }
 
       override val v: D =
-        (mu + e * sigma).v
+        (muVal + e * sigmaVal).v
 
       override def dv(x: D): Unit = {
         assert(refCount > 0)
@@ -53,13 +56,23 @@ case class Normal[D, S](
     }
   }
 
-  override def observe(x: Value[D]): Score = {
-    val e = (x - mu) / sigma
-    sum(-log(sigma) - e * e / two)
+  override def observe(interpreter: Interpreter, x: Value[D]): Score = {
+    val sigmaVal = interpreter.eval(sigma)
+    val muVal = interpreter.eval(mu)
+    val shape = numX.shapeOf(sigmaVal.v)
+    val two = numE.fromInt(2, shape)
+
+    val e = (x - muVal) / sigmaVal
+    sum(-log(sigmaVal) - e * e / two)
   }
 
-  override def reparam_score(x: Value[D]): Score = {
-    val e = (x - mu.const) / sigma.const
-    sum(-log(sigma).const - e * e / two)
+  override def reparam_score(interpreter: Interpreter, x: Value[D]): Score = {
+    val sigmaVal = interpreter.eval(sigma)
+    val muVal = interpreter.eval(mu)
+    val shape = numX.shapeOf(sigmaVal.v)
+    val two = numE.fromInt(2, shape)
+
+    val e = (x - muVal.const) / sigmaVal.const
+    sum(-log(sigmaVal).const - e * e / two)
   }
 }

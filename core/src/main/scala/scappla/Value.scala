@@ -32,7 +32,7 @@ trait Value[X] {
 
 object Value {
 
-  implicit def fromDouble(value: Double) = Real(value)
+  implicit def fromDouble(value: Double): Value[Double] = Real(value)
 
   implicit def mkNumericOps[X](value: Value[X])(implicit num: Fractional[Value[X]]) =
     num.mkNumericOps(value)
@@ -65,7 +65,7 @@ object Constant {
   def apply[X](v: X): Constant[X] = new Constant(v)
 }
 
-trait InferField[X, S] extends Fractional[Value[X]] {
+trait ValueField[X, S] extends Fractional[Value[X]] {
 
   def const(x: X): Value[X]
 
@@ -74,10 +74,10 @@ trait InferField[X, S] extends Fractional[Value[X]] {
   def buffer(ex: Value[X]): Buffered[X]
 }
 
-object InferField {
+object ValueField {
 
-  implicit val scalarNumeric: InferField[Double, Unit] =
-    new InferField[Double, Unit] {
+  implicit val scalarNumeric: ValueField[Double, Unit] =
+    new ValueField[Double, Unit] {
 
       // Ordering
 

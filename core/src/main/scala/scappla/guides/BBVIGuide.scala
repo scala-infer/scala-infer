@@ -11,18 +11,18 @@ case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double] = Ave
 
   // samples the guide (= the approximation to the posterior)
   // use BBVI (with Rao Blackwellization)
-  def sample(prior: Distribution[A]): Variable[A] = {
+  override def sample(interpreter: Interpreter, prior: Distribution[A]): Variable[A] = {
 
-    val value: A = posterior.sample()
+    val value: A = posterior.sample(interpreter)
 
     val node: BayesNode = new BayesNode {
 
       override val modelScore: Buffered[Double] = {
-        prior.observe(value).buffer
+        prior.observe(interpreter, value).buffer
       }
 
       override val guideScore: Buffered[Double] = {
-        posterior.observe(value).buffer
+        posterior.observe(interpreter, value).buffer
       }
 
       private var logp: Score = modelScore

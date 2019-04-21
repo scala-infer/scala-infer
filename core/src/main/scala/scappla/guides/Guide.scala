@@ -1,8 +1,9 @@
 package scappla.guides
 
-import scappla.Variable
+import scappla.{Interpreter, Variable}
 import scappla.distributions.Distribution
 
 trait Guide[A] {
-  def sample(prior: Distribution[A]): Variable[A]
+
+  def sample(interpreter: Interpreter, prior: Distribution[A]): Variable[A]
 }
