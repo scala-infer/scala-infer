@@ -156,7 +156,7 @@ object TensorValue {
       TConst(x)
 
     override def fromInt(x: Int, shape: S): Value[Tensor[S, D]] =
-      broadcast(Real(x), shape)
+      broadcast(x, shape)
 
     override def buffer(ex: Value[Tensor[S, D]]) =
       TBuffer(ex)

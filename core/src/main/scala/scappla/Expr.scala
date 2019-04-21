@@ -62,7 +62,9 @@ object Expr {
 
 //  implicit def toConstant[X, S](v: X): Expr[X, S] = ConstantExpr(new RealConstant(v))
 
-  implicit def toConstant[X, S](vdv: Value[X])(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(vdv)
+  implicit def dataToConstant[X, S](v: X)(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(Constant(v))
+
+  implicit def valueToConstant[X, S](vdv: Value[X])(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(vdv)
 
   implicit def logApply[X, S](implicit logFn: log.Apply[Value[X], Value[X]]): log.Apply[Expr[X, S], Expr[X, S]] =
     new Functions.log.Apply[Expr[X, S], Expr[X, S]] {

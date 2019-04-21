@@ -16,7 +16,7 @@ case class Bernoulli(pExpr: Expr[Double, Unit]) extends Distribution[Boolean] {
 
   override def observe(interpreter: Interpreter, value: Boolean): Score = {
     val p = interpreter.eval(pExpr)
-    if (value) log(p) else log(Real(1.0) - p)
+    if (value) log(p) else log(1.0 - p)
   }
 
 }

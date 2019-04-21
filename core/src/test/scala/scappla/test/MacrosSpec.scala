@@ -6,7 +6,6 @@ import scappla.Functions._
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, ReparamGuide}
 import scappla.optimization.Adam
-import scappla.Real._
 import scappla.tensor._
 
 import scala.util.Random
@@ -16,11 +15,10 @@ class MacrosSpec extends FlatSpec {
   it should "allow a model to be specified" in {
 
 //    val sgd = new SGD()
-    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-    val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
-    val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+    val inRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+    val noRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
 
-    val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+    val rainPost = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
 
     val model = infer {
 
@@ -50,15 +48,20 @@ class MacrosSpec extends FlatSpec {
       rain
     }
 
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
+    val interpreter = new OptimizingInterpreter(sgd)
+
     val N = 10000
     // burn in
     for {_ <- 0 to N} {
-      model.sample()
+      interpreter.reset()
+      model.sample(interpreter)
     }
 
     // measure
     val n_rain = Range(0, N).map { _ =>
-      model.sample()
+      interpreter.reset()
+      model.sample(interpreter)
     }.count(identity)
 
     println(s"Expected number of rainy days: ${n_rain / 10000.0}")
@@ -71,25 +74,29 @@ class MacrosSpec extends FlatSpec {
   }
 
   it should "reparametrize doubles" in {
-    val sgd = new Adam()
-    val muGuide = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+    val muGuide = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
 
     val model: Model[Real] = infer {
       val mu = sample(Normal(0.0, 1.0), muGuide)
 
-      observe(Normal(mu, Real(1.0)), Real(2.0))
+      observe(Normal(mu, 1.0), 2.0: Real)
 
       mu
     }
 
+    val sgd = new Adam()
+    val interpreter = new OptimizingInterpreter(sgd)
+
     // warm up
     Range(0, 10000).foreach { i =>
-      model.sample()
+      interpreter.reset()
+      model.sample(interpreter)
     }
 
     val N = 10000
     val (total_x, total_xx) = Range(0, N).map { i =>
-      model.sample().v
+      interpreter.reset()
+      model.sample(interpreter).v
     }.foldLeft((0.0, 0.0)) { case ((sum_x, sum_xx), x) =>
       (sum_x + x, sum_xx + x * x)
     }
@@ -112,26 +119,25 @@ class MacrosSpec extends FlatSpec {
       }
     }
 
-//    val sgd = new SGDMomentum(mass = 100)
-    val sgd = new Adam(0.1, epsilon = 1e-4)
+    case class NormalParams(mu: Expr[Double, Unit], sigma: Expr[Double, Unit])
 
-    def normalParams(): (Real, Real) = {
-      (sgd.param(0.0), exp(sgd.param(0.0)))
+    def normalParams() = {
+      NormalParams(Param(0.0), exp(Param(0.0)))
     }
 
     val aParam = normalParams()
-    val aPost = ReparamGuide(Normal(aParam._1, aParam._2))
+    val aPost = ReparamGuide(Normal(aParam.mu, aParam.sigma))
 
     val b1Param = normalParams()
-    val b1Post = ReparamGuide(Normal(b1Param._1, b1Param._2))
+    val b1Post = ReparamGuide(Normal(b1Param.mu, b1Param.sigma))
 
     val b2Param = normalParams()
-    val b2Post = ReparamGuide(Normal(b2Param._1, b2Param._2))
+    val b2Post = ReparamGuide(Normal(b2Param.mu, b2Param.sigma))
 
     val sParam = normalParams()
-    val sPost = ReparamGuide(Normal(sParam._1, sParam._2))
+    val sPost = ReparamGuide(Normal(sParam.mu, sParam.sigma))
 
-    import InferField._
+    import ValueField._
 
     val model = infer {
       val a = sample(Normal(0.0, 1.0), aPost)
@@ -147,19 +153,29 @@ class MacrosSpec extends FlatSpec {
       (a, b1, b2, err)
     }
 
+//    val sgd = new SGDMomentum(mass = 100)
+    val sgd = new Adam(0.1, epsilon = 1e-4)
+    val interpreter = new OptimizingInterpreter(sgd)
+
     // warm up
     Range(0, 1000).foreach { i =>
-      model.sample()
+      interpreter.reset()
+      model.sample(interpreter)
     }
 
-    println(s"  A post: ${aParam._1.v} (${aParam._2.v})")
-    println(s" B1 post: ${b1Param._1.v} (${b1Param._2.v})")
-    println(s" B2 post: ${b2Param._1.v} (${b2Param._2.v})")
-    println(s"  E post: ${sParam._1.v} (${sParam._2.v})")
+    def asString(params: NormalParams, name: String): String = {
+      s"$name: ${interpreter.eval(params.mu).v} (${interpreter.eval(params.sigma).v})"
+    }
+
+    println(asString(aParam, "  A post: "))
+    println(asString(b1Param, " B1 post: "))
+    println(asString(b2Param, " B2 post: "))
+    println(asString(sParam, "  E post: "))
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = model.sample()
+      interpreter.reset()
+      val l = model.sample(interpreter)
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s"  $values")
     }
@@ -196,24 +212,25 @@ class MacrosSpec extends FlatSpec {
       )
     }
 
-    //    val sgd = new SGDMomentum(mass = 100)
-    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
+    case class NormalParams(mu: Expr[Double, Unit], sigma: Expr[Double, Unit])
 
-    def normalParams(): (Real, Real) = {
-      (sgd.param(0.0), exp(sgd.param(0.0)))
+    def normalParams() = {
+      NormalParams(Param(0.0), exp(Param(0.0)))
     }
 
     val aParam = normalParams()
-    val aPost = ReparamGuide(Normal(aParam._1, aParam._2))
+    val aPost = ReparamGuide(Normal(aParam.mu, aParam.sigma))
 
     val b1Param = normalParams()
-    val b1Post = ReparamGuide(Normal(b1Param._1, b1Param._2))
+    val b1Post = ReparamGuide(Normal(b1Param.mu, b1Param.sigma))
 
     val b2Param = normalParams()
-    val b2Post = ReparamGuide(Normal(b2Param._1, b2Param._2))
+    val b2Post = ReparamGuide(Normal(b2Param.mu, b2Param.sigma))
 
     val sParam = normalParams()
-    val sPost = ReparamGuide(Normal(sParam._1, sParam._2))
+    val sPost = ReparamGuide(Normal(sParam.mu, sParam.sigma))
+
+    import Value._
 
     val model = infer {
       val a = sample(Normal(0.0, 1.0), aPost)
@@ -234,19 +251,28 @@ class MacrosSpec extends FlatSpec {
       (a, b1, b2, err)
     }
 
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
+    val interpreter = new OptimizingInterpreter(sgd)
+
     // warm up
     Range(0, 100).foreach { i =>
-      model.sample()
+      interpreter.reset()
+      model.sample(interpreter)
     }
 
-    println(s"  A post: ${aParam._1.v} (${aParam._2.v})")
-    println(s" B1 post: ${b1Param._1.v} (${b1Param._2.v})")
-    println(s" B2 post: ${b2Param._1.v} (${b2Param._2.v})")
-    println(s"  E post: ${sParam._1.v} (${sParam._2.v})")
+    def asString(params: NormalParams, name: String): String = {
+      s"$name: ${interpreter.eval(params.mu).v} (${interpreter.eval(params.sigma).v})"
+    }
+
+    println(asString(aParam, "  A post: "))
+    println(asString(b1Param, " B1 post: "))
+    println(asString(b2Param, " B2 post: "))
+    println(asString(sParam, "  E post: "))
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = model.sample()
+      interpreter.reset()
+      val l = model.sample(interpreter)
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s" (Tensor LR) $values")
     }
@@ -267,16 +293,17 @@ class MacrosSpec extends FlatSpec {
       }
     }
 
-//    val sgd = new SGDMomentum(mass = 100)
-    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-    val pPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
-    val mu1Post = ReparamGuide(Normal(sgd.param(-1.0), exp(sgd.param(-1.0))))
-    val mu2Post = ReparamGuide(Normal(sgd.param(1.0), exp(sgd.param(-1.0))))
-    val sigmaPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+    val pPost = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
+    val mu1Post = ReparamGuide(Normal(Param(-1.0), exp(Param(-1.0))))
+    val mu2Post = ReparamGuide(Normal(Param(1.0), exp(Param(-1.0))))
+    val sigmaPost = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
 
     val dataWithDist = data.map { datum =>
-      (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0)))))
+      (datum, BBVIGuide(Bernoulli(sigmoid(Param(0.0)))))
     }
+
+    import Value._
+
     val model = infer {
       val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
       val mu1 = sample(Normal(0.0, 1.0), mu1Post)
@@ -287,30 +314,36 @@ class MacrosSpec extends FlatSpec {
         case (x, guide) =>
           val i = sample(Bernoulli(p), guide)
           if (i) {
-            observe(Normal(mu1, sigma), x: Real)
+            observe(Normal(mu1, sigma), x.const)
           } else {
-            observe(Normal(mu2, sigma), x: Real)
+            observe(Normal(mu2, sigma), x.const)
           }
       }
 
       (p, mu1, mu2, sigma)
     }
 
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
+    val interpreter = new OptimizingInterpreter(sgd)
+
     // warm up
     Range(0, 1000).foreach { i =>
-      model.sample()
+      interpreter.reset()
+      model.sample(interpreter)
     }
     val N = 5000
     val startTime = System.currentTimeMillis()
     Range(0, N).foreach { i =>
-      model.sample()
+      interpreter.reset()
+      model.sample(interpreter)
     }
     val endTime = System.currentTimeMillis()
     println(s"time: ${endTime - startTime} millis => ${(endTime - startTime) * 1000.0 / N} mus / iter")
 
     // print some samples
     Range(0, 10).foreach { i =>
-      val l = model.sample()
+      interpreter.reset()
+      val l = model.sample(interpreter)
       val values = (l._1.v, l._2.v, l._3.v, l._4.v)
       println(s"  $values")
     }

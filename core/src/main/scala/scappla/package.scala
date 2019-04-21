@@ -101,9 +101,9 @@ package object scappla {
 
   object ConstantNode extends BayesNode with LazyLogging {
 
-    override def modelScore: Score = Real(0.0)
+    override def modelScore: Score = 0.0
 
-    override def guideScore: Score = Real(0.0)
+    override def guideScore: Score = 0.0
 
     override def complete(): Unit = {}
 
@@ -114,9 +114,9 @@ package object scappla {
 
   class Dependencies(upstream: Seq[BayesNode]) extends BayesNode {
 
-    val modelScore = Real(0.0)
+    val modelScore = 0.0
 
-    val guideScore = Real(0.0)
+    val guideScore = 0.0
 
     override def addObservation(score: Score): Unit = {
       for { v <- upstream } v.addObservation(score)
