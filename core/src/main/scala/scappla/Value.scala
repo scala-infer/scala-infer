@@ -32,7 +32,9 @@ trait Value[X] {
 
 object Value {
 
-  implicit def fromDouble(value: Double): Value[Double] = Real(value)
+  def apply[X](value: X): Value[X] = Constant(value)
+
+  implicit def fromDouble(value: Double): Value[Double] = Constant(value)
 
   implicit def mkNumericOps[X](value: Value[X])(implicit num: Fractional[Value[X]]) =
     num.mkNumericOps(value)
@@ -95,7 +97,7 @@ object ValueField {
 
       override def negate(x: Real): BaseReal = DNeg(x)
 
-      override def fromInt(x: Int): BaseReal = Real(x)
+      override def fromInt(x: Int): BaseReal = RealConstant(x)
 
       override def toInt(x: Real): Int = x.v.toInt
 
@@ -111,9 +113,9 @@ object ValueField {
 
       // InferField
 
-      override def const(x: Double): Value[Double] = Real(x)
+      override def const(x: Double): Value[Double] = RealConstant(x)
 
-      override def fromInt(x: Int, shape: Unit): Value[Double] = Real(x)
+      override def fromInt(x: Int, shape: Unit): Value[Double] = RealConstant(x)
 
       override def buffer(ex: Value[Double]) = RealBuffer(ex)
     }

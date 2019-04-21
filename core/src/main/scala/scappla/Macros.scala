@@ -185,22 +185,20 @@ class Macros(val c: blackbox.Context) {
       } else {
         q"""scappla.Variable[${tpe.widen}](${result.tree}, new scappla.BayesNode {
 
-          import scappla.Real._
-
           val modelScore: scappla.Score = {${
           (obs.map { t =>
             q"$t.score": Tree
           } ++ vars.map { t =>
             q"$t.node.modelScore": Tree
           }).reduceOption { (a, b) => q"scappla.DAdd($a, $b)" }
-              .getOrElse(q"scappla.Real.apply(0.0)")
+              .getOrElse(q"scappla.Value.apply(0.0)")
           }}
 
           val guideScore: scappla.Score = {${
           vars.map { t =>
             q"$t.node.guideScore": Tree
           }.reduceOption { (a, b) => q"scappla.DAdd($a, $b)" }
-              .getOrElse(q"scappla.Real.apply(0.0)")
+              .getOrElse(q"scappla.Value.apply(0.0)")
           }}
 
           def addObservation(score: scappla.Score) = {..${
@@ -349,11 +347,12 @@ class Macros(val c: blackbox.Context) {
               val tVarName = TermName(c.freshName())
 //              println(s"MATCHING ${showRaw(tDist.tpe)} (${showCode(tDist)})")
               builder.variable(tVarName)
+              val interpreter = scope.reference(TermName("interpreter"))
               val ref = RichTree(q"$tVarName", (priorName.vars ++ guideName.vars) + tVarName)
               scope.declare(tVarName, ref)
               Seq(
                 RichTree(
-                  q"val $tVarName = ${guideName.tree}.sample(${priorName.tree})",
+                  q"val $tVarName = ${guideName.tree}.sample(${interpreter.tree}, ${priorName.tree})",
                   priorName.vars ++ guideName.vars
                 )
               ) ++ fn(ref.map { tree => q"$tree.get" })
@@ -545,7 +544,8 @@ class Macros(val c: blackbox.Context) {
           visitExpr(oDist) { richDistName =>
             visitExpr(o) { richO =>
               val obName = TermName(c.freshName())
-              val resultTree = q"val $obName : scappla.Observation = scappla.observeImpl[$tDist](${richDistName.tree}, ${richO.tree})"
+              val interpreter = scope.reference(TermName("interpreter"))
+              val resultTree = q"val $obName : scappla.Observation = scappla.observeImpl[$tDist](${interpreter.tree}, ${richDistName.tree}, ${richO.tree})"
 
               builder.observation(obName)
 
@@ -786,12 +786,12 @@ class Macros(val c: blackbox.Context) {
     val xType = implicitly[WeakTypeTag[X]]
 
     val q"{..$stmts}" = fn.tree
-    val visitor = new BlockVisitor(new Scope(Map.empty))
+    val visitor = new BlockVisitor(new Scope(Map(TermName("interpreter") -> RichTree(q"interpreter"))))
     val newStmts = visitor.visitBlockStmts(stmts)
     val newBody =
       q"""new scappla.Model[$xType] {
 
-        def sample() = {
+        def sample(interpreter: scappla.Interpreter) = {
           val scappla.Variable(value, node) = {
             ..${newStmts.map{_.tree}}
           }

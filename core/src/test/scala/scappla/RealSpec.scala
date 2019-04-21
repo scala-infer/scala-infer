@@ -2,7 +2,6 @@ package scappla
 
 import org.scalatest.FlatSpec
 
-import scappla.Real._
 import scappla.Functions._
 
 class RealSpec extends FlatSpec {
@@ -15,14 +14,14 @@ class RealSpec extends FlatSpec {
     override def toString: String = s"$name"
   }
 
-  import InferField._
+  import ValueField._
 
   it should "print AST" in {
     val x = Param("x")
     val mu = Param("mu")
     val sigma = Param("sigma")
     println(
-      -log(sigma) - (x - mu) * (x - mu) / (2.const * sigma * sigma)
+      -log(sigma) - (x - mu) * (x - mu) / (2.0 * sigma * sigma)
     )
   }
 }

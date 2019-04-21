@@ -71,8 +71,11 @@ object Functions {
     }
 
     implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
+
+      import Value._
+
       def apply(x: Real): Real =
-        DDiv(Real(1.0), DAdd(exp(DNeg(x)), Real(1.0)))
+        DDiv(1.0, DAdd(exp(DNeg(x)), 1.0))
     }
   }
 
@@ -83,11 +86,13 @@ object Functions {
     }
 
     implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
+      import Value._
+
       def apply(x: Real): Real = {
         // (e^x - e^-x) / (e^x + e^-x)
         // = (1.0 - e^(-2x)) / (1 + e^(-2x))
         // = 2.0 / (1 + e^(-2x)) - 1
-        DAdd(Real(-1.0), DDiv(Real(2.0), DAdd(exp(DNeg(DMul(Real(2.0), x))), Real(1.0))))
+        DAdd(-1.0, DDiv(2.0, DAdd(exp(DNeg(DMul(2.0, x))), 1.0)))
       }
     }
   }

@@ -115,9 +115,11 @@ case class DDiv(numer: Real, denom: Real) extends BaseReal {
   override def toString: String = s"$numer / $denom"
 }
 
+/*
 object Real {
 
   implicit def apply(value: Double): BaseReal = RealConstant(value)
 
   implicit val scalarOrdering: Ordering[Real] = Ordering.by(_.v)
 }
+*/
