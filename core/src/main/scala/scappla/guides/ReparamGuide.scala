@@ -5,17 +5,17 @@ import scappla.distributions.{DDistribution, Distribution}
 
 case class ReparamGuide[D](posterior: DDistribution[D]) extends Guide[Value[D]] {
 
-  def sample(prior: Distribution[Value[D]]): Variable[Value[D]] = {
+  override def sample(interpreter: Interpreter, prior: Distribution[Value[D]]): Variable[Value[D]] = {
 
-    val value = posterior.sample()
+    val value = posterior.sample(interpreter)
 
     val node = new BayesNode {
       override val modelScore: Buffered[Double] = {
-        prior.observe(value).buffer
+        prior.observe(interpreter, value).buffer
       }
 
       override val guideScore: Buffered[Double] = {
-        posterior.reparam_score(value).buffer
+        posterior.reparam_score(interpreter, value).buffer
       }
 
       override def addObservation(score: Score): Unit = {}

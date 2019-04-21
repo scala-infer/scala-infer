@@ -52,39 +52,9 @@ case class RealConstant(override val v: Double) extends Constant[Double](v) with
   }
 }
 
-abstract class LazyReal(private var value: Double) extends BaseReal {
-
-  private var isset: Boolean = false
-  private var completed = 0
-
-  final override def v: Double = {
-    if (!isset) {
-      completed = 0
-      value = _v
-      isset = true
-    }
-    value
-  }
-
-  final override def dv(dx: Double): Unit = {
-    completed += 1
-    if (completed > 1) {
-      println(s"  Completed ${completed} times")
-    }
-    _dv(dx)
-    isset = false
-  }
-
-  protected def _v: Double
-
-  protected def _dv(dx: Double): Unit
-
-  override def toString: String = s"Lazy($value)"
-}
-
 case class DNeg(up: Real) extends BaseReal {
 
-  override def v: Double =
+  override val v: Double =
     -up.v
 
   override def dv(v: Double): Unit =
@@ -93,12 +63,12 @@ case class DNeg(up: Real) extends BaseReal {
   override def toString: String = s"-$up"
 }
 
-case class DSub(from: Real, what: Real) extends LazyReal(0.0) {
+case class DSub(from: Real, what: Real) extends BaseReal {
 
-  override def _v: Double =
+  override val v: Double =
     from.v - what.v
 
-  override def _dv(v: Double): Unit = {
+  override def dv(v: Double): Unit = {
     from.dv(v)
     what.dv(-v)
   }
@@ -106,12 +76,12 @@ case class DSub(from: Real, what: Real) extends LazyReal(0.0) {
   override def toString: String = s"($from - $what)"
 }
 
-case class DAdd(a: Real, b: Real) extends LazyReal(0.0) {
+case class DAdd(a: Real, b: Real) extends BaseReal {
 
-  override def _v: Double =
+  override val v: Double =
     a.v + b.v
 
-  override def _dv(v: Double): Unit = {
+  override def dv(v: Double): Unit = {
     a.dv(v)
     b.dv(v)
   }
@@ -119,12 +89,12 @@ case class DAdd(a: Real, b: Real) extends LazyReal(0.0) {
   override def toString: String = s"($a + $b)"
 }
 
-case class DMul(a: Real, b: Real) extends LazyReal(0.0) {
+case class DMul(a: Real, b: Real) extends BaseReal {
 
-  override def _v: Double =
+  override val v: Double =
     a.v * b.v
 
-  override def _dv(v: Double): Unit = {
+  override def dv(v: Double): Unit = {
     a.dv(v * b.v)
     b.dv(v * a.v)
   }
@@ -132,12 +102,12 @@ case class DMul(a: Real, b: Real) extends LazyReal(0.0) {
   override def toString: String = s"($a * $b)"
 }
 
-case class DDiv(numer: Real, denom: Real) extends LazyReal(0.0) {
+case class DDiv(numer: Real, denom: Real) extends BaseReal {
 
-  override def _v: Double =
+  override val v: Double =
     numer.v / denom.v
 
-  override def _dv(v: Double): Unit = {
+  override def dv(v: Double): Unit = {
     numer.dv(v / denom.v)
     denom.dv(-v * this.v / denom.v)
   }

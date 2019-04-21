@@ -1,19 +1,21 @@
 package scappla.distributions
 
 import scappla.Functions.log
-import scappla.{Real, Score}
+import scappla.{Expr, Interpreter, Real, Score}
 
 import scala.util.Random
 
-case class Bernoulli(p: Real) extends Distribution[Boolean] {
+case class Bernoulli(pExpr: Expr[Double, Unit]) extends Distribution[Boolean] {
 
-  import scappla.InferField._
+  import scappla.ValueField._
 
-  override def sample(): Boolean = {
+  override def sample(interpreter: Interpreter): Boolean = {
+    val p = interpreter.eval(pExpr)
     Random.nextDouble() < p.v
   }
 
-  override def observe(value: Boolean): Score = {
+  override def observe(interpreter: Interpreter, value: Boolean): Score = {
+    val p = interpreter.eval(pExpr)
     if (value) log(p) else log(Real(1.0) - p)
   }
 

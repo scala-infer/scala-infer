@@ -109,8 +109,8 @@ object TensorValue {
       }
     }
 
-  implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[Value[Tensor[S, D]]] =
-    new sum.Apply[Value[Tensor[S, D]]] {
+  implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[Value[Tensor[S, D]], Value[Double]] =
+    new sum.Apply[Value[Tensor[S, D]], Value[Double]] {
       override def apply(in: Value[Tensor[S, D]]): Real = TSumAll(in)
     }
 
@@ -121,7 +121,7 @@ object TensorValue {
 
   implicit def numTensorExpr[S <: Shape, D: DataOps] = new TensorExprField[S, D]
 
-  class TensorExprField[S <: Shape, D: DataOps] extends InferField[Tensor[S, D], S] {
+  class TensorExprField[S <: Shape, D: DataOps] extends ValueField[Tensor[S, D], S] {
 
     private implicit val baseField = implicitly[TensorField[S, D]]
 
@@ -488,7 +488,7 @@ case class TAt[S <: Shape, D: DataOps](
     index: Index[S]
 ) extends Value[Double] {
 
-  override def v: Double = {
+  override val v: Double = {
     implicitly[DataOps[D]].get(upstream.v.data, index.indices: _*)
   }
 

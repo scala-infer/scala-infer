@@ -1,8 +1,8 @@
 package scappla.distributions
 
-import scappla.{Sampleable, Score}
+import scappla.{Interpreter, Sampleable, Score}
 
 trait Distribution[A] extends Sampleable[A] {
 
-  def observe(a: A): Score
+  def observe(interpreter: Interpreter, a: A): Score
 }

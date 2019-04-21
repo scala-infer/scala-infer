@@ -1,12 +1,12 @@
 package scappla.optimization
-import scappla.{BaseField, InferField, Value, Real}
+import scappla.{BaseField, ValueField, Value, Real}
 
 /**
  * Optimizer that uses a decaying learning rate (starting at 1) to compute an optimal value
  */
 object Average extends Optimizer {
 
-  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S], expr: InferField[X, S]): Value[X] = {
+  override def param[X, S](initial: X, name: Option[String])(implicit ev: BaseField[X, S], expr: ValueField[X, S]): Value[X] = {
     new Value[X] {
 
       private val shape = ev.shapeOf(initial)

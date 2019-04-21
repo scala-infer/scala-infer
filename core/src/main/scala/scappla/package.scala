@@ -23,7 +23,7 @@ package object scappla {
     * This implementation will be overridden by a macro.
     */
   def sample[X](prior: Distribution[X], guide: Guide[X]): X =
-    guide.sample(prior).get
+    guide.sample(NoopInterpreter, prior).get
 
   /**
     * Register an observation in an infer block.
@@ -37,11 +37,11 @@ package object scappla {
     def score: Score
   }
 
-  def observeImpl[A](distribution: Distribution[A], value: A): Observation =
+  def observeImpl[A](interpreter: Interpreter, distribution: Distribution[A], value: A): Observation =
     new Observation {
 
       val score: Buffered[Double] =
-        distribution.observe(value).buffer
+        distribution.observe(interpreter, value).buffer
 
       override def complete(): Unit = {
         score.dv(1.0)
@@ -131,7 +131,6 @@ package object scappla {
     override def complete(): Unit = {}
   }
 
-  // TODO: change inheritance to composition?
   case class Variable[A](get: A, node: BayesNode)
 
   object Variable extends LazyLogging {
