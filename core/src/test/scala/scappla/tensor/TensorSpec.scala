@@ -108,7 +108,7 @@ class TensorSpec extends FlatSpec {
     assert(result == 1f)
   }
 
-  it should "einsum when multiplying" in {
+  it should "tensordot when multiplying" in {
     val inputDim = Input(2)
     val batchDim = Batch(3)
     val outDim = Other(2)

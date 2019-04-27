@@ -5,7 +5,7 @@ import scala.util.Random
 sealed trait Condition
 case class GreaterThan(value: Float) extends Condition
 
-trait DataOps[D] {
+trait DataOps[D] extends Elemwise[D] {
 
   // (de)constructing values
 
@@ -21,39 +21,15 @@ trait DataOps[D] {
 
   def imax(d: D): Seq[Int]
 
-  // element-wise operations
-
-  def plus(a: D, b: D): D
-
-  def minus(a: D, b: D): D
-
-  def times(a: D, b: D): D
-
-  def div(a: D, b: D): D
-
-  def pow(a: D, b: D): D
-
-  def negate(a: D): D
-
-  def sqrt(a: D): D
-
-  def log(a: D): D
-
-  def exp(a: D): D
-
-  def sigmoid(a: D): D
-
   def cumsum(a: D, dim: Int): D
 
   // shape-affecting operations
-
-  def sumAll(a: D): Float
 
   def sum(a: D, dim: Int): D
 
   def broadcast(a: D, dimIndex: Int, dimSize: Int): D
 
-  def einsum(a: D, b: D, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): D
+  def tensordot(a: D, b: D, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): D
 }
 
 case class ArrayTensor(shape: Seq[Int], data: Array[Float])
@@ -315,7 +291,7 @@ object DataOps {
       result
     }
 
-    override def einsum(a: ArrayTensor, b: ArrayTensor, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): ArrayTensor = {
+    override def tensordot(a: ArrayTensor, b: ArrayTensor, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): ArrayTensor = {
 //      println(s"AB: ${ab}")
 //      println(s"BC: ${bc}")
 //      println(s"CA: ${ca}")

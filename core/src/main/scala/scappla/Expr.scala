@@ -1,22 +1,26 @@
 package scappla
 
-import scappla.Functions.{exp, log, sigmoid, sum}
+import scappla.Functions._
+import scappla.tensor._
 import scappla.optimization.Optimizer
 
 import scala.collection.mutable
+import scala.collection.AbstractIterator
+import scala.collection.generic.MutableMapFactory
+import scala.collection.generic.CanBuildFrom
 
 sealed trait Expr[X, S] {
   type Type = X
   type Shp = S
 
+  def unary_-(implicit num: Numeric[Value[X]]) =
+    Apply1(this, num.negate)
+
   def +(other: Expr[X, S])(implicit num: Numeric[Value[X]]) =
-    Add(this, other, num)
+    Apply2(this, other, num.plus)
 
   def *(other: Expr[X, S])(implicit num: Numeric[Value[X]]) =
-    Times(this, other, num)
-
-  def unary_-(implicit num: Numeric[Value[X]]) =
-    Neg(this, num)
+    Apply2(this, other, num.times)
 }
 
 case class ConstantExpr[X, S](value: Value[X]) extends Expr[X, S]
@@ -41,21 +45,11 @@ object Param {
   ) = new Param[X, S](initial, base, expr, name)
 }
 
-case class Neg[X, S](a: Expr[X, S], base: Numeric[Value[X]]) extends Expr[X, S]
+case class Apply1[A, AS, X, S](in: Expr[A, AS], fn: Value[A] => Value[X]) extends Expr[X, S]
 
-case class Add[X, S](a: Expr[X, S], b: Expr[X, S], base: Numeric[Value[X]]) extends Expr[X, S]
-
-case class Times[X, S](a: Expr[X, S], b: Expr[X, S], base: Numeric[Value[X]]) extends Expr[X, S]
-
-case class Log[X, S](a: Expr[X, S], valueFn: log.Apply[Value[X], Value[X]]) extends Expr[X, S]
-
-case class Sigmoid[X, S](a: Expr[X, S], valueFn: sigmoid.Apply[Value[X], Value[X]]) extends Expr[X, S]
-
-case class Exp[X, S](a: Expr[X, S], valueFn: exp.Apply[Value[X], Value[X]]) extends Expr[X, S]
-
-case class Sum[X, S](a: Expr[X, S], valueFn: sum.Apply[Value[X], Value[Double]]) extends Expr[Double, Unit] {
-  type SrcType = X
-  type SrcShp = S
+case class Apply2[A, AS, B, BS, C, CS](lhs: Expr[A, AS], rhs: Expr[B, BS], fn: (Value[A], Value[B]) => Value[C]) extends Expr[C, CS] {
+  type LHS = A
+  type RHS = B
 }
 
 object Expr {
@@ -65,26 +59,6 @@ object Expr {
   implicit def dataToConstant[X, S](v: X)(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(Constant(v))
 
   implicit def valueToConstant[X, S](vdv: Value[X])(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(vdv)
-
-  implicit def logApply[X, S](implicit logFn: log.Apply[Value[X], Value[X]]): log.Apply[Expr[X, S], Expr[X, S]] =
-    new Functions.log.Apply[Expr[X, S], Expr[X, S]] {
-      override def apply(x: Expr[X, S]): Expr[X, S] = Log(x, logFn)
-    }
-
-  implicit def sigmoidApply[X, S](implicit logFn: sigmoid.Apply[Value[X], Value[X]]): sigmoid.Apply[Expr[X, S], Expr[X, S]] =
-    new Functions.sigmoid.Apply[Expr[X, S], Expr[X, S]] {
-      override def apply(x: Expr[X, S]): Expr[X, S] = Sigmoid(x, logFn)
-    }
-
-  implicit def expApply[X, S](implicit logFn: exp.Apply[Value[X], Value[X]]): exp.Apply[Expr[X, S], Expr[X, S]] =
-    new Functions.exp.Apply[Expr[X, S], Expr[X, S]] {
-      override def apply(x: Expr[X, S]): Expr[X, S] = Exp(x, logFn)
-    }
-
-  implicit def sumApply[X, S](implicit valueFn: sum.Apply[Value[X], Value[Double]]): sum.Apply[Expr[X, S], Expr[Double, Unit]] =
-    new Functions.sum.Apply[Expr[X, S], Expr[Double, Unit]] {
-      override def apply(x: Expr[X, S]): Expr[Double, Unit] = Sum(x,valueFn)
-    }
 
 }
 
@@ -105,7 +79,7 @@ object NoopInterpreter extends Interpreter {
 
 class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
 
-  private val values: mutable.Map[Any, Any] = new mutable.HashMap[Any, Any]()
+  private val values: ReversibleLinkedHashMap[Any, Any] = new ReversibleLinkedHashMap[Any, Any]()
 
   private val params: mutable.Map[Any, Any] = new mutable.HashMap[Any, Any]()
 
@@ -139,44 +113,58 @@ class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
           }
           p
 
-        case e: Neg[X, S] =>
-          val upstream = eval(e.a)
-          upstream.unary_-()(e.base)
+        case app: Apply1[_, _, X, S] =>
+          val upstream = eval(app.in)
+          app.fn(upstream)
 
-        case e: Add[X, S] =>
-          val upA = eval(e.a)
-          val upB = eval(e.b)
-          upA.+(upB)(e.base)
-
-        case e: Times[X, S] =>
-          val upA = eval(e.a)
-          val upB = eval(e.b)
-          upA.*(upB)(e.base)
-
-        case e: Log[X, S] =>
-          log.apply(eval(e.a))(e.valueFn)
-
-        case e: Sigmoid[X, S] =>
-          sigmoid.apply(eval(e.a))(e.valueFn)
-
-        case e: Exp[X, S] =>
-          exp.apply(eval(e.a))(e.valueFn)
-
-        case e: Sum[_, _] =>
-          val result = e.a match {
-            case ex: Expr[e.SrcType, e.SrcShp] =>
-              val ee: Value[e.SrcType] = eval(ex)
-              sum.apply(ee)(e.valueFn)
-          }
-          result.asInstanceOf[Value[X]]
-
+        case app: Apply2[_, _, _, _, X, S] =>
+          val upA: Value[app.LHS] = eval(app.lhs)
+          val upB: Value[app.RHS] = eval(app.rhs)
+          app.fn(upA, upB)
       }
-      put(expr, value)
+      put(expr, value.buffer)
     }
     get(expr)
   }
 
   override def reset(): Unit = {
+    for { (_, value) <- values.reverse } {
+      value.asInstanceOf[Completeable].complete()
+    }
     values.clear()
   }
+}
+
+class ReversibleLinkedHashMap[A, B]() extends mutable.LinkedHashMap[A, B] with mutable.Map[A, B] with mutable.MapLike[A, B, ReversibleLinkedHashMap[A, B]] {
+
+  def reverseIterator: Iterator[(A, B)] = new AbstractIterator[(A, B)] {
+    private[this] var curr = lastEntry
+    def hasNext = curr ne null
+    def next() = {
+      if (hasNext) {
+        val res = (curr.key, curr.value)
+        curr = curr.earlier
+        res
+      }
+      else Iterator.empty.next()
+    }
+  }
+
+  def reverse: Iterable[(A, B)] = new mutable.AbstractIterable[(A, B)] {
+    def iterator = reverseIterator
+  }
+
+  override def empty = new ReversibleLinkedHashMap[A, B]()
+
+  override def newBuilder = ReversibleLinkedHashMap.newBuilder[A, B]
+
+  override def clone() = empty ++= repr
+
+  override def -(key: A) = clone() -= key
+
+}
+
+object ReversibleLinkedHashMap extends MutableMapFactory[ReversibleLinkedHashMap] {
+  implicit def cbf[A, B]: CanBuildFrom[Coll, (A, B), ReversibleLinkedHashMap[A, B]] = new MapCanBuildFrom[A, B]
+  def empty[A, B] = new ReversibleLinkedHashMap[A, B]
 }

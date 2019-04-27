@@ -102,7 +102,7 @@ object Nd4jTensor {
       a.sumNumber().floatValue()
     }
 
-    override def einsum(
+    override def tensordot(
         a: INDArray,
         b: INDArray,
         ab: List[(Int, Int)],
