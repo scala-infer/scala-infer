@@ -87,7 +87,7 @@ object TensorValue {
     }
 
   implicit def tanhTensor[S <: Shape, D: DataOps](
-    implicit field: TensorExprField[S, D]
+    implicit field: TensorValueField[S, D]
   ): tanh.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] =
     new tanh.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] {
       override def apply(x: Value[Tensor[S, D]]) = {
@@ -99,7 +99,7 @@ object TensorValue {
     }
 
   implicit def sigmoidTensor[S <: Shape, D: DataOps](
-    implicit field: TensorExprField[S, D]
+    implicit field: TensorValueField[S, D]
   ): sigmoid.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] =
     new Functions.sigmoid.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]]] {
       override def apply(x: Value[Tensor[S, D]]): Value[Tensor[S, D]] =  {
@@ -119,9 +119,9 @@ object TensorValue {
       override def apply(base: Value[Tensor[S, D]], exp: Value[Tensor[S, D]]): Value[Tensor[S, D]] = TPow(base, exp)
     }
 
-  implicit def numTensorExpr[S <: Shape, D: DataOps] = new TensorExprField[S, D]
+  implicit def numTensorValue[S <: Shape, D: DataOps] = new TensorValueField[S, D]
 
-  class TensorExprField[S <: Shape, D: DataOps] extends ValueField[Tensor[S, D], S] {
+  class TensorValueField[S <: Shape, D: DataOps] extends ValueField[Tensor[S, D], S] {
 
     private implicit val baseField = implicitly[TensorField[S, D]]
 
@@ -161,33 +161,47 @@ object TensorValue {
     override def buffer(ex: Value[Tensor[S, D]]) =
       TBuffer(ex)
 
-    override implicit def mkNumericOps(expr: Value[Tensor[S, D]]) = new TensorExprOps(expr)
+    def tensordot[T <: Shape, R <: Shape](lhs: Value[Tensor[S, D]], rhs: Value[Tensor[T, D]])(implicit
+        sd: SymDiff.Aux[S, T, R]
+    ): Value[Tensor[R, D]] = new Value[Tensor[R, D]] {
 
-    class TensorExprOps(lhs: Value[Tensor[S, D]]) extends FractionalOps(lhs) {
-
-      def :*:[T <: Shape, R <: Shape](
-          rhs: Value[Tensor[T, D]]
-      )(implicit
-          sd: SymDiff.Aux[S, T, R]
-      ): Value[Tensor[R, D]] = new Value[Tensor[R, D]] {
-
-        // S :*: T => R
-        override def v: Tensor[R, D] = {
-          rhs.v :*: lhs.v
-        }
-
-        override def dv(v: Tensor[R, D]): Unit = {
-          implicit val leftSd = sd.recoverLeft
-          lhs.dv(v :*: rhs.v)
-
-          implicit val rightSd = sd.recoverRight
-          rhs.dv(lhs.v :*: v)
-        }
+      // S :*: T => R
+      override def v: Tensor[R, D] = {
+        rhs.v :*: lhs.v
       }
+
+      override def dv(v: Tensor[R, D]): Unit = {
+        implicit val leftSd = sd.recoverLeft
+        lhs.dv(v :*: rhs.v)
+
+        implicit val rightSd = sd.recoverRight
+        rhs.dv(lhs.v :*: v)
+      }
+    }
+
+    override implicit def mkNumericOps(expr: Value[Tensor[S, D]]) = new TensorValueOps(expr)
+
+    class TensorValueOps(lhs: Value[Tensor[S, D]]) extends FractionalOps(lhs) {
+
+      def :*:[T <: Shape, R <: Shape](rhs: Value[Tensor[T, D]])
+          (implicit sd: SymDiff.Aux[S, T, R]): Value[Tensor[R, D]] =
+        tensordot(lhs, rhs)
     }
   }
 
-  implicit def infixTensorExprOps[S <: Shape, D: DataOps](expr: Value[Tensor[S, D]])(implicit num: TensorExprField[S, D]) = new num.TensorExprOps(expr)
+  implicit def infixTensorValueOps[S <: Shape, D: DataOps](expr: Value[Tensor[S, D]])(implicit num: TensorValueField[S, D]) =
+    new num.TensorValueOps(expr)
+
+  class TensorExprOps[S <: Shape, D: DataOps](lhs: Expr[Tensor[S, D], S], vf: TensorValueField[S, D]) {
+      def :*:[T <: Shape, R <: Shape](rhs: Expr[Tensor[T, D], T])
+          (implicit sd: SymDiff.Aux[S, T, R]): Expr[Tensor[R, D], R] =
+        Apply2(lhs, rhs, { (lv: Value[Tensor[S, D]], rv: Value[Tensor[T, D]]) =>
+          vf.tensordot(lv, rv)
+        })
+  }
+
+  implicit def infixTensorExprOps[S <: Shape, D: DataOps](expr: Expr[Tensor[S, D], S])(implicit num: TensorValueField[S, D]) =
+    new TensorExprOps(expr, num)
 
 }
 

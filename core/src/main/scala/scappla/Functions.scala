@@ -9,6 +9,11 @@ object Functions {
     def apply[A, B](in: A)(implicit fn: Apply[A, B]): B = {
       fn.apply(in)
     }
+
+    implicit def exprApply[A, AS, B, BS](implicit fn: Apply[Value[A], Value[B]]): Apply[Expr[A, AS], Expr[B, BS]] =
+      new Apply[Expr[A, AS], Expr[B, BS]] {
+        override def apply(in: Expr[A, AS]): Expr[B, BS] = Apply1(in, fn)
+      }
   }
 
   trait Op2 {
@@ -18,6 +23,11 @@ object Functions {
     def apply[A, B, C](a: A, b: B)(implicit fn: Apply[A, B, C]): C = {
       fn.apply(a, b)
     }
+
+    implicit def exprApply[A, AS, B, BS, C, CS](implicit fn: Apply[Value[A], Value[B], Value[C]]):
+      Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] = new Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] {
+        override def apply(a: Expr[A, AS], b: Expr[B, BS]): Expr[C, CS] = Apply2(a, b, fn)
+      }
   }
 
   object log extends Op1 {

@@ -75,17 +75,13 @@ object Tensor {
 
     override def compare(x: Tensor[S, D], y: Tensor[S, D]): Int = ???
 
-    class TensorOps(lhs: Tensor[S, D]) extends FractionalOps(lhs) {
-
-      def :*:[T <: Shape, R <: Shape](
-        rhs: Tensor[T, D]
-      )(implicit
+    def tensordot[T <: Shape, R <: Shape](lhs: Tensor[S, D], rhs: Tensor[T, D])(implicit
         sd: SymDiff.Aux[S, T, R]
       ): Tensor[R, D] = {
         val ops = implicitly[DataOps[D]]
         Tensor(
           sd.mapper.ab(lhs.shape, rhs.shape),
-          ops.einsum(
+          ops.tensordot(
             lhs.data,
             rhs.data,
             sd.matchedIndices,              // (S T) R
@@ -93,6 +89,16 @@ object Tensor {
             sd.recoverRight.matchedIndices  // (R S) T
           )
         )
+      }
+
+    class TensorOps(lhs: Tensor[S, D]) extends FractionalOps(lhs) {
+
+      def :*:[T <: Shape, R <: Shape](
+        rhs: Tensor[T, D]
+      )(implicit
+        sd: SymDiff.Aux[S, T, R]
+      ): Tensor[R, D] = {
+        tensordot(lhs, rhs)
       }
     }
 
