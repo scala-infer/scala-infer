@@ -7,7 +7,7 @@ import scappla.optimization.Average
 // control variate
 // Since a constant delta between score_p and score_q has an expectation value of zero,
 // the average value can be subtracted in order to reduce the variance.
-case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double] = Average.param(0.0)) extends Guide[A] {
+case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double, Unit] = Average.param(0.0, ())) extends Guide[A] {
 
   // samples the guide (= the approximation to the posterior)
   // use BBVI (with Rao Blackwellization)
@@ -17,11 +17,11 @@ case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double] = Ave
 
     val node: BayesNode = new BayesNode {
 
-      override val modelScore: Buffered[Double] = {
+      override val modelScore: Buffered[Double, Unit] = {
         prior.observe(interpreter, value).buffer
       }
 
-      override val guideScore: Buffered[Double] = {
+      override val guideScore: Buffered[Double, Unit] = {
         posterior.observe(interpreter, value).buffer
       }
 
@@ -29,12 +29,12 @@ case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double] = Ave
       private var logq: Score = guideScore
 
       override def addObservation(score: Score): Unit = {
-        logp = DAdd(logp, score)
+        logp = logp + score
       }
 
       override def addVariable(modelScore: Score, guideScore: Score): Unit = {
-        logp = DAdd(logp, modelScore)
-        logq = DAdd(logq, guideScore)
+        logp = logp + modelScore
+        logq = logq + guideScore
       }
 
       // compute ELBO and backprop gradients

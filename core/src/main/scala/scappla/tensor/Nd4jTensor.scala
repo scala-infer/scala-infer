@@ -8,7 +8,7 @@ import org.nd4j.linalg.ops.transforms.Transforms
 
 object Nd4jTensor {
 
-  implicit val ops: DataOps[INDArray] = new DataOps[INDArray] {
+  implicit val ops: TensorData[INDArray] = new TensorData[INDArray] {
 
     override def fill(value: Float, shape: Int*): INDArray =
       Nd4j.valueArrayOf(shape.toArray, value)

@@ -5,6 +5,7 @@ import scappla._
 import shapeless.Nat
 import Tensor._
 
+/*
 trait TensorValue[S <: Shape, D] extends Value[Tensor[S, D]] {
 
   protected val ops: DataOps[D]
@@ -34,14 +35,6 @@ object TensorValue {
     implicitly[DataOps[X]].count(tensor.v.data, cond)
   }
 
-  def cumsum[S <: Shape, D <: Dim[_], I <: Nat, X: DataOps](
-      tensor: Value[Tensor[S, X]], dim: D
-  )(implicit
-      indexOf: IndexOf.Aux[S, D, I]
-  ): TensorValue[S, X] = {
-    TCumSum(indexOf.toInt, tensor)
-  }
-
   def sumAlong[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: DataOps](
       tensor: Value[Tensor[S, X]], dim: D
   )(implicit
@@ -50,24 +43,6 @@ object TensorValue {
   ): TensorValue[R, X] = {
     TSum[R, S, X](removeAt.apply(tensor.v.shape), indexOf.toInt, tensor)
   }
-
-  def at[D: DataOps, S <: Shape](
-      tensor: Value[Tensor[S, D]],
-      index: Index[S]
-  ): Value[Double] = {
-    TAt[S, D](tensor, index)
-  }
-
-  def maxIndex[S <: Shape, D: DataOps](
-      tensor: Value[Tensor[S, D]]
-  ): Index[S] = {
-    val indices = implicitly[DataOps[D]].imax(tensor.v.data)
-    Index[S](indices.toList)
-  }
-
-  def broadcast[S <: Shape, D: DataOps](
-      real: Real, shape: S
-  ): Value[Tensor[S, D]] = TBroadcast(real, shape)
 
   def param[S <: Shape, D: DataOps](
       values: Tensor[S, D],
@@ -107,11 +82,6 @@ object TensorValue {
         val one = field.fromInt(1, shape)
         TDiv(one, TPlus(TExp(field.negate(x)), one))
       }
-    }
-
-  implicit def sumTensor[S <: Shape, D: DataOps]: sum.Apply[Value[Tensor[S, D]], Value[Double]] =
-    new sum.Apply[Value[Tensor[S, D]], Value[Double]] {
-      override def apply(in: Value[Tensor[S, D]]): Real = TSumAll(in)
     }
 
   implicit def powTensor[S <: Shape, D: DataOps]: pow.Apply[Value[Tensor[S, D]], Value[Tensor[S, D]], Value[Tensor[S, D]]] =
@@ -205,48 +175,6 @@ object TensorValue {
 
 }
 
-case class TBuffer[S <: Shape, D: DataOps](upstream: Value[Tensor[S, D]])
-    extends TensorValue[S, D] with Buffered[Tensor[S, D]] {
-
-  private var refCount: Int = 1
-
-  override val ops: DataOps[D] = implicitly[DataOps[D]]
-
-  private var grad: Option[D] = None
-
-  override def v: Tensor[S, D] = upstream.v
-
-  override def dv(gradient: Tensor[S, D]): Unit = {
-    grad = grad.map {
-      ops.plus(_, gradient.data)
-    }.orElse(Some(gradient.data))
-  }
-
-  /**
-    * basic refcounting; when a function needs a buffer instead of a plain Real
-    * (i.e. when it has potentially more than one use of the value), it further defers
-    * the backpropagation of the gradient.  When all references have completed, can the
-    * gradient be propagated further backwards.
-    */
-  override def buffer: TBuffer[S, D] = {
-    refCount += 1
-    this
-  }
-
-  override def complete(): Unit = {
-    refCount -= 1
-    if (refCount == 0) {
-      grad.foreach { g =>
-        upstream.dv(Tensor(v.shape, g))
-      }
-    }
-    grad = None
-  }
-
-  override def toString: String = {
-    s"Buffer($upstream)"
-  }
-}
 
 case class TParam[S <: Shape, D: DataOps](
     var v: Tensor[S, D],
@@ -471,122 +399,4 @@ case class TExp[S <: Shape, D: DataOps](upstream: Value[Tensor[S, D]]) extends T
     s"exp($upstream)"
   }
 }
-
-case class TSum[R <: Shape, S <: Shape, D: DataOps](
-    shape: R, index: Int, upstream: Value[Tensor[S, D]]
-) extends TensorValue[R, D] {
-
-  override val ops: DataOps[D] = implicitly[DataOps[D]]
-
-  override val v: Tensor[R, D] = {
-    val ut = upstream.v
-    Tensor(shape,
-      ops.sum(ut.data, index)
-    )
-  }
-
-  override def dv(dv: Tensor[R, D]): Unit = {
-    val ut = upstream.v
-    upstream.dv(Tensor(ut.shape,
-      ops.broadcast(dv.data, index, ut.shape.sizes(index))
-    ))
-  }
-
-  override def toString: String = {
-    s"sum($upstream, $index)"
-  }
-}
-
-case class TAt[S <: Shape, D: DataOps](
-    upstream: Value[Tensor[S, D]],
-    index: Index[S]
-) extends Value[Double] {
-
-  override val v: Double = {
-    implicitly[DataOps[D]].get(upstream.v.data, index.indices: _*)
-  }
-
-  override def dv(dv: Double): Unit = {
-    val ops = implicitly[DataOps[D]]
-    val shape = upstream.v.shape
-    val tensorData = ops.fill(0f, shape.sizes: _*)
-    ops.put(tensorData, dv.toFloat, index.indices: _*)
-    upstream.dv(
-      Tensor(
-        shape,
-        tensorData
-      )
-    )
-  }
-}
-
-case class TCumSum[S <: Shape, D: DataOps](
-    index: Int, upstream: Value[Tensor[S, D]]
-) extends TensorValue[S, D] {
-
-  override val ops: DataOps[D] = implicitly[DataOps[D]]
-
-  override val v: Tensor[S, D] = {
-    val ut = upstream.v
-    Tensor(
-      upstream.v.shape,
-      ops.cumsum(ut.data, index)
-    )
-  }
-
-  override def dv(dv: Tensor[S, D]): Unit = {
-    val summed_dv = ops.sum(dv.data, index)
-    val sum_s = ops.broadcast(summed_dv, index, dv.shape.sizes(index))
-
-    val ut = upstream.v
-    upstream.dv(Tensor(
-      ut.shape,
-      ops.minus(sum_s, ops.minus(ops.cumsum(dv.data, index), dv.data))
-    ))
-  }
-
-  override def toString: String = {
-    s"cumsum($upstream, $index)"
-  }
-}
-
-case class TSumAll[S <: Shape, D: DataOps](
-    upstream: Value[Tensor[S, D]]
-) extends Real {
-
-  private val ops = implicitly[DataOps[D]]
-
-  override val v: Double = {
-    ops.sumAll(upstream.v.data)
-  }
-
-  override def dv(v: Double): Unit = {
-    val shape = upstream.v.shape
-    val data = ops.fill(v.toFloat, shape.sizes: _*)
-    upstream.dv(Tensor(shape, data))
-  }
-
-  override def toString: String = {
-    s"sumAll($upstream)"
-  }
-}
-
-case class TBroadcast[S <: Shape, D: DataOps](
-    upstream: Real, shape: S
-) extends TensorValue[S, D] {
-
-  override val ops: DataOps[D] = implicitly[DataOps[D]]
-
-  override val v: Tensor[S, D] = {
-    val data = ops.fill(upstream.v.toFloat, shape.sizes: _*)
-    Tensor(shape, data)
-  }
-
-  override def dv(v: Tensor[S, D]): Unit = {
-    upstream.dv(ops.sumAll(v.data))
-  }
-
-  override def toString: String = {
-    s"broadcast($upstream, $shape)"
-  }
-}
+*/

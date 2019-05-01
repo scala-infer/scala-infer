@@ -1,4 +1,4 @@
-package scappla.tensor
+package scappla
 
 // element-wise operations
 trait Elemwise[D] {

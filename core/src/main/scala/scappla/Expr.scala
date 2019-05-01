@@ -13,22 +13,33 @@ sealed trait Expr[X, S] {
   type Type = X
   type Shp = S
 
-  def unary_-(implicit num: Numeric[Value[X]]) =
-    Apply1(this, num.negate)
+  def unary_- =
+    Apply1(this, { v: Value[X, S] => -v })
 
-  def +(other: Expr[X, S])(implicit num: Numeric[Value[X]]) =
-    Apply2(this, other, num.plus)
+  def +(other: Expr[X, S]) =
+    Apply2(this, other, {
+      (thisv: Value[X, S], otherv: Value[X, S]) => thisv + otherv
+    })
 
-  def *(other: Expr[X, S])(implicit num: Numeric[Value[X]]) =
-    Apply2(this, other, num.times)
+  def *(other: Expr[X, S]) =
+    Apply2(this, other, {
+      (thisv: Value[X, S], otherv: Value[X, S]) => thisv * otherv
+    })
 }
 
-case class ConstantExpr[X, S](value: Value[X]) extends Expr[X, S]
+object Expr {
+
+  implicit def apply(value: Double): Expr[Double, Unit] = ConstantExpr(Constant(value, ()))
+
+  implicit def valueToConstant[X, S](vdv: Value[X, S])(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(vdv)
+}
+
+case class ConstantExpr[X, S](value: Value[X, S]) extends Expr[X, S]
 
 class Param[X, S](
     val initial: X,
+    val shape: S,
     val base: BaseField[X, S],
-    val expr: ValueField[X, S],
     val name: Option[String] = None
 ) extends Expr[X, S] {
   type S
@@ -36,35 +47,29 @@ class Param[X, S](
 
 object Param {
 
-  def apply[X, S](
-      initial: X,
-      name: Option[String] = None
-  )(implicit
-      base: BaseField[X, S],
-      expr: ValueField[X, S]
-  ) = new Param[X, S](initial, base, expr, name)
+  def apply(initial: Double) =
+    new Param[Double, Unit](initial, (), implicitly[BaseField[Double, Unit]], None)
+
+  def apply(initial: Double, name: String) =
+    new Param[Double, Unit](initial, (), implicitly[BaseField[Double, Unit]], Some(name))
+
+  def apply[X, S](initial: X, shape: S)(implicit base: BaseField[X, S]) =
+    new Param[X, S](initial, shape, base, None)
+
+  def apply[X, S](initial: X, shape: S, name: String)(implicit base: BaseField[X, S]) =
+    new Param[X, S](initial, shape, base, Some(name))
 }
 
-case class Apply1[A, AS, X, S](in: Expr[A, AS], fn: Value[A] => Value[X]) extends Expr[X, S]
+case class Apply1[A, AS, X, S](in: Expr[A, AS], fn: Value[A, AS] => Value[X, S]) extends Expr[X, S]
 
-case class Apply2[A, AS, B, BS, C, CS](lhs: Expr[A, AS], rhs: Expr[B, BS], fn: (Value[A], Value[B]) => Value[C]) extends Expr[C, CS] {
+case class Apply2[A, AS, B, BS, C, CS](lhs: Expr[A, AS], rhs: Expr[B, BS], fn: (Value[A, AS], Value[B, BS]) => Value[C, CS]) extends Expr[C, CS] {
   type LHS = A
   type RHS = B
 }
 
-object Expr {
-
-//  implicit def toConstant[X, S](v: X): Expr[X, S] = ConstantExpr(new RealConstant(v))
-
-  implicit def dataToConstant[X, S](v: X)(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(Constant(v))
-
-  implicit def valueToConstant[X, S](vdv: Value[X])(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(vdv)
-
-}
-
 trait Interpreter {
 
-  def eval[X, S](expr: Expr[X, S]): Value[X]
+  def eval[X, S](expr: Expr[X, S]): Value[X, S]
 
   def reset(): Unit
 }
@@ -72,7 +77,7 @@ trait Interpreter {
 object NoopInterpreter extends Interpreter {
 
   // intentionally not implemented
-  override def eval[X, S](expr: Expr[X, S]): Value[X] = ???
+  override def eval[X, S](expr: Expr[X, S]): Value[X, S] = ???
 
   override def reset(): Unit = {}
 }
@@ -89,25 +94,25 @@ class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
   }
 
   @inline
-  private def get[X, S](e: Expr[X, S]): Value[X] = {
-    values(e).asInstanceOf[Value[X]]
+  private def get[X, S](e: Expr[X, S]): Value[X, S] = {
+    values(e).asInstanceOf[Value[X, S]]
   }
 
   @inline
-  private def put[X, S](e: Expr[X, S], value: Value[X]) =
+  private def put[X, S](e: Expr[X, S], value: Value[X, S]) =
     values(e) = value
 
-  override def eval[X, S](expr: Expr[X, S]): Value[X] = {
+  override def eval[X, S](expr: Expr[X, S]): Value[X, S] = {
     if (!has(expr)) {
-      val value: Value[X] = expr match {
+      val value: Value[X, S] = expr match {
         case cst: ConstantExpr[X, S] =>
           cst.value
 
         case param: Param[X, S] =>
           val p = if (params.contains(expr)) {
-            params(expr).asInstanceOf[Value[X]]
+            params(expr).asInstanceOf[Value[X, S]]
           } else {
-            val p = opt.param[X, S](param.initial, param.name)(param.base, param.expr)
+            val p = opt.param[X, S](param.initial, param.shape, param.name)(param.base)
             params(expr) = p
             p
           }
@@ -118,18 +123,19 @@ class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
           app.fn(upstream)
 
         case app: Apply2[_, _, _, _, X, S] =>
-          val upA: Value[app.LHS] = eval(app.lhs)
-          val upB: Value[app.RHS] = eval(app.rhs)
+          val upA = eval(app.lhs)
+          val upB = eval(app.rhs)
           app.fn(upA, upB)
       }
-      put(expr, value.buffer)
+      put(expr, value)
     }
     get(expr)
   }
 
   override def reset(): Unit = {
     for { (_, value) <- values.reverse } {
-      value.asInstanceOf[Completeable].complete()
+//      println(s"COMPLETING $value")
+//      value.asInstanceOf[Completeable].complete()
     }
     values.clear()
   }

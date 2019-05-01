@@ -190,14 +190,14 @@ class Macros(val c: blackbox.Context) {
             q"$t.score": Tree
           } ++ vars.map { t =>
             q"$t.node.modelScore": Tree
-          }).reduceOption { (a, b) => q"scappla.DAdd($a, $b)" }
+          }).reduceOption { (a, b) => q"$a.+($b)" }
               .getOrElse(q"scappla.Value.apply(0.0)")
           }}
 
           val guideScore: scappla.Score = {${
           vars.map { t =>
             q"$t.node.guideScore": Tree
-          }.reduceOption { (a, b) => q"scappla.DAdd($a, $b)" }
+          }.reduceOption { (a, b) => q"$a.+($b)" }
               .getOrElse(q"scappla.Value.apply(0.0)")
           }}
 
@@ -571,7 +571,7 @@ class Macros(val c: blackbox.Context) {
         case q"$mods val $tname : $tpt = $rhs" =>
           val TermName(name) = tname
           visitExpr(rhs) { exprName =>
-              val fullExpr = if (rhs.tpe <:< typeOf[scappla.Value[_]]) {
+              val fullExpr = if (rhs.tpe <:< typeOf[scappla.Value[_, _]]) {
                 builder.buffer(TermName(name))
                 exprName.map { t => q"$t.buffer"}
               } else {

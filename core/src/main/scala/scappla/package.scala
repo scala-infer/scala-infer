@@ -8,8 +8,8 @@ package object scappla {
 
   // API
 
-  type Real = Value[Double]
-  type Score = Value[Double]
+  type Real = Value[Double, Unit]
+  type Score = Value[Double, Unit]
   type Model[X] = Sampleable[X]
 
   /**
@@ -40,7 +40,7 @@ package object scappla {
   def observeImpl[A](interpreter: Interpreter, distribution: Distribution[A], value: A): Observation =
     new Observation {
 
-      val score: Buffered[Double] =
+      val score: Buffered[Double, Unit] =
         distribution.observe(interpreter, value).buffer
 
       override def complete(): Unit = {

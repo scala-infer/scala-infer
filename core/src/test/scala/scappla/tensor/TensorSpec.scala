@@ -2,7 +2,9 @@ package scappla.tensor
 
 import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
-import scappla.Value
+
+import scappla._
+import Tensor._
 import scappla.Functions.log
 
 class TensorSpec extends FlatSpec {
@@ -20,11 +22,9 @@ class TensorSpec extends FlatSpec {
       0f, 1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10f, 11f
     ))
 
-    import TensorValue._
-
-    val batch = TensorValue(shape, data)
+    val batch = Value(data, shape)
     val logBatch = log(batch)
-    print(s"Result: ${logBatch.v.data.data.mkString(",")}")
+    print(s"Result: ${logBatch.v.data.mkString(",")}")
   }
 
   it should "sum along dimension" in {
@@ -32,9 +32,9 @@ class TensorSpec extends FlatSpec {
 
     val data = ArrayTensor(shape.sizes, Array(0.0f, 1.0f))
 
-    val tensor = TensorValue(shape, data)
-    val sum = TensorValue.sumAlong(tensor, shape)
-    val result = sum.v.data.data(0)
+    val tensor = Constant(data, shape)
+    val sum = sumAlong(tensor, shape)
+    val result = sum.v.data(0)
 
     print(s"Result $result")
   }
@@ -44,51 +44,37 @@ class TensorSpec extends FlatSpec {
 
     val data = ArrayTensor(shape.sizes, Array(1f, 2f))
 
-    var update: Option[ArrayTensor] = None
+    val param = TParam(data, shape)
 
-    val param = TensorValue.param(
-      Tensor(shape, data),
-      (gradient: Tensor[Batch, ArrayTensor]) => {
-        val result = DataOps.arrayOps.plus(data, gradient.data)
-        update = Some(result)
-        Tensor(shape, result)
-      }
-    )
+    sumAlong(param, shape)
+        .dv(ArrayTensor(Seq.empty, Array(1f)))
 
-    TensorValue.sumAlong(param, shape)
-        .dv(Tensor(Scalar, ArrayTensor(Seq.empty, Array(1f))))
-
+    val update = param.grad
     val dataArray = update.get
-    assert(dataArray.data(0) == 2f)
-    assert(dataArray.data(1) == 3f)
+    assert(dataArray.data(0) == 1f)
+    assert(dataArray.data(1) == 1f)
   }
 
   it should "buffer backward gradients" in {
     val shape = Batch(2)
 
     val data = ArrayTensor(shape.sizes, Array(1f, 2f))
-    val tensor = Tensor(shape, data)
-    var update: Option[ArrayTensor] = None
 
-    val param = TensorValue.param(tensor,
-      (gradient: Tensor[Batch, ArrayTensor]) => {
-        val result = DataOps.arrayOps.plus(data, gradient.data)
-        update = Some(result)
-        Tensor(shape, result)
-      }
-    )
+    val param = TParam(data, shape)
 
     val buffer = param.buffer
-    TensorValue.sumAlong(buffer, shape)
-        .dv(Tensor(Scalar, ArrayTensor(Scalar.sizes, Array(1f))))
+    sumAlong(buffer, shape)
+        .dv(ArrayTensor(Scalar.sizes, Array(1f)))
 
+    var update = param.grad
     assert(update.isEmpty)
 
     buffer.complete()
 
+    update = param.grad
     val dataArray = update.get
-    assert(dataArray.data(0) == 2f)
-    assert(dataArray.data(1) == 3f)
+    assert(dataArray.data(0) == 1f)
+    assert(dataArray.data(1) == 1f)
   }
 
   it should "work with nd4j as well" in {
@@ -101,53 +87,44 @@ class TensorSpec extends FlatSpec {
       shape.sizes.toArray
     )
 
-    val tensor = TensorValue(shape, data)
-    val sum = TensorValue.sumAlong(tensor, shape)
-    val result = sum.v.data.data().asFloat()(0)
+    val tensor = Value(data, shape)
+    val sum = sumAlong(tensor, shape)
+    val result = sum.v.data().asFloat()(0)
 
     assert(result == 1f)
   }
 
   it should "tensordot when multiplying" in {
-    val inputDim = Input(2)
-    val batchDim = Batch(3)
-    val outDim = Other(2)
+    val inputDim = Input(1)
+    val batchDim = Batch(2)
+    val outDim = Other(3)
     val inputShape = inputDim :#: batchDim
     val outShape = outDim :#: batchDim
 
     val data = ArrayTensor(inputShape.sizes, Array(
-      0f, 1f, 2f, 3f, 4f, 5f
+      0f, 1f
     ))
-    val input = TensorValue(inputShape, data)
+    val input = Value(data, inputShape)
 
-    var update: Option[ArrayTensor] = None
     val matrix = ArrayTensor(outShape.sizes, Array(
-      0f, 1f, 2f, 3f, 4f, 5f
+      0f, 1f,
+      2f, 3f,
+      4f, 5f
     ))
-    val param = TensorValue.param(Tensor(outShape, matrix),
-      (gradient: Tensor[Other :#: Batch, ArrayTensor]) => {
-        val result = DataOps.arrayOps.plus(data, gradient.data)
-        update = Some(result)
-        Tensor(outShape, result)
-      }
-    )
+    val param = TParam(matrix, outShape)
 
-    import TensorValue._
-
-    val out: Value[Tensor[Input :#: Other, ArrayTensor]] = param :*: input
-    val outData = out.v.data
-    val expected = ArrayTensor(Seq(2, 2), Array(5f, 14f, 14f, 50f))
+    val out: Value[ArrayTensor, Input :#: Other] = param :*: input
+    val outData = out.v
+    val expected = ArrayTensor(Seq(1, 3), Array(1f, 3f, 5f))
     assert(outData.shape == expected.shape)
     assert(outData.data sameElements expected.data)
 
-    val grad = Tensor(
-      out.v.shape,
-      ArrayTensor(out.v.shape.sizes, Array(1f, 1f, 1f, 1f))
-    )
+    val grad = ArrayTensor(out.shape.sizes, Array(1f, 1f, 1f))
     out.dv(grad)
 
-    val dataArray = update.get
-    assert(dataArray.data sameElements Array(3f, 6f, 9f, 6f, 9f, 12f))
+    val dataArray = param.grad.get
+    println(s"GRAD: ${dataArray.data.mkString(", ")}")
+    assert(dataArray.data sameElements Array(0f, 1f, 0f, 1f, 0f, 1f))
   }
 
   it should "find imax" in {
@@ -159,9 +136,7 @@ class TensorSpec extends FlatSpec {
     val data = ArrayTensor(shape.sizes, Array(
       0f, 1f, 2f, 3f, 4f, 5f
     ))
-    val input = TensorValue(shape, data)
-
-    import TensorValue._
+    val input = Value(data, shape)
 
     val index = maxIndex(input)
     assert(index == Index[Shape](List(1, 2)))
@@ -183,13 +158,23 @@ class TensorSpec extends FlatSpec {
     val yShape = b :#: c
     val yData = ArrayTensor(yShape.sizes, Array(1f, 2f, 3f, 4f, 5f, 6f))
 
-    val x = TensorValue(xShape, xData)
-    val y = TensorValue(yShape, yData)
+    val x = Value(xData, xShape)
+    val y = Value(yData, yShape)
 
-    import TensorValue._
+    val z: Value[ArrayTensor, C :#: A] = x :*: y
+    z.dv(ArrayTensor((c :#: a).sizes, Array(1f, 2f, 3f)))
+  }
 
-    val z: Value[Tensor[C :#: A, ArrayTensor]] = x :*: y
-    z.dv(Tensor.apply(c :#: a, ArrayTensor((c :#: a).sizes, Array(1f, 2f, 3f))))
+  case class TParam[D: TensorData, S <: Shape](v: D, shape: S) extends Value[D, S] {
+
+    override def field = implicitly[TensorField[D, S]]
+
+    var grad: Option[D] = None
+
+    override def dv(dv: D): Unit = {
+      grad = grad.map { field.plus(_, dv) }.orElse(Some(dv))
+    }
+
   }
 
 }

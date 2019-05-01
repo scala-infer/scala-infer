@@ -9,6 +9,8 @@ import scala.util.Random
 
 class VariableSpec extends FlatSpec {
 
+  import Value._
+  import Expr._
   import Functions._
 
   it should "recover prior" in {
@@ -118,7 +120,6 @@ class VariableSpec extends FlatSpec {
     assert(math.abs(N * p_expected - n_rain) < 3 * math.sqrt(n_expected))
   }
 
-
   it should "use the reparametrization gradient" in {
 
     val inferred = new Model[Real] {
@@ -180,12 +181,10 @@ class VariableSpec extends FlatSpec {
 
     val lr = 1000.0 / (data.size + 1)
 
-    val aPost = Normal(Param(0.0, Some("a-m")), exp(Param(0.0, Some("a-s"))))
-    val b1Post = Normal(Param(0.0, Some("b1-m")), exp(Param(0.0, Some("b1-s"))))
-    val b2Post = Normal(Param(0.0, Some("b2-m")), exp(Param(0.0, Some("b2-s"))))
-    val sPost = Normal(Param(0.0, Some("e-m")), exp(Param(0.0, Some("e-s"))))
-
-    import ValueField._
+    val aPost = Normal(Param(0.0, "a-m"), exp(Param(0.0, "a-s")))
+    val b1Post = Normal(Param(0.0, "b1-m"), exp(Param(0.0, "b1-s")))
+    val b2Post = Normal(Param(0.0, "b2-m"), exp(Param(0.0, "b2-s")))
+    val sPost = Normal(Param(0.0, "e-m"), exp(Param(0.0, "e-s")))
 
     val model = new Model[(Real, Real, Real, Real)] {
 

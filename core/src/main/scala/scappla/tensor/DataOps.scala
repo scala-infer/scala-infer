@@ -1,11 +1,12 @@
 package scappla.tensor
 
+import scappla.Elemwise
 import scala.util.Random
 
 sealed trait Condition
 case class GreaterThan(value: Float) extends Condition
 
-trait DataOps[D] extends Elemwise[D] {
+trait TensorData[D] extends Elemwise[D] {
 
   // (de)constructing values
 
@@ -34,9 +35,9 @@ trait DataOps[D] extends Elemwise[D] {
 
 case class ArrayTensor(shape: Seq[Int], data: Array[Float])
 
-object DataOps {
+object TensorData {
 
-  implicit val arrayOps = new DataOps[ArrayTensor] {
+  implicit val arrayOps = new TensorData[ArrayTensor] {
 
     override def fill(value: Float, shape: Int*): ArrayTensor =
       ArrayTensor(shape.toSeq, Array.fill(shape.product)(value))

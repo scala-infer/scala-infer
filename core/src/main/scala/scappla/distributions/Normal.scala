@@ -7,37 +7,43 @@ case class Normal[D, S](
     mu: Expr[D, S],
     sigma: Expr[D, S]
 )(implicit
-    numE: ValueField[D, S],
     numX: BaseField[D, S],
-    logImpl: log.Apply[Value[D], Value[D]],
-    sumImpl: sum.Apply[Value[D], Value[Double]]
-) extends DDistribution[D] {
+    logImpl: log.Apply[Value[D, S], Value[D, S]],
+    sumImpl: sum.Apply[Value[D, S], Value[Double, Unit]]
+) extends DDistribution[D, S] {
 
-  override def sample(interpreter: Interpreter): Buffered[D] = {
+  override def sample(interpreter: Interpreter): Buffered[D, S] = {
     val sigmaVal = interpreter.eval(sigma)
     val muVal = interpreter.eval(mu)
 
-    val shape = numX.shapeOf(sigmaVal.v)
-    val two = numE.fromInt(2, shape)
-    new Value[D] with Buffered[D] {
+    val shp = sigmaVal.shape
+    val two = Constant(numX.fromInt(2, shp), shp)
+    new Value[D, S] with Buffered[D, S] {
       var refCount = 1
 
-      val e: Value[D] = Constant(numX.gaussian(shape))
+      val e: Value[D, S] = Constant(numX.gaussian(shp), shp)
 
-      val r: Buffered[D] = {
+      val r: Buffered[D, S] = {
         val sc = sigmaVal.const
         ((muVal + e * sigmaVal / two) / (sc * sc)).buffer
       }
+
+      override def field = numX
+
+      override def shape = shp
 
       override val v: D =
         (muVal + e * sigmaVal).v
 
       override def dv(x: D): Unit = {
-        assert(refCount > 0)
+        if (refCount <= 0) {
+          new Exception().printStackTrace()
+          assert(refCount > 0)
+        }
         r.dv(x)
       }
 
-      override def buffer: Buffered[D] = {
+      override def buffer: Buffered[D, S] = {
         refCount += 1
         this
       }
@@ -56,21 +62,21 @@ case class Normal[D, S](
     }
   }
 
-  override def observe(interpreter: Interpreter, x: Value[D]): Score = {
+  override def observe(interpreter: Interpreter, x: Value[D, S]): Score = {
     val sigmaVal = interpreter.eval(sigma)
     val muVal = interpreter.eval(mu)
-    val shape = numX.shapeOf(sigmaVal.v)
-    val two = numE.fromInt(2, shape)
+    val shape = sigmaVal.shape
+    val two = Constant(numX.fromInt(2, shape), shape)
 
     val e = (x - muVal) / sigmaVal
     sum(-log(sigmaVal) - e * e / two)
   }
 
-  override def reparam_score(interpreter: Interpreter, x: Value[D]): Score = {
+  override def reparam_score(interpreter: Interpreter, x: Value[D, S]): Score = {
     val sigmaVal = interpreter.eval(sigma)
     val muVal = interpreter.eval(mu)
-    val shape = numX.shapeOf(sigmaVal.v)
-    val two = numE.fromInt(2, shape)
+    val shape = sigmaVal.shape
+    val two = Constant(numX.fromInt(2, shape), shape)
 
     val e = (x - muVal.const) / sigmaVal.const
     sum(-log(sigmaVal).const - e * e / two)
