@@ -137,8 +137,6 @@ class MacrosSpec extends FlatSpec {
     val sParam = normalParams()
     val sPost = ReparamGuide(Normal(sParam.mu, sParam.sigma))
 
-    import ValueField._
-
     val model = infer {
       val a = sample(Normal(0.0, 1.0), aPost)
       val b1 = sample(Normal(0.0, 1.0), b1Post)
@@ -182,13 +180,12 @@ class MacrosSpec extends FlatSpec {
   }
 
   it should "allow linear regression to be specified using tensors" in {
+    import Tensor._
 
     val N = 1000
 
     case class Batch(size: Int) extends Dim[Batch]
     val batch = Batch(N)
-
-    import scappla.tensor.TensorValue._
 
     val (x1, x2, y) = {
       val alpha = 1.0
@@ -206,9 +203,9 @@ class MacrosSpec extends FlatSpec {
         y(i) = Y.toFloat
       }
       (
-          Tensor(batch, ArrayTensor(Seq(N), x1)),
-          Tensor(batch, ArrayTensor(Seq(N), x2)),
-          Tensor(batch, ArrayTensor(Seq(N), y))
+          Value(ArrayTensor(Seq(N), x1), batch),
+          Value(ArrayTensor(Seq(N), x2), batch),
+          Value(ArrayTensor(Seq(N), y), batch)
       )
     }
 
@@ -238,15 +235,11 @@ class MacrosSpec extends FlatSpec {
       val b2 = sample(Normal(0.0, 1.0), b2Post)
       val err = exp(sample(Normal(0.0, 1.0), sPost))
 
-      val mu = TPlus(
-        broadcast(a, batch),
-          TPlus(
-            TTimes(broadcast(b1, batch), x1),
-            TTimes(broadcast(b2, batch), x2)
-          )
-      )
+      val mu = broadcast(a, batch) +
+            broadcast(b1, batch) * x1 +
+            broadcast(b2, batch) * x2
       val sigma = broadcast(err, batch)
-      observe(Normal[Tensor[Batch, ArrayTensor], Batch](mu, sigma), y.const)
+      observe(Normal[ArrayTensor, Batch](mu, sigma), y.const)
 
       (a, b1, b2, err)
     }

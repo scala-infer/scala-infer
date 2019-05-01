@@ -7,8 +7,6 @@ import scala.util.Random
 
 case class Bernoulli(pExpr: Expr[Double, Unit]) extends Distribution[Boolean] {
 
-  import scappla.ValueField._
-
   override def sample(interpreter: Interpreter): Boolean = {
     val p = interpreter.eval(pExpr)
     Random.nextDouble() < p.v

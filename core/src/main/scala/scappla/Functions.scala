@@ -10,7 +10,7 @@ object Functions {
       fn.apply(in)
     }
 
-    implicit def exprApply[A, AS, B, BS](implicit fn: Apply[Value[A], Value[B]]): Apply[Expr[A, AS], Expr[B, BS]] =
+    implicit def exprApply[A, AS, B, BS](implicit fn: Apply[Value[A, AS], Value[B, BS]]): Apply[Expr[A, AS], Expr[B, BS]] =
       new Apply[Expr[A, AS], Expr[B, BS]] {
         override def apply(in: Expr[A, AS]): Expr[B, BS] = Apply1(in, fn)
       }
@@ -24,7 +24,7 @@ object Functions {
       fn.apply(a, b)
     }
 
-    implicit def exprApply[A, AS, B, BS, C, CS](implicit fn: Apply[Value[A], Value[B], Value[C]]):
+    implicit def exprApply[A, AS, B, BS, C, CS](implicit fn: Apply[Value[A, AS], Value[B, BS], Value[C, CS]]):
       Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] = new Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] {
         override def apply(a: Expr[A, AS], b: Expr[B, BS]): Expr[C, CS] = Apply2(a, b, fn)
       }
@@ -36,20 +36,33 @@ object Functions {
       override def apply(x: Double): Double = scala.math.log(x)
     }
 
-    implicit val logReal: Apply[Real, Real] = new Apply[Real, Real] {
+    implicit def logValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      def apply(x: Value[D, S]): Value[D, S] = VLog(x)
+    }
 
-      def apply(x: Real): Real = new Value[Double] {
+    case class VLog[D, S](upstream: Value[D, S]) extends Value[D, S] {
 
-        override val v: Double =
-          scala.math.log(x.v)
+      override def field: BaseField[D, S] =
+        upstream.field
 
-        override def dv(dx: Double): Unit = {
-          x.dv(dx / x.v)
-        }
+      override def shape: S = 
+        upstream.shape
 
-        override def toString: String = s"Log($x)"
+      override val v: D = {
+        field.log(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        upstream.dv(
+          field.div(dv, upstream.v)
+        )
+      }
+
+      override def toString: String = {
+        s"log($upstream)"
       }
     }
+
   }
 
   object exp extends Op1 {
@@ -58,17 +71,27 @@ object Functions {
       def apply(x: Double) = scala.math.exp(x)
     }
 
-    implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
-      override def apply(x: Real): Real = new Value[Double] {
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      override def apply(x: Value[D, S]): Value[D, S] = TExp(x)
+    }
 
-        override val v: Double =
-          scala.math.exp(x.v)
+    case class TExp[D, S](upstream: Value[D, S]) extends Value[D, S] {
 
-        override def dv(dx: Double): Unit = {
-          x.dv(dx * v)
-        }
+      override def field = upstream.field
 
-        override def toString: String = s"Exp($x)"
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.exp(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        val tv = this.v
+        upstream.dv(field.times(dv, tv))
+      }
+
+      override def toString: String = {
+        s"exp($upstream)"
       }
     }
 
@@ -80,13 +103,36 @@ object Functions {
       def apply(x: Double): Double = 1.0 / (1.0 + math.exp(-x))
     }
 
-    implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
-
-      import Value._
-
-      def apply(x: Real): Real =
-        DDiv(1.0, DAdd(exp(DNeg(x)), 1.0))
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      def apply(x: Value[D, S]): Value[D, S] = VSigmoid(x)
     }
+
+    case class VSigmoid[D, S](upstream: Value[D, S]) extends Value[D, S] {
+
+      override def field = upstream.field
+
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.sigmoid(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        val tv = this.v
+        upstream.dv(field.times(
+          dv,
+          field.times(
+            tv,
+            field.sigmoid(field.negate(upstream.v))
+          )
+        ))
+      }
+
+      override def toString: String = {
+        s"sigmoid($upstream)"
+      }
+    }
+
   }
 
   object tanh extends Op1 {
@@ -95,14 +141,12 @@ object Functions {
       def apply(x: Double): Double = math.tanh(x)
     }
 
-    implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
-      import Value._
-
-      def apply(x: Real): Real = {
-        // (e^x - e^-x) / (e^x + e^-x)
-        // = (1.0 - e^(-2x)) / (1 + e^(-2x))
-        // = 2.0 / (1 + e^(-2x)) - 1
-        DAdd(-1.0, DDiv(2.0, DAdd(exp(DNeg(DMul(2.0, x))), 1.0)))
+    // (e^x - e^-x) / (e^x + e^-x) = 2 * sigmoid(2 * x)
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      def apply(x: Value[D, S]): Value[D, S] = {
+        val field = x.field
+        val two = Constant(field.fromInt(2, x.shape), x.shape)(field)
+        VTimes(two, sigmoid(VTimes(two, x)))
       }
     }
   }
@@ -113,19 +157,48 @@ object Functions {
       def apply(base: Double, exp: Double): Double = scala.math.pow(base, exp)
     }
 
-    implicit val forReal: Apply[Real, Real, Real] = new Apply[Real, Real, Real] {
-      def apply(base: Real, exp: Real) = new Value[Double] {
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S], Value[D, S]] {
+      def apply(base: Value[D, S], exp: Value[D, S]) = TPow(base, exp)
+    }
 
-        override val v: Double =
-          scala.math.pow(base.v, exp.v)
+    case class TPow[D, S](base: Value[D, S], expo: Value[D, S]) extends Value[D, S] {
 
-        override def dv(dx: Double): Unit = {
-          val ev = exp.v
-          base.dv(dx * ev * scala.math.pow(base.v, ev - 1))
-          exp.dv(dx * scala.math.log(base.v) * v)
-        }
+      assert(base.shape == expo.shape)
 
-        override def toString: String = s"Pow($base, $exp)"
+      override def field =
+        base.field
+
+      override def shape =
+        base.shape
+
+      override val v: D = {
+        val nt = base.v
+        val dt = expo.v
+        field.pow(nt, dt)
+      }
+
+      override def dv(dx: D): Unit = {
+        base.dv(
+          field.times(
+            field.times(dx, expo.v),
+            field.pow(
+              base.v,
+              field.minus(
+                expo.v, field.fromInt(1, shape)
+              )
+            )
+          )
+        )
+        expo.dv(
+          field.times(
+            field.times(dx, v),
+            field.log(base.v)
+          )
+        )
+      }
+
+      override def toString: String = {
+        s"($base ^ $expo)"
       }
     }
   }

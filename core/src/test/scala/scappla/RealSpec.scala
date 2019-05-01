@@ -6,15 +6,13 @@ import scappla.Functions._
 
 class RealSpec extends FlatSpec {
 
-  case class Param(name: String, var v: Double = 0.0) extends Real {
+  case class Param(name: String, var v: Double = 0.0) extends AbstractReal {
     var grad = 0.0
 
     override def dv(v: Double): Unit = grad = v
 
     override def toString: String = s"$name"
   }
-
-  import ValueField._
 
   it should "print AST" in {
     val x = Param("x")
