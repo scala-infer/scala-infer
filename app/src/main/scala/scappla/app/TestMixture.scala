@@ -4,13 +4,11 @@ import scappla.Functions.{exp, sigmoid}
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, Guide, ReparamGuide}
 import scappla.optimization.Adam
-import scappla.{Real, infer, observe, sample}
+import scappla._
 
 import scala.util.Random
 
 object TestMixture extends App {
-
-  import Real._
 
   val data = {
     val p = 0.75
@@ -36,24 +34,19 @@ object TestMixture extends App {
 
   def newGlobal(mu: Double, logSigma: Double): Guide[Real] = {
     ReparamGuide(Normal(
-      sgd.param(mu),
-      exp(sgd.param(logSigma))
+      Param(mu),
+      exp(Param(logSigma))
     ))
   }
 
   // val sgd = new SGDMomentum(mass = 100)
-  val sgd = new Adam(0.1)
   val pPost = newGlobal(0.0, 0.0)
   val mu1Post = newGlobal(-1.0, 0.0)
   val mu2Post = newGlobal(1.0, 0.0)
   val sigmaPost = newGlobal(0.0, 0.0)
 
-  val intercept = sgd.param(0.0).buffer
-  intercept.complete()
-  val slope = sgd.param(1.0).buffer
-  slope.complete()
-
-  import scappla.InferField._
+  val intercept = Param(0.0)
+  val slope = Param(1.0)
 
   val dataWithDist = data.map { datum =>
     val local = intercept + slope * datum
@@ -77,23 +70,24 @@ object TestMixture extends App {
     (p, mu1, mu2, sigma)
   }
 
+  val sgd = new Adam(0.1)
+  val interp = new OptimizingInterpreter(sgd)
+
   // prepare
   Range(0, 1000).foreach { i =>
-    val h_i = intercept.buffer
-    val h_s = slope.buffer
-    model.sample()
-    h_i.complete()
-    h_s.complete()
+    interp.reset()
+    model.sample(interp)
   }
 
   // print some samples
   println("SAMPLES:")
   Range(0, 10).foreach { i =>
-    val (p, mu1, mu2, sigma) = model.sample()
+    interp.reset()
+    val (p, mu1, mu2, sigma) = model.sample(interp)
     println(s"${sigmoid(p.v)}, ${mu1.v}, ${mu2.v}, ${sigma.v}")
   }
 
-  println(s"INTERCEPT: ${intercept.v}, SLOPE: ${slope.v}")
+  println(s"INTERCEPT: ${interp.eval(intercept).v}, SLOPE: ${interp.eval(slope).v}")
 
   /*
   // print assignments

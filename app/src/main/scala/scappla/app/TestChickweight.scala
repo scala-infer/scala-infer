@@ -8,12 +8,10 @@ import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
 import scappla.optimization.Adam
 import scappla.tensor.{ArrayTensor, Dim, Tensor}
-import scappla.tensor.TensorValue._
 import scappla._
+import Tensor._
 
 object TestChickweight extends App {
-
-  import Real._
 
   val reader = CSVReader.open(new InputStreamReader(getClass.getResourceAsStream("/chickweight.csv")))
   val raw = reader.allWithHeaders()
@@ -40,22 +38,20 @@ object TestChickweight extends App {
     }
     (
         dim,
-        Tensor(dim, ArrayTensor(dim.sizes, times)),
-        Tensor(dim, ArrayTensor(dim.sizes, weights))
+        Value(ArrayTensor(dim.sizes, times), dim),
+        Value(ArrayTensor(dim.sizes, weights), dim)
     )
   }
 
-
-  val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
-  val aPost = ReparamGuide(Normal(sgd.param(40.0), exp(sgd.param(0.0))))
-  val atPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+  val aPost = ReparamGuide(Normal(Param(40.0), exp(Param(0.0))))
+  val atPost = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
 
   val data_with_guides = diets.zipWithIndex.map { case (d, i) =>
     (
         d,
         (
-            ReparamGuide(Normal(sgd.param(10.0), exp(sgd.param(1.0)))),
-            ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+            ReparamGuide(Normal(Param(10.0), exp(Param(1.0)))),
+            ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
         )
     )
   }
@@ -88,12 +84,16 @@ object TestChickweight extends App {
     (a, a_t, b)
   }
 
+  val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
+  val interp = new OptimizingInterpreter(sgd)
+
   // warm up
   val N = 1000
   val startTime = System.currentTimeMillis()
   println("a,a_t,b1m,b1s,b2m,b2s,b3m,b3s,b4m,b4s")
   Range(0, N).foreach { i =>
-    val (v_a, v_a_t, v_b) = model.sample()
+    interp.reset()
+    val (v_a, v_a_t, v_b) = model.sample(interp)
 
     println(s"${v_a.v}, ${v_a_t.v}, ${
       v_b.map {

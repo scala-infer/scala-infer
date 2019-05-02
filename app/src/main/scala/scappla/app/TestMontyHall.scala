@@ -10,29 +10,25 @@ import scala.util.Random
 
 object TestMontyHall extends App {
 
-  import Real._
-
   sealed trait Strategy
   case object Switch extends Strategy
   case object Remain extends Strategy
 
   var history = Seq.empty[(Strategy, Boolean)]
 
-  val optimizer = new Adam(0.1)
-
   class State {
     private var prior_pos: Double = 0.0
     private var prior_var: Double = 0.0
-    private val posterior_pos = optimizer.param(0.0)
-    private val posterior_var = optimizer.param(0.0)
+    private val posterior_pos = Param(0.0)
+    private val posterior_var = Param(0.0)
 
     val guide = ReparamGuide(Normal(posterior_pos, exp(posterior_var)))
 
     def prior = Normal(prior_pos, exp(prior_var))
 
-    def updatePrior(lr: Double): Unit = {
-      prior_pos += (posterior_pos.v - prior_pos) * lr
-      prior_var += (posterior_var.v - prior_var) * lr
+    def updatePrior(interpreter: Interpreter, lr: Double): Unit = {
+      prior_pos += (interpreter.eval(posterior_pos).v - prior_pos) * lr
+      prior_var += (interpreter.eval(posterior_var).v - prior_var) * lr
     }
   }
 
@@ -82,16 +78,20 @@ object TestMontyHall extends App {
   }
 
   val HISTORY_SIZE = 100
-
   val N = 1000
+
+  val optimizer = new Adam(0.1)
+  val interpreter = new OptimizingInterpreter(optimizer)
+
   // burn in
   for {_ <- 0 to N} {
-    val ((p_switch, p_remain), (action, result)) = model.sample()
+    interpreter.reset()
+    val ((p_switch, p_remain), (action, result)) = model.sample(interpreter)
     history = (action, result) +: history
     if (history.size > HISTORY_SIZE) {
       history = history.dropRight(1)
-      switch.updatePrior(1.0 / HISTORY_SIZE)
-      remain.updatePrior(1.0 / HISTORY_SIZE)
+      switch.updatePrior(interpreter, 1.0 / HISTORY_SIZE)
+      remain.updatePrior(interpreter, 1.0 / HISTORY_SIZE)
     }
     println(s"${p_switch.v}, ${p_remain.v}")
   }
