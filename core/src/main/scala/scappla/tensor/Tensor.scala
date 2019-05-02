@@ -229,11 +229,6 @@ object Tensor {
     def sumAll(x: D): Float = {
       ops.sumAll(x)
     }
-
-    /*
-    override implicit def mkNumericOps(lhs: Tensor[S, D]): TensorOps =
-      new TensorOps(lhs)
-    */
   }
 
   def tensordot[D: TensorData, S <: Shape, T <: Shape, R <: Shape](lhs: D, rhs: D)(implicit
@@ -281,4 +276,14 @@ object Tensor {
       }
   }
 
+  implicit def infixTensorExprOps[S <: Shape, D: TensorData](lhs: Expr[D, S]) =
+    new TensorExprOps(lhs)
+
+  class TensorExprOps[S <: Shape, D: TensorData](lhs: Expr[D, S]) {
+      def :*:[T <: Shape, R <: Shape](rhs: Expr[D, T])
+          (implicit sd: SymDiff.Aux[S, T, R]): Expr[D, R] =
+        Apply2(lhs, rhs, { (lv: Value[D, S], rv: Value[D, T]) =>
+          lv.:*:(rv)
+        })
+  }
 }

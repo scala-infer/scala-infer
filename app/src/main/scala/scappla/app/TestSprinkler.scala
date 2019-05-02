@@ -3,18 +3,16 @@ package scappla.app
 import scappla.Functions.sigmoid
 import scappla.distributions.Bernoulli
 import scappla.guides.BBVIGuide
-import scappla.optimization.{Adam, SGD}
-import scappla.{Real, infer, observe, sample}
+import scappla.optimization.Adam
+import scappla.{Real, infer, observe, sample, Param}
+import scappla.OptimizingInterpreter
 
 object TestSprinkler extends App {
 
-  import Real._
+  val inRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+  val noRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
 
-  val sgd = new Adam(alpha=0.1)
-  val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
-  val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
-
-  val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+  val rainPost = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
 
   val model = infer {
 
@@ -43,16 +41,20 @@ object TestSprinkler extends App {
     rain
   }
 
+  val sgd = new Adam(alpha=0.1)
+  val interpreter = new OptimizingInterpreter(sgd)
 
   val N = 10000
   // burn in
   for {_ <- 0 to N} {
-    model.sample()
+    interpreter.reset()
+    model.sample(interpreter)
   }
 
   // measure
   val n_rain = Range(0, N).map { _ =>
-    model.sample()
+    interpreter.reset()
+    model.sample(interpreter)
   }.count(identity)
 
   println(s"Expected number of rainy days: ${n_rain / 10000.0}")
