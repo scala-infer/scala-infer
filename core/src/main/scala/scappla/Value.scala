@@ -39,9 +39,6 @@ object Value {
   def apply[X, S](value: X, shape: S)(implicit bf: BaseField[X, S]): Value[X, S] = Constant(value, shape)
 
   implicit def apply(value: Double): Value[Double, Unit] = Constant(value, ())
-
-  // implicit def mkNumericOps[X](value: Value[X])(implicit num: Fractional[Value[X]]) =
-    // num.mkNumericOps(value)
 }
 
 trait Buffered[X, S] extends Value[X, S] with Completeable
@@ -59,62 +56,6 @@ object Constant {
 
   def apply[X, S](v: X, shape: S)(implicit bf: BaseField[X, S]): Constant[X, S] = new Constant(v, shape, bf)
 }
-
-/*
-trait ValueField[X, S] extends Fractional[Value[X]] {
-
-  def const(x: X): Value[X]
-
-  def fromInt(x: Int, shape: S): Value[X]
-
-  def buffer(ex: Value[X]): Buffered[X]
-}
-
-object ValueField {
-
-  implicit val scalarNumeric: ValueField[Double, Unit] =
-    new ValueField[Double, Unit] {
-
-      // Ordering
-
-      override def compare(x: Real, y: Real): Int = {
-        x.v.compareTo(y.v)
-      }
-
-      // Numeric
-
-      override def plus(x: Real, y: Real): BaseReal = DAdd(x, y)
-
-      override def minus(x: Real, y: Real): BaseReal = DSub(x, y)
-
-      override def times(x: Real, y: Real): BaseReal = DMul(x, y)
-
-      override def negate(x: Real): BaseReal = DNeg(x)
-
-      override def fromInt(x: Int): BaseReal = RealConstant(x)
-
-      override def toInt(x: Real): Int = x.v.toInt
-
-      override def toLong(x: Real): Long = x.v.toLong
-
-      override def toFloat(x: Real): Float = x.v.toFloat
-
-      override def toDouble(x: Real): Double = x.v
-
-      // Fractional
-
-      override def div(x: Real, y: Real): BaseReal = DDiv(x, y)
-
-      // InferField
-
-      override def const(x: Double): Value[Double] = RealConstant(x)
-
-      override def fromInt(x: Int, shape: Unit): Value[Double] = RealConstant(x)
-
-      override def buffer(ex: Value[Double]) = RealBuffer(ex)
-    }
-}
-*/
 
 trait BaseField[X, S] extends Elemwise[X] {
 
