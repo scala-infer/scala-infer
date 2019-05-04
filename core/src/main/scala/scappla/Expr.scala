@@ -112,11 +112,16 @@ class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
           val p = if (params.contains(expr)) {
             params(expr).asInstanceOf[Value[X, S]]
           } else {
-            val p = opt.param[X, S](param.initial, param.shape, param.name)(param.base)
+            val p = opt.param[X, S](
+              param.initial,
+              param.shape,
+              param.name
+            )(param.base)
+
             params(expr) = p
             p
           }
-          p
+          p.buffer
 
         case app: Apply1[_, _, X, S] =>
           val upstream = eval(app.in)
@@ -133,6 +138,9 @@ class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
   }
 
   override def reset(): Unit = {
+    for { (expr, value) <- values if expr.isInstanceOf[Param[_, _]] } {
+        value.asInstanceOf[Completeable].complete()
+    }
     values.clear()
   }
 }
