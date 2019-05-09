@@ -218,8 +218,12 @@ object Tensor {
       ops.log(x)
     }
 
-    override def sigmoid(x: D):D = {
-      ops.sigmoid(x)
+    override def logistic(x: D):D = {
+      ops.logistic(x)
+    }
+
+    override def softplus(x: D):D = {
+      ops.softplus(x)
     }
 
     override def pow(x: D, y: D):D = {
@@ -257,7 +261,7 @@ object Tensor {
         override val shape: R = sd.mapper.ab(lhs.shape, rhs.shape)
 
         // S :*: T => R
-        override def v: D = {
+        override val v: D = {
 //          println(s"LHS: ${lhs.shape}, RHS: ${rhs.shape}, OUT: ${shape}")
           tensordot(lhs.v, rhs.v)
         }

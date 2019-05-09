@@ -1,5 +1,7 @@
 package scappla
 
+import scappla.tensor.ArrayTensor
+
 import scala.util.Random
 
 trait Value[X, S] {
@@ -95,7 +97,9 @@ object BaseField {
 
       override def pow(x: Double, y: Double): Double = math.pow(x, y)
 
-      override def sigmoid(x: Double): Double = 1.0 / (1.0 + math.exp(-x))
+      override def logistic(x: Double): Double = 1.0 / (1.0 + math.exp(-x))
+
+      override def softplus(x: Double): Double = math.log1p(math.exp(x))
 
       override def sumAll(x: Double): Float = x.toFloat
     }

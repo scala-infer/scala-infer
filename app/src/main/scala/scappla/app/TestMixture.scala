@@ -1,6 +1,6 @@
 package scappla.app
 
-import scappla.Functions.{exp, sigmoid}
+import scappla.Functions.{exp, logistic}
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.{BBVIGuide, Guide, ReparamGuide}
 import scappla.optimization.Adam
@@ -50,10 +50,10 @@ object TestMixture extends App {
 
   val dataWithDist = data.map { datum =>
     val local = intercept + slope * datum
-    (datum, BBVIGuide(Bernoulli(sigmoid(local))))
+    (datum, BBVIGuide(Bernoulli(logistic(local))))
   }
   val model = infer {
-    val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
+    val p = logistic(sample(Normal(0.0, 1.0), pPost))
     val mu1 = sample(Normal(0.0, 1.0), mu1Post)
     val mu2 = sample(Normal(0.0, 1.0), mu2Post)
     val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))
@@ -84,7 +84,7 @@ object TestMixture extends App {
   Range(0, 10).foreach { i =>
     interp.reset()
     val (p, mu1, mu2, sigma) = model.sample(interp)
-    println(s"${sigmoid(p.v)}, ${mu1.v}, ${mu2.v}, ${sigma.v}")
+    println(s"${logistic(p.v)}, ${mu1.v}, ${mu2.v}, ${sigma.v}")
   }
 
   println(s"INTERCEPT: ${interp.eval(intercept).v}, SLOPE: ${interp.eval(slope).v}")
@@ -94,7 +94,7 @@ object TestMixture extends App {
   println("ASSIGNMENTS")
   dataWithDist.foreach {
     case (x, param, _) =>
-      println(s"$x ${sigmoid(param.v)}")
+      println(s"$x ${logistic(param.v)}")
   }
   */
 

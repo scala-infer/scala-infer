@@ -74,8 +74,11 @@ object Nd4jTensor {
     override def exp(a: INDArray): INDArray =
       Transforms.exp(a)
 
-    override def sigmoid(a: INDArray): INDArray =
+    override def logistic(a: INDArray): INDArray =
       Transforms.sigmoid(a, true)
+
+    override def softplus(a: INDArray): INDArray =
+      Transforms.softPlus(a, true)
 
     override def cumsum(a: INDArray, dim: Int): INDArray =
       a.cumsum(dim)

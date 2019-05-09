@@ -97,24 +97,24 @@ object Functions {
 
   }
 
-  object sigmoid extends Op1 {
+  object logistic extends Op1 {
 
     implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
       def apply(x: Double): Double = 1.0 / (1.0 + math.exp(-x))
     }
 
     implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
-      def apply(x: Value[D, S]): Value[D, S] = VSigmoid(x)
+      def apply(x: Value[D, S]): Value[D, S] = VLogistic(x)
     }
 
-    case class VSigmoid[D, S](upstream: Value[D, S]) extends Value[D, S] {
+    case class VLogistic[D, S](upstream: Value[D, S]) extends Value[D, S] {
 
       override def field = upstream.field
 
       override def shape = upstream.shape
 
       override val v: D = {
-        field.sigmoid(upstream.v)
+        field.logistic(upstream.v)
       }
 
       override def dv(dv: D): Unit = {
@@ -123,13 +123,13 @@ object Functions {
           dv,
           field.times(
             tv,
-            field.sigmoid(field.negate(upstream.v))
+            field.logistic(field.negate(upstream.v))
           )
         ))
       }
 
       override def toString: String = {
-        s"sigmoid($upstream)"
+        s"logistic($upstream)"
       }
     }
 
@@ -141,14 +141,54 @@ object Functions {
       def apply(x: Double): Double = math.tanh(x)
     }
 
-    // (e^x - e^-x) / (e^x + e^-x) = 2 * sigmoid(2 * x)
+    // (e^x - e^-x) / (e^x + e^-x) = 2 * logistic(2 * x) - 1
     implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
       def apply(x: Value[D, S]): Value[D, S] = {
         val field = x.field
         val two = Constant(field.fromInt(2, x.shape), x.shape)(field)
-        VTimes(two, sigmoid(VTimes(two, x)))
+        val one = Constant(field.fromInt(2, x.shape), x.shape)(field)
+        VMinus(
+          VTimes(two, logistic(VTimes(two, x))),
+          one
+        )
       }
     }
+  }
+
+  object softplus extends Op1 {
+
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(x: Double): Double = math.log1p(math.exp(x))
+    }
+
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      def apply(x: Value[D, S]): Value[D, S] = VSoftPlus(x)
+    }
+
+    case class VSoftPlus[D, S](upstream: Value[D, S]) extends Value[D, S] {
+
+      override def field = upstream.field
+
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.softplus(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        val tv = this.v
+        upstream.dv(field.times(
+          dv,
+          field.logistic(field.negate(upstream.v))
+        ))
+      }
+
+      override def toString: String = {
+        s"softplus($upstream)"
+      }
+    }
+
+
   }
 
   object pow extends Op2 {

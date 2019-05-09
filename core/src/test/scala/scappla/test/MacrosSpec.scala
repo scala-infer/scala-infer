@@ -15,10 +15,10 @@ class MacrosSpec extends FlatSpec {
   it should "allow a model to be specified" in {
 
 //    val sgd = new SGD()
-    val inRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
-    val noRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+    val inRain = BBVIGuide(Bernoulli(logistic(Param(0.0))))
+    val noRain = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
-    val rainPost = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+    val rainPost = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
     val model = infer {
 
@@ -292,13 +292,13 @@ class MacrosSpec extends FlatSpec {
     val sigmaPost = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
 
     val dataWithDist = data.map { datum =>
-      (datum, BBVIGuide(Bernoulli(sigmoid(Param(0.0)))))
+      (datum, BBVIGuide(Bernoulli(logistic(Param(0.0)))))
     }
 
     import Value._
 
     val model = infer {
-      val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
+      val p = logistic(sample(Normal(0.0, 1.0), pPost))
       val mu1 = sample(Normal(0.0, 1.0), mu1Post)
       val mu2 = sample(Normal(0.0, 1.0), mu2Post)
       val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))

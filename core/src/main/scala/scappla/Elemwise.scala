@@ -21,7 +21,9 @@ trait Elemwise[D] {
 
   def exp(a: D): D
 
-  def sigmoid(a: D): D
+  def logistic(a: D): D
+
+  def softplus(a: D): D
 
   def sumAll(a: D): Float
 }
@@ -57,13 +59,16 @@ object ElemwiseOps {
     override def exp(a: Double): Double =
       scala.math.exp(a)
 
-    override def sigmoid(a: Double): Double =
+    override def logistic(a: Double): Double =
       if (a > 0.0) {
         1.0 / (1.0 + scala.math.exp(-a))
       } else {
         val ea = scala.math.exp(a)
         ea / (1.0 + ea)
       }
+
+    override def softplus(a: Double): Double =
+      math.log1p(math.exp(a))
 
     override def sumAll(a: Double): Float =
       a.toFloat

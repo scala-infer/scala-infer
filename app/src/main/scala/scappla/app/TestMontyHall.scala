@@ -1,6 +1,6 @@
 package scappla.app
 
-import scappla.Functions.{exp, sigmoid}
+import scappla.Functions.{exp, logistic}
 import scappla._
 import scappla.distributions.{Bernoulli, Normal}
 import scappla.guides.ReparamGuide
@@ -39,8 +39,8 @@ object TestMontyHall extends App {
   val model: Model[((Real, Real), (Strategy, Boolean))] = infer {
 
     // sample probabilities of winning for both strategies
-    val p_switch = sigmoid(sample(switch.prior, switch.guide))
-    val p_remain = sigmoid(sample(remain.prior, remain.guide))
+    val p_switch = logistic(sample(switch.prior, switch.guide))
+    val p_remain = logistic(sample(remain.prior, remain.guide))
 
     /* Process history */
 

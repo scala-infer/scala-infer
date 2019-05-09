@@ -1,6 +1,6 @@
 package scappla.app
 
-import scappla.Functions.sigmoid
+import scappla.Functions.logistic
 import scappla.distributions.Bernoulli
 import scappla.guides.BBVIGuide
 import scappla.optimization.Adam
@@ -9,10 +9,10 @@ import scappla.OptimizingInterpreter
 
 object TestSprinkler extends App {
 
-  val inRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
-  val noRain = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+  val inRain = BBVIGuide(Bernoulli(logistic(Param(0.0))))
+  val noRain = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
-  val rainPost = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+  val rainPost = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
   val model = infer {
 

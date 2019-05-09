@@ -16,7 +16,7 @@ class VariableSpec extends FlatSpec {
   it should "recover prior" in {
 
     val par = Param(0.0)
-    val p_guide = sigmoid(par)
+    val p_guide = logistic(par)
     val guide = BBVIGuide(Bernoulli(p_guide))
 
     val inferred = new Model[Boolean] {
@@ -52,10 +52,10 @@ class VariableSpec extends FlatSpec {
 
     import Expr._
 
-    val sprinkleInRainGuide = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
-    val sprinkleNoRainGuide = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+    val sprinkleInRainGuide = BBVIGuide(Bernoulli(logistic(Param(0.0))))
+    val sprinkleNoRainGuide = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
-    val rainGuide = BBVIGuide(Bernoulli(sigmoid(Param(0.0))))
+    val rainGuide = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
     def sprinkle(interpreter: Interpreter, rainVar: Variable[Boolean]) = {
         val Variable(rain, node) = rainVar

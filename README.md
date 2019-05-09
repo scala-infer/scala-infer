@@ -33,7 +33,7 @@ resolvers += Resolver.bintrayRepo("scala-infer", "maven")
 ```
 and in `build.sbt`, add
 ```scala
-libraryDependencies += "fvlankvelt" %% "scala-infer" % "0.1"
+libraryDependencies += "scala-infer" %% "scala-infer" % "0.3"
 ```
 
 ## Running the project
@@ -49,17 +49,14 @@ Networks](https://en.wikipedia.org/wiki/Bayesian_network).  It features a number
 distribution that is optimized to approximate the exact posterior.
 
 ```scala
-// optimization algorithm: Adam
-val sgd = new Adam(alpha = 0.1)
-
 // posterior distribution for the sprinkler, conditional on rain.
 // The parameters run over the full real axis, they are mapped to the
-// domain [0,1] by the sigmoid transformation.
-val inRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
-val noRain = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+// domain [0,1] by the logistic transformation.
+val inRain = BBVIGuide(Bernoulli(logistic(Param(0.0))))
+val noRain = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
 // posterior distribution for the rain
-val rainPost = BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0))))
+val rainPost = BBVIGuide(Bernoulli(logistic(Param(0.0))))
 
 // full model of the rain-sprinkler-grass system.  
 val model = infer {
@@ -113,15 +110,11 @@ val data = {
   }
 }
 
-// choose an optimization algorithm
-// each parameter could have its own optimizer
-val sgd = new Adam(alpha = 0.1)
-
 // set up variational approximation to the posterior distribution
-val aPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0)))))
-val b1Post = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
-val b2Post = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
-val errPost = ReparamGuide(Normal(sgd.param(0.0), exp(sgd.param(0.0))))
+val aPost = ReparamGuide(Normal(Param(0.0), exp(Param(0.0)))))
+val b1Post = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
+val b2Post = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
+val errPost = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
 
 // the actual model.  Draw variables from prior distributions and link those variables to
 // the posterior approximation.
@@ -141,16 +134,22 @@ val model = infer {
   (a, b1, b2, err)
 }
 
+// choose an optimization algorithm
+// each parameter could have its own optimizer
+val sgd = new Adam(alpha = 0.1)
+val interpreter = new OptimizingInterpreter(sgd)
+
 // warm up - each sample of the model triggers a gradient descent step
 Range(0, 1000).foreach { i =>
-  sample(model)
+  interpreter.reset()
+  model.sample(interpreter)
 }
 
 // print some samples
 Range(0, 10).foreach { i =>
-  val l = sample(model)
-  val values = (l._1.v, l._2.v, l._3.v, l._4.v)
-  println(s"  $values")
+  interpreter.reset()
+  val (a, b1, b2, err) = model.sample(interpreter)
+  println(s"  ${a.v}, ${b1.v}, ${b2.v}, ${err.v}")
 }
 ```
 Here, we not only inject the variational posterior distribution into the model, but the data as
@@ -167,11 +166,11 @@ also possible to fit local variables.  Focussing on the model definition part:
 val data: Seq[Double] = ???
 
 val dataWithGuides = data.map { datum =>
-  (datum, BBVIGuide(Bernoulli(sigmoid(sgd.param(0.0)))))
+  (datum, BBVIGuide(Bernoulli(logistic(Param(0.0)))))
 }
 
 val model = infer {
-  val p = sigmoid(sample(Normal(0.0, 1.0), pPost))
+  val p = logistic(sample(Normal(0.0, 1.0), pPost))
   val mu1 = sample(Normal(0.0, 1.0), mu1Post)
   val mu2 = sample(Normal(0.0, 1.0), mu2Post)
   val sigma = exp(sample(Normal(0.0, 1.0), sigmaPost))
@@ -205,7 +204,7 @@ case class Batch(size: Int) extends Dim[Batch]
 
 val shape = Batch(2)
 val data = Array(0.0f, 1.0f)
-val tensor: Tensor[Batch, ArrayTensor] = Tensor(shape, ArrayTensor(shape.sizes, data))
+val tensor: Value[ArrayTensor, Batch] = Constant(ArrayTensor(shape.sizes, data), shape)
 ```
 where the type of the final `tensor` variable has been added for clarity.  A tensor can be backed
 by different data structures.  Above the java native `Array[Float]` is used, but it is also possible

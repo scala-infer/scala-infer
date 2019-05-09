@@ -199,13 +199,31 @@ object TensorData {
       ArrayTensor(a.shape, result)
     }
 
-    override def sigmoid(a: ArrayTensor): ArrayTensor = {
+    override def logistic(a: ArrayTensor): ArrayTensor = {
       val ad = a.data
       val len = ad.length
       val result = new Array[Float](len)
       var i = 0
       while (i < len) {
-        result(i) = (1.0 / (1.0 + scala.math.exp(-ad(i)))).toFloat
+        val adi = ad(i)
+        result(i) = if (adi > 0.0) {
+          1.0f / (1.0 + scala.math.exp(-adi)).toFloat
+        } else {
+          val ea = scala.math.exp(adi).toFloat
+          ea / (1.0f + ea)
+        }
+        i += 1
+      }
+      ArrayTensor(a.shape, result)
+    }
+
+    override def softplus(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = scala.math.log1p(scala.math.exp(ad(i))).toFloat
         i += 1
       }
       ArrayTensor(a.shape, result)
