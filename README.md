@@ -1,4 +1,5 @@
 # Scala Infer
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/scala-infer/notebooks/master)
 With the addition of a few keywords, `scala-infer` turns scala into a probabilistic programming language.
 To achieve scalability, inference is based on gradients of the (variational approximation to) the
 posterior distribution.  Each draw from a distribution is accompanied by a *guide* distribution.
