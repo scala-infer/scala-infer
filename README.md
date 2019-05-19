@@ -1,4 +1,7 @@
 # Scala Infer
+
+[![Join the chat at https://gitter.im/scalainfer/community](https://badges.gitter.im/scalainfer/community.svg)](https://gitter.im/scalainfer/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 With the addition of a few keywords, `scala-infer` turns scala into a probabilistic programming language.
 To achieve scalability, inference is based on gradients of the (variational approximation to) the
 posterior distribution.  Each draw from a distribution is accompanied by a *guide* distribution.
