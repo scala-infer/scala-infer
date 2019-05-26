@@ -21,9 +21,19 @@ sealed trait Expr[X, S] {
       (thisv: Value[X, S], otherv: Value[X, S]) => thisv + otherv
     })
 
+  def -(other: Expr[X, S]) =
+    Apply2(this, other, {
+      (thisv: Value[X, S], otherv: Value[X, S]) => thisv - otherv
+    })
+
   def *(other: Expr[X, S]) =
     Apply2(this, other, {
       (thisv: Value[X, S], otherv: Value[X, S]) => thisv * otherv
+    })
+
+  def /(other: Expr[X, S]) =
+    Apply2(this, other, {
+      (thisv: Value[X, S], otherv: Value[X, S]) => thisv / otherv
     })
 }
 

@@ -97,6 +97,45 @@ object Functions {
 
   }
 
+  object sqrt extends Op1 {
+
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(x: Double) = scala.math.sqrt(x)
+    }
+
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      override def apply(x: Value[D, S]): Value[D, S] = TSqrt(x)
+    }
+
+    case class TSqrt[D, S](upstream: Value[D, S]) extends Value[D, S] {
+
+      override def field = upstream.field
+
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.sqrt(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        val tv = this.v
+        upstream.dv(field.div(
+          dv,
+          field.times(
+            field.fromInt(2, shape),
+            tv
+          )
+        ))
+      }
+
+      override def toString: String = {
+        s"sqrt($upstream)"
+      }
+    }
+
+  }
+
+
   object logistic extends Op1 {
 
     implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
