@@ -15,7 +15,7 @@ lazy val core = (project in file("core")).settings(
     "com.typesafe.scala-logging" %% "scala-logging"      % "3.9.0",
     "ch.qos.logback"              % "logback-classic"    % "1.2.3",
 
-    "org.nd4j"                    % "nd4j-native-platform" % "1.0.0-beta3",
+    "org.nd4j"                    % "nd4j-native-platform" % "1.0.0-beta4",
 
     "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
   ),
