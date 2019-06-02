@@ -111,7 +111,34 @@ object Nd4jTensor {
         ab: List[(Int, Int)],
         bc: List[(Int, Int)],
         ca: List[(Int, Int)]
-    ): INDArray = ???
+    ): INDArray = {
+      val aIndices = ab.map { _._1 }.toArray[Int]
+      val bIndices = ab.map { _._2 }.toArray[Int]
+
+      val acMap = ca.map { _.swap }.toMap
+      val bcMap = bc.toMap
+
+      val ndAc = (0 until a.shape.length)
+        .filterNot(aIndices.contains(_))
+        .zipWithIndex
+        .map { case (aIndex, curIndex) =>
+          val cIndex = acMap(aIndex)
+          cIndex -> curIndex
+        }
+
+      val ndBc = (0 until b.shape.length)
+        .filterNot(bIndices.contains(_))
+        .zipWithIndex
+        .map {
+          case (bIndex, curIndex) =>
+          val cIndex = bcMap(bIndex)
+          cIndex -> (curIndex + ndAc.size)
+        }
+
+      val permutation = (ndAc ++ ndBc).sortBy(_._1).map { _._2 }
+      Nd4j.tensorMmul(a, b, Array(aIndices, bIndices))
+        .permute(permutation: _*)
+    }
 
   }
 

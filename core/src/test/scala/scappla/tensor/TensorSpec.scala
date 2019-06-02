@@ -1,8 +1,6 @@
 package scappla.tensor
 
-import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
-
 import scappla._
 import Tensor._
 import scappla.Functions.log
@@ -75,23 +73,6 @@ class TensorSpec extends FlatSpec {
     val dataArray = update.get
     assert(dataArray.data(0) == 1f)
     assert(dataArray.data(1) == 1f)
-  }
-
-  it should "work with nd4j as well" in {
-    implicit val nd4jTensor = Nd4jTensor.ops
-
-    val shape = Batch(2)
-
-    val data = Nd4j.create(
-      Array(0.0f, 1.0f),
-      shape.sizes.toArray
-    )
-
-    val tensor = Value(data, shape)
-    val sum = sumAlong(tensor, shape)
-    val result = sum.v.data().asFloat()(0)
-
-    assert(result == 1f)
   }
 
   it should "tensordot when multiplying" in {
