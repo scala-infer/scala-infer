@@ -2,6 +2,8 @@ package scappla.tensor
 
 import scappla.Elemwise
 import scala.util.Random
+import scala.collection.immutable.SortedSet
+import scala.collection.mutable
 
 sealed trait Condition
 case class GreaterThan(value: Float) extends Condition
@@ -34,6 +36,8 @@ trait TensorData[D] extends Elemwise[D] {
 }
 
 case class ArrayTensor(shape: Seq[Int], data: Array[Float])
+
+case class SparseTensor(shape: Seq[Int], var data: Array[Float], var indices: Array[Array[Int]])
 
 object TensorData {
 
@@ -391,6 +395,240 @@ object TensorData {
       }
 
       ArrayTensor(newShape, result)
+    }
+  }
+
+  implicit val sparseIndexOrder: Ordering[Array[Int]] = new Ordering[Array[Int]] {
+
+    def compare(x: Array[Int], y: Array[Int]): Int = {
+      x.zip(y).foldLeft(0) { case (cur, (xi, yi)) =>
+        cur match {
+          case 0 => Integer.compare(xi, yi)
+          case _ => cur
+        }
+      }
+    }
+  }
+
+  implicit val sparseOps = new TensorData[SparseTensor] {
+
+    def plus(a: SparseTensor, b: SparseTensor): SparseTensor = {
+      binary(a, b, { case (aF, bF) =>
+        aF.map { _ + bF.getOrElse(0f) }.orElse(bF)
+      })
+    }
+
+    def minus(a: SparseTensor, b: SparseTensor): SparseTensor = {
+      binary(a, b, { case (aF, bF) =>
+        aF.map { _ - bF.getOrElse(0f) }.orElse(bF.map { -_ })
+      })
+    }
+
+    def times(a: SparseTensor, b: SparseTensor): SparseTensor = {
+      binary(a, b, { case (aF, bF) =>
+        aF.flatMap { af => bF.map { af * _ }}
+      })
+    }
+
+    def div(a: SparseTensor, b: SparseTensor): SparseTensor = {
+      binary(a, b, { case (aF, bF) =>
+        aF.map { af => af / bF.getOrElse(0f) }
+      })
+    }
+
+    def pow(a: SparseTensor, b: SparseTensor): SparseTensor = {
+      binary(a, b, { case (aF, bF) =>
+        aF.map { af => bF.map { scala.math.pow(af, _).toFloat }.getOrElse(1f) }
+      })
+    }
+
+    private def binary(
+      a: SparseTensor,
+      b: SparseTensor,
+      fn: (Option[Float], Option[Float]) => Option[Float]
+    ): SparseTensor = {
+
+      val aIter = a.indices.zip(a.data).iterator
+      val bIter = b.indices.zip(b.data).iterator
+
+      val resultIter = new Iterator[(Array[Int], Float)] {
+        var aCursor: Option[(Array[Int], Float)] = None
+        var bCursor: Option[(Array[Int], Float)] = None
+
+        var out: Option[(Array[Int], Float)] = None
+
+        def hasNext: Boolean = {
+          step()
+          out.isDefined
+        }
+
+        def next(): (Array[Int], Float) = {
+          step()
+          out.get
+        }
+
+        private def step(): Unit = {
+          while (!out.isDefined) {
+            if (aCursor.isEmpty && aIter.hasNext) {
+              aCursor = Some(aIter.next())
+            }
+            if (bCursor.isEmpty && bIter.hasNext) {
+              bCursor = Some(bIter.next())
+            }
+            if (aCursor.isDefined && bCursor.isDefined) {
+              val cmp = sparseIndexOrder.compare(aCursor.get._1, bCursor.get._1)
+              if (cmp < 0) {
+                out = fn(aCursor.map { _._2 }, None).map { (aCursor.get._1, _) }
+                aCursor = None
+              } else if (cmp > 0) {
+                out = fn(None, bCursor.map { _._2 }).map { (bCursor.get._1, _) }
+                bCursor = None
+              } else {
+                out = fn(aCursor.map{ _._2 }, bCursor.map{ _._2}).map { (aCursor.get._1, _) }
+                aCursor = None
+                bCursor = None
+              }
+            } else if (aCursor.isDefined) {
+              out = fn(aCursor.map{ _._2 }, None).map { (aCursor.get._1, _) }
+              aCursor = None
+            } else if (bCursor.isDefined) {
+              out = fn(None, bCursor.map{ _._2 }).map { (bCursor.get._1, _) }
+              bCursor = None
+            } else {
+              return
+            }
+          }
+        }
+      }
+
+      val zipped = resultIter.toArray
+      SparseTensor(a.shape, zipped.map { _._2 }, zipped.map { _._1 })
+    }
+
+    def negate(a: SparseTensor): SparseTensor = {
+      unary(a, -_)
+    }
+
+    def sqrt(a: SparseTensor): SparseTensor = {
+      unary(a, scala.math.sqrt(_).toFloat)
+    }
+
+    def log(a: SparseTensor): SparseTensor = {
+      unary(a, scala.math.log(_).toFloat)
+    }
+
+    def exp(a: SparseTensor): SparseTensor = {
+      unary(a, scala.math.exp(_).toFloat)
+    }
+
+    def logistic(a: SparseTensor): SparseTensor = {
+      unary(a, { x => 1f / (1f + scala.math.exp(-x).toFloat)})
+    }
+
+    def softplus(a: SparseTensor): SparseTensor = {
+      unary(a, { x => scala.math.log1p(scala.math.exp(x)).toFloat})
+    }
+
+    private def unary(in: SparseTensor, fn: Float => Float): SparseTensor = {
+      SparseTensor(in.shape, in.data.map(fn), in.indices)
+    }
+
+    def sumAll(a: SparseTensor): Float = {
+      a.data.sum
+    }
+
+    // (de)constructing values
+
+    def fill(value: Float, dims: Int*): SparseTensor = {
+      SparseTensor(dims.toSeq, Array.fill(dims.product)(value), fullRank(dims))
+    }
+
+    def gaussian(dims: Int*): SparseTensor = {
+      SparseTensor(dims.toSeq, Array.fill(dims.product)(Random.nextGaussian().toFloat), fullRank(dims))
+    }
+
+    private def fullRank(dims: Seq[Int]): Array[Array[Int]] = {
+      dims.toSeq.foldLeft(Seq.empty[Array[Int]]) {
+        case (curIndices, dim) =>
+          curIndices.flatMap { curIndex =>
+            (0 until dim).map { i => curIndex :+ i }
+          }
+      }.toArray
+    }
+
+    def count(d: SparseTensor, cond: Condition): Int = {
+      cond match {
+        case GreaterThan(value) if value > 0f => 
+          d.data.count(_ > value)
+        case GreaterThan(value) if value <= 0f => 
+          d.shape.product - d.data.length + d.data.count(_ > value)
+      }
+    }
+
+    def get(d: SparseTensor, indices: Int*): Float = {
+      val index = d.indices.indexOf(indices.toArray)
+      if (index >= 0) {
+        d.data(index)
+      } else {
+        0f
+      }
+    }
+
+    def put(d: SparseTensor, value: Float, indices: Int*): Unit = {
+      val index = d.indices.indexOf(indices.toArray)
+      if (index >= 0) {
+        d.data(index) = value
+        d
+      } else {
+        val spliceAt = d.indices.count(sparseIndexOrder.compare(_, indices.toArray) < 0)
+
+        val newData = Array.ofDim[Float](d.data.length + 1)
+        d.data.copyToArray(newData, 0, spliceAt)
+        d.data(spliceAt) = value
+        d.data.copyToArray(newData, spliceAt + 1, d.data.length - spliceAt)
+
+        val newIndices = Array.ofDim[Array[Int]](d.indices.length + 1)
+        d.indices.copyToArray(newIndices, 0, spliceAt)
+        d.indices(spliceAt) = indices.toArray
+        d.indices.copyToArray(newIndices, spliceAt + 1, d.data.length - spliceAt)
+        SparseTensor(d.shape, newData, newIndices)
+      }
+    }
+
+    def imax(d: SparseTensor): Seq[Int] = {
+      d.data.zip(d.indices).maxBy(_._1)._2.toSeq 
+    }
+
+    def cumsum(a: SparseTensor, dim: Int): SparseTensor = ???
+
+    // shape-affecting operations
+
+    def sum(a: SparseTensor, dim: Int): SparseTensor = {
+      val sums = a.data.zip(a.indices).groupBy { case (value, indices) => 
+        val ic = indices.clone()
+        ic(dim) = 0
+        ic
+      }.mapValues { _.map(_._1).sum }
+    }
+
+    def broadcast(a: SparseTensor, dimIndex: Int, dimSize: Int): SparseTensor = ???
+
+    def tensordot(a: SparseTensor, b: SparseTensor, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): SparseTensor = {
+      val bByShared: Map[Map[Int, Int], Seq[(Map[Int, Int], Float)]] = {
+        val partitioned = mutable.HashMap[Map[Int, Int], Seq[(Map[Int, Int], Float)]]()
+            .withDefaultValue(Seq.empty)
+        b.indices.zip(b.data).foreach { case (indices, value) =>
+            val aIndex = ab.map { case (aDim, bDim) =>
+                aDim -> indices(bDim)
+            }.toMap
+            val cIndex = bc.map { case (bDim, cDim) =>
+                cDim -> indices(bDim)
+            }.toMap
+            partitioned(aIndex) = partitioned(aIndex) :+ (cIndex, value)
+        }
+        partitioned.toMap
+      }
+
     }
   }
 
