@@ -1,6 +1,7 @@
 package scappla.tensor
 
 import scappla.Elemwise
+
 import scala.util.Random
 import scala.collection.immutable.SortedSet
 import scala.collection.mutable
@@ -37,7 +38,7 @@ trait TensorData[D] extends Elemwise[D] {
 
 case class ArrayTensor(shape: Seq[Int], data: Array[Float])
 
-case class SparseTensor(shape: Seq[Int], var data: Array[Float], var indices: Array[Array[Int]])
+case class SparseTensor(shape: Seq[Int], var data: Array[Float], var coordinates: Seq[Array[Int]])
 
 object TensorData {
 
@@ -398,9 +399,9 @@ object TensorData {
     }
   }
 
-  implicit val sparseIndexOrder: Ordering[Array[Int]] = new Ordering[Array[Int]] {
+  implicit val sparseIndexOrder: Ordering[Seq[Int]] = new Ordering[Seq[Int]] {
 
-    def compare(x: Array[Int], y: Array[Int]): Int = {
+    def compare(x: Seq[Int], y: Seq[Int]): Int = {
       x.zip(y).foldLeft(0) { case (cur, (xi, yi)) =>
         cur match {
           case 0 => Integer.compare(xi, yi)
@@ -447,13 +448,14 @@ object TensorData {
       b: SparseTensor,
       fn: (Option[Float], Option[Float]) => Option[Float]
     ): SparseTensor = {
+      assert(a.coordinates.size == b.coordinates.size)
 
-      val aIter = a.indices.zip(a.data).iterator
-      val bIter = b.indices.zip(b.data).iterator
+      val aIter = a.data.zipWithIndex.iterator
+      val bIter = b.data.zipWithIndex.iterator
 
       val resultIter = new Iterator[(Array[Int], Float)] {
-        var aCursor: Option[(Array[Int], Float)] = None
-        var bCursor: Option[(Array[Int], Float)] = None
+        var aCursor: Option[(Float, Array[Int])] = None
+        var bCursor: Option[(Float, Array[Int])] = None
 
         var out: Option[(Array[Int], Float)] = None
 
@@ -470,29 +472,31 @@ object TensorData {
         private def step(): Unit = {
           while (!out.isDefined) {
             if (aCursor.isEmpty && aIter.hasNext) {
-              aCursor = Some(aIter.next())
+              val (aVal, aIndex) = aIter.next()
+              aCursor = Some((aVal, a.coordinates.map { _(aIndex) }.toArray))
             }
             if (bCursor.isEmpty && bIter.hasNext) {
-              bCursor = Some(bIter.next())
+              val (bVal, bIndex) = bIter.next()
+              bCursor = Some((bVal, b.coordinates.map { _(bIndex) }.toArray))
             }
             if (aCursor.isDefined && bCursor.isDefined) {
-              val cmp = sparseIndexOrder.compare(aCursor.get._1, bCursor.get._1)
+              val cmp = sparseIndexOrder.compare(aCursor.get._2, bCursor.get._2)
               if (cmp < 0) {
-                out = fn(aCursor.map { _._2 }, None).map { (aCursor.get._1, _) }
+                out = fn(aCursor.map { _._1 }, None).map { (aCursor.get._2, _) }
                 aCursor = None
               } else if (cmp > 0) {
-                out = fn(None, bCursor.map { _._2 }).map { (bCursor.get._1, _) }
+                out = fn(None, bCursor.map { _._1 }).map { (bCursor.get._2, _) }
                 bCursor = None
               } else {
-                out = fn(aCursor.map{ _._2 }, bCursor.map{ _._2}).map { (aCursor.get._1, _) }
+                out = fn(aCursor.map{ _._1 }, bCursor.map{ _._1}).map { (aCursor.get._2, _) }
                 aCursor = None
                 bCursor = None
               }
             } else if (aCursor.isDefined) {
-              out = fn(aCursor.map{ _._2 }, None).map { (aCursor.get._1, _) }
+              out = fn(aCursor.map{ _._1 }, None).map { (aCursor.get._2, _) }
               aCursor = None
             } else if (bCursor.isDefined) {
-              out = fn(None, bCursor.map{ _._2 }).map { (bCursor.get._1, _) }
+              out = fn(None, bCursor.map{ _._1 }).map { (bCursor.get._2, _) }
               bCursor = None
             } else {
               return
@@ -502,7 +506,13 @@ object TensorData {
       }
 
       val zipped = resultIter.toArray
-      SparseTensor(a.shape, zipped.map { _._2 }, zipped.map { _._1 })
+      SparseTensor(
+        a.shape,
+        zipped.map { _._2 },
+        for { coordinate <- a.coordinates.indices } yield  {
+          zipped.map { _._1(coordinate) }
+        }
+      )
     }
 
     def negate(a: SparseTensor): SparseTensor = {
@@ -547,13 +557,23 @@ object TensorData {
       SparseTensor(dims.toSeq, Array.fill(dims.product)(Random.nextGaussian().toFloat), fullRank(dims))
     }
 
-    private def fullRank(dims: Seq[Int]): Array[Array[Int]] = {
-      dims.toSeq.foldLeft(Seq.empty[Array[Int]]) {
-        case (curIndices, dim) =>
-          curIndices.flatMap { curIndex =>
-            (0 until dim).map { i => curIndex :+ i }
-          }
-      }.toArray
+    private def fullRank(dims: Seq[Int]): Seq[Array[Int]] = {
+      val totalSize = dims.product
+      dims.scanLeft((1, totalSize)) { case ((prevSize, prevStride), dimSize) =>
+        val size = prevSize * dimSize
+        val stride = prevStride / dimSize
+        (size, stride)
+      }.zip(dims).map { case ((size, stride), dimSize) =>
+        val result = Array.ofDim[Int](totalSize)
+        for {
+          i <- 0 until size
+          j <- 0 until stride
+        } {
+          val index = i * stride + j
+          result(index) = i % dimSize
+        }
+        result
+      }
     }
 
     def count(d: SparseTensor, cond: Condition): Int = {
@@ -566,69 +586,96 @@ object TensorData {
     }
 
     def get(d: SparseTensor, indices: Int*): Float = {
-      val index = d.indices.indexOf(indices.toArray)
-      if (index >= 0) {
-        d.data(index)
+      val (idx, idxp) = d.coordinates.zip(indices.toSeq).foldLeft((0, d.data.length)) {
+        case ((start, end), (coordinates, toFind)) =>
+          Range(start, end).foldLeft((end, end)) {
+            case ((s, e), i) =>
+              if (coordinates(i) < toFind) {
+                (i + 1, i + 1)
+              } else if (coordinates(i) == toFind) {
+                (s, i + 1)
+              } else {
+                (s, e)
+              }
+            }
+        }
+      if (idxp == idx + 1) {
+        d.data(idxp)
       } else {
         0f
       }
     }
 
-    def put(d: SparseTensor, value: Float, indices: Int*): Unit = {
-      val index = d.indices.indexOf(indices.toArray)
-      if (index >= 0) {
-        d.data(index) = value
-        d
-      } else {
-        val spliceAt = d.indices.count(sparseIndexOrder.compare(_, indices.toArray) < 0)
-
-        val newData = Array.ofDim[Float](d.data.length + 1)
-        d.data.copyToArray(newData, 0, spliceAt)
-        d.data(spliceAt) = value
-        d.data.copyToArray(newData, spliceAt + 1, d.data.length - spliceAt)
-
-        val newIndices = Array.ofDim[Array[Int]](d.indices.length + 1)
-        d.indices.copyToArray(newIndices, 0, spliceAt)
-        d.indices(spliceAt) = indices.toArray
-        d.indices.copyToArray(newIndices, spliceAt + 1, d.data.length - spliceAt)
-        SparseTensor(d.shape, newData, newIndices)
-      }
-    }
+    def put(d: SparseTensor, value: Float, indices: Int*): Unit = ???
 
     def imax(d: SparseTensor): Seq[Int] = {
-      d.data.zip(d.indices).maxBy(_._1)._2.toSeq 
+      val index = d.data.zipWithIndex.maxBy(_._1)._2
+      d.coordinates.map { _(index) }
     }
 
     def cumsum(a: SparseTensor, dim: Int): SparseTensor = ???
 
     // shape-affecting operations
 
-    def sum(a: SparseTensor, dim: Int): SparseTensor = {
-      val sums = a.data.zip(a.indices).groupBy { case (value, indices) => 
-        val ic = indices.clone()
-        ic(dim) = 0
-        ic
-      }.mapValues { _.map(_._1).sum }
-    }
+    def sum(a: SparseTensor, dim: Int): SparseTensor = ???
 
     def broadcast(a: SparseTensor, dimIndex: Int, dimSize: Int): SparseTensor = ???
 
     def tensordot(a: SparseTensor, b: SparseTensor, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): SparseTensor = {
-      val bByShared: Map[Map[Int, Int], Seq[(Map[Int, Int], Float)]] = {
-        val partitioned = mutable.HashMap[Map[Int, Int], Seq[(Map[Int, Int], Float)]]()
+      val newShape: Seq[Int] = (bc.map {
+          case (bi, ci) => (ci, b.shape(bi))
+        } ++ ca.map {
+          case (ci, ai) => (ci, a.shape(ai))
+        }).sortBy { _._1 }
+          .map { _._2 }
+
+      val bByShared: Map[Array[Int], Seq[(Array[Int], Float)]] = {
+        // map of aIndex -> Seq[(cIndex, value)]
+        val partitioned = mutable.HashMap[Array[Int], Seq[(Array[Int], Float)]]()
             .withDefaultValue(Seq.empty)
-        b.indices.zip(b.data).foreach { case (indices, value) =>
-            val aIndex = ab.map { case (aDim, bDim) =>
-                aDim -> indices(bDim)
-            }.toMap
-            val cIndex = bc.map { case (bDim, cDim) =>
-                cDim -> indices(bDim)
-            }.toMap
-            partitioned(aIndex) = partitioned(aIndex) :+ (cIndex, value)
+
+        b.data.zipWithIndex.foreach { case (value, index) =>
+          val bIndices = b.coordinates.map { _(index) }
+            val aIndices = ab.map { case (_, bDim) =>
+              bIndices(bDim)
+            }.toArray
+            val cIndices = bc.map { case (bDim, _) =>
+              bIndices(bDim)
+            }.toArray
+            partitioned(aIndices) :+= (cIndices, value)
         }
         partitioned.toMap
       }
 
+      val products = a.data.toSeq.zipWithIndex.flatMap { case (aValue, aIndex) =>
+        val aIndices = a.coordinates.map { _(aIndex) }
+        val abIndices = ab.map { case (aDim, _) =>
+          aIndices(aDim)
+        }.toArray
+        val acIndices: Seq[(Int, Int)] = ca.map { case (cDim, aDim) =>
+          cDim -> aIndices(aDim)
+        }.toSeq
+        for { (bcIndices, bValue) <- bByShared(abIndices) } yield {
+          val fullBc = bcIndices.toSeq.zip(bc).map { case (idx, (_, cDim)) =>
+            cDim -> idx
+          }
+          val cIndex = (acIndices ++ fullBc).sortBy { _._1 }.map { _._2 }
+          cIndex -> aValue * bValue
+        }
+      }
+
+      val out = products
+        .groupBy(_._1)
+        .mapValues(_.map { _._2 }.sum)
+        .toSeq
+        .sortBy{ _._1 }(sparseIndexOrder)
+
+
+      SparseTensor(
+        newShape,
+        out.map { _._2 },
+
+      )
     }
   }
 
