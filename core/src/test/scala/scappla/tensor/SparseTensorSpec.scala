@@ -135,4 +135,8 @@ class SparseTensorSpec extends FlatSpec {
     println(s"Sparse mv time: ${(1000000 * (end - start)) / N} ns / row")
   }
 
+  it should "construct full-rank tensors" in {
+    val tensor = ops.gaussian(10)
+    assert(tensor.coordinates.head sameElements Range(0, 10).toArray[Int])
+  }
 }
