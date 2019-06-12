@@ -29,6 +29,10 @@ case class SparseTensor(shape: Seq[Int], data: Array[Float], coordinates: Seq[Ar
 
 object SparseTensor {
 
+  def apply(value: Float, dims: Int*): SparseTensor = {
+    sparseOps.fill(value, dims: _*)
+  }
+
   implicit val sparseIndexOrder: Ordering[Seq[Int]] = new Ordering[Seq[Int]] {
 
     def compare(x: Seq[Int], y: Seq[Int]): Int = {
@@ -195,7 +199,7 @@ object SparseTensor {
         val size = prevSize * dimSize
         val stride = prevStride / dimSize
         (size, stride)
-      }.zip(dims).map { case ((size, stride), dimSize) =>
+      }.drop(1).zip(dims).map { case ((size, stride), dimSize) =>
         val result = Array.ofDim[Int](totalSize)
         for {
           i <- 0 until size
@@ -253,6 +257,28 @@ object SparseTensor {
 
     def broadcast(a: SparseTensor, dimIndex: Int, dimSize: Int): SparseTensor = ???
 
+      class LinearIndex(val shape: Seq[Int]) {
+
+        val offsets = shape.reverse.scanLeft(1L) {
+          case (curSize, dimSize) =>
+            curSize * dimSize
+        }.reverse.drop(1).zip(shape)
+
+        def toDenseIndex(indices: Seq[Int]): Long = {
+          indices.zip(offsets).foldLeft(0L) {
+            case (curIndex, (index, (offset, size))) => 
+            curIndex + offset * index
+          }
+        }
+        def fromDenseIndex(linIndex: Long): Seq[Int] = {
+          offsets.map { case (offset, size) =>
+            (linIndex / offset).toInt % size
+          }
+        }
+
+      }
+
+
     def tensordot(a: SparseTensor, b: SparseTensor, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): SparseTensor = {
       import ScalaRunTime.stringOf
 
@@ -263,49 +289,71 @@ object SparseTensor {
       }).sortBy { _._1 }
           .map { _._2 }
 
-      def toDenseIndex(shape: Seq[Int], indices: Seq[Int]): Long = {
-        indices.zip(shape).reverse.foldLeft(0L) { case (curIndex, (dimIndex, dimSize)) =>
-            curIndex * dimSize + dimIndex
-        }
-      }
-      def fromDenseIndex(shape: Seq[Int], linIndex: Long): Seq[Int] = {
-        shape.scanLeft((linIndex, 0)) { case ((restLinIndex, _), dimSize) =>
-          (restLinIndex / dimSize, (restLinIndex % dimSize).toInt)
-        }.drop(1).map { _._2 }
+      val aLinear = new LinearIndex(a.shape)
+      val cLinear = new LinearIndex(cShape)
+
+      val caOffset: Seq[(Int, Long)] = ca.map { case (cDim, aDim) =>
+        (aDim, cLinear.offsets(cDim)._1)
       }
 
-      val bByShared: Map[IndexedSeq[Int], Seq[(Array[Int], Float)]] = {
+      val bByShared: Map[Long, Seq[(Long, Float)]] = {
         // map of aIndex -> Seq[(cIndex, value)]
-        val partitioned = mutable.HashMap[IndexedSeq[Int], Seq[(Array[Int], Float)]]()
+        val partitioned = mutable.HashMap[Long, Seq[(Long, Float)]]()
             .withDefaultValue(Seq.empty)
-
+        
         b.data.zipWithIndex.foreach { case (value, index) =>
           val bIndices = b.coordinates.map { _(index) }
-          val aIndices = ab.map { case (_, bDim) =>
-            bIndices(bDim)
-          }.toVector
-          val cIndices = bc.map { case (bDim, _) =>
-            bIndices(bDim)
-          }.toArray
-          partitioned(aIndices) :+= (cIndices, value)
+          val aRelIndex = ab.map { case (aDim, bDim) =>
+            bIndices(bDim) * aLinear.offsets(aDim)._1
+          }.sum
+          val cRelIndex = bc.map { case (bDim, cDim) =>
+            bIndices(bDim) * cLinear.offsets(cDim)._1
+          }.sum
+          partitioned(aRelIndex) :+= (cRelIndex, value)
         }
-        partitioned.toMap
+        partitioned.toMap //.withDefaultValue(Seq.empty)
       }
 
-      val products: Seq[(Long, Float)] = a.data.toSeq.zipWithIndex.flatMap { case (aValue, aIndex) =>
-        val aIndices = a.coordinates.map { _(aIndex) }
-        val abIndices = ab.map { case (aDim, _) =>
-          aIndices(aDim)
-        }.toVector
-        val acIndices: Seq[(Int, Int)] = ca.map { case (cDim, aDim) =>
-          cDim -> aIndices(aDim)
-        }
-        for { (bcIndices, bValue) <- bByShared(abIndices) } yield {
-          val fullBc = bcIndices.toSeq.zip(bc).map { case (idx, (_, cDim)) =>
-            cDim -> idx
+      trait ToLinear {
+        def toLong(in: Vector[Int]): Long
+      }
+      object ToLinear {
+        def apply(dimOff: Seq[(Int, Long)]): ToLinear = {
+          dimOff.size match {
+            case 1 =>
+              ToLinear1D(dimOff.head._1, dimOff.head._2)
+            case 2 =>
+              val do1 = dimOff.head
+              val do2 = dimOff.tail.head
+              ToLinear2D(do1._1, do1._2, do2._1, do2._2)
           }
-          val cIndex = (acIndices ++ fullBc).sortBy { _._1 }.map { _._2 }
-          toDenseIndex(cShape, cIndex) -> aValue * bValue
+        }
+      }
+
+      case class ToLinear1D(dim: Int, offset: Long) extends ToLinear {
+        override def toLong(in: Vector[Int]): Long = in(dim) * offset
+      }
+
+      case class ToLinear2D(dim1: Int, off1: Long, dim2: Int, off2: Long) extends ToLinear {
+        override def toLong(in: Vector[Int]): Long =
+          in(dim1) * off1 + in(dim2) * off2
+      }
+
+      val abv = ab.toVector.map { case (aDim, _) => (aDim, aLinear.offsets(aDim)._1) }
+      val abc = a.coordinates.toVector
+
+      val abLinear = ToLinear(abv)
+      val caLinear = ToLinear(caOffset)
+
+      val products: Seq[(Long, Float)] = (0 until a.data.length).flatMap { aRow =>
+        val aValue = a.data(aRow)
+        val aIndices = abc.map { _(aRow) }
+
+        val abIndices = abLinear.toLong(aIndices)
+        val cBaseIndex = caLinear.toLong(aIndices)
+
+        for { (cRelIndex, bValue) <- bByShared(abIndices) } yield {
+          (cBaseIndex + cRelIndex) -> aValue * bValue
         }
       }
 
@@ -320,9 +368,7 @@ object SparseTensor {
             }
           }
       val out = parts
-          .drop(2)
-          .map { _._2 }
-          .flatten
+          .drop(2).flatMap(_._2)
           .toList :+ parts.last._1
 
         /*
@@ -332,7 +378,7 @@ object SparseTensor {
           .toSeq
           .sortBy { _._1 }
           */
-      val outIndices = out.map { case (i, _) => fromDenseIndex(cShape, i) }
+      val outIndices = out.map { case (i, _) => cLinear.fromDenseIndex(i) }
 
       SparseTensor(
         cShape,
