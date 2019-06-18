@@ -1,11 +1,12 @@
-package scappla.tensor
+package scappla.tensor.nd4j
 
 import scappla._
+import tensor._
 import Tensor._
+
 import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.factory.Nd4j
 import org.scalatest.FlatSpec
-import scappla.Value
 
 class Nd4jTensorSpec extends FlatSpec {
 
