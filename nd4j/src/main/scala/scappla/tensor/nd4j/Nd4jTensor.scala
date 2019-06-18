@@ -1,7 +1,9 @@
-package scappla.tensor
+package scappla.tensor.nd4j
+
+import scappla.tensor._
 
 import org.nd4j.linalg.api.ndarray.INDArray
-import org.nd4j.linalg.api.ops.impl.accum.MatchCondition
+import org.nd4j.linalg.api.ops.impl.reduce.longer.MatchCondition
 import org.nd4j.linalg.factory.Nd4j
 import org.nd4j.linalg.indexing.conditions.Conditions
 import org.nd4j.linalg.ops.transforms.Transforms
@@ -24,7 +26,7 @@ object Nd4jTensor {
           val op = new MatchCondition(d, Conditions.greaterThan(value))
 
           // MAX_VALUE = "along all dimensions" or equivalently "for entire array"
-          Nd4j.getExecutioner.exec(op, Integer.MAX_VALUE).getInt(0)
+          Nd4j.getExecutioner.exec(op).getInt(0)
       }
     }
 
@@ -143,4 +145,3 @@ object Nd4jTensor {
   }
 
 }
-

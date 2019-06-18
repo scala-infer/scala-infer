@@ -15,14 +15,23 @@ lazy val core = (project in file("core")).settings(
     "com.typesafe.scala-logging" %% "scala-logging"      % "3.9.0",
     "ch.qos.logback"              % "logback-classic"    % "1.2.3",
 
-    "org.nd4j"                    % "nd4j-native-platform" % "1.0.0-beta4",
-
     "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
   ),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
   skip in publish := false,
-  licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0"))
+  licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0")) //,
+//  scalacOptions ++= Seq("-Xlog-implicits")
 )
+
+lazy val nd4j = (project in file("nd4j")).settings(
+  moduleName := "scala-infer-nd4j",
+  libraryDependencies ++= Seq(
+    "org.nd4j"                    % "nd4j-native-platform" % "1.0.0-beta4",
+    "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
+  ),
+  skip in publish := false,
+  licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0")) //,
+) dependsOn core
 
 lazy val app = (project in file("app")).settings(
   moduleName := "infer-app",
@@ -32,7 +41,7 @@ lazy val app = (project in file("app")).settings(
   libraryDependencies ++= Seq(
     "com.github.tototoshi"       %% "scala-csv"          % "1.3.5"
   ),
-  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-  scalacOptions ++= Seq("-Ymacro-debug-lite", "-Xlog-implicits")
+  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full) //,
+//  scalacOptions ++= Seq("-Ymacro-debug-lite", "-Xlog-implicits")
 ) dependsOn core
 
