@@ -458,31 +458,53 @@ class Macros(val c: blackbox.Context) {
             ))
           }
 
-        case q"$f($o)" =>
+        case q"$f(..$args)" =>
           f match {
-            case Ident(TermName(fname))
-                if scope.isDefined(fname) && scope.reference(fname).isFn =>
+            case Ident(TermName(fname)) if scope.isDefined(fname) && scope.reference(fname).isFn =>
               // println(s"APPLYING METHOD ${fname}")
+              val newArgs = args.map { o =>
+                val exprs = visitExpr(o) { richO =>
+                  Seq(richO)
+                }
+                val richO = exprs.last
+                val nodes = richO.vars.map { t => q"$t.node" }
+                (
+                  exprs.dropRight(1),
+                  q"scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes)))",
+                  richO.vars
+                )
+              }
               visitExpr(f) { richFn =>
-                visitExpr(o) { richO =>
                   val varResult = TermName(c.freshName())
                   builder.variable(varResult)
-                  scope.declare(varResult, RichTree.join(q"$varResult", richFn, richO))
+                  val argVars = newArgs.map { _._3 }.flatten.toSet
+                  scope.declare(varResult, RichTree(
+                    q"$varResult",
+                    richFn.vars ++ argVars
+                  ))
                   val result = q"$varResult.get"
-                  val nodes = richO.vars.map { t => q"$t.node" }
-                  Seq(RichTree(
-                    q"val $varResult = ${richFn.tree}(scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
+                  newArgs.map { _._1 }.flatten ++ Seq(RichTree(
+                    q"val $varResult = ${richFn.tree}(..${newArgs.map { _._2 }})"
+                      // scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
                   )) ++ fn(
-                    RichTree(result, richFn.vars ++ richO.vars + varResult)
+                    RichTree(result, richFn.vars ++ newArgs.flatMap { _._3 } + varResult)
                   )
-                }
               }
             case _ =>
-              visitExpr(f) { richFn =>
-                visitExpr(o) { richO =>
-                  val result = q"${richFn.tree}(${richO.tree})"
-                  fn(RichTree.join(result, richFn, richO))
+              val newArgs = args.map { o =>
+                val exprs = visitExpr(o) { richO =>
+                  Seq(richO)
                 }
+                (
+                  exprs.dropRight(1),
+                  exprs.last
+                )
+              }
+              visitExpr(f) { richFn =>
+                val result = q"${richFn.tree}(..${newArgs.map { _._2.tree }})"
+                newArgs.map { _._1 }.flatten ++ fn(
+                  RichTree.join(result, richFn, newArgs.map { _._2 }.reduce(RichTree.join(result, _, _)))
+                )
               }
           }
 
