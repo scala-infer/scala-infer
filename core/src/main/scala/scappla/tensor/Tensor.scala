@@ -68,6 +68,15 @@ object Tensor {
     }
   }
 
+  def sumAlong[S <: Shape, D <: Dim[_], I <: Nat, R <: Shape, X: TensorData](
+      tensor: Expr[X, S], dim: D
+  )(implicit
+      indexOf: IndexOf.Aux[S, D, I],
+      removeAt: RemoveAt.Aux[S, I, R]
+  ): Expr[X, R] = {
+    Apply1[X, S, X, R](tensor, sumAlong(_, dim))
+  }
+
   def cumsum[S <: Shape, D <: Dim[_], I <: Nat, X: TensorData](
       tensor: Value[X, S], dim: D
   )(implicit
@@ -104,6 +113,14 @@ object Tensor {
     }
   }
 
+  def cumsum[S <: Shape, D <: Dim[_], I <: Nat, X: TensorData](
+      tensor: Expr[X, S], dim: D
+  )(implicit
+      indexOf: IndexOf.Aux[S, D, I]
+  ): Expr[X, S] = {
+    Apply1[X, S, X, S](tensor, cumsum(_, dim))
+  }
+
   def at[D: TensorData, S <: Shape](
       tensor: Value[D, S],
       index: Index[S]
@@ -130,6 +147,13 @@ object Tensor {
     }
   }
 
+  def at[D: TensorData, S <: Shape](
+      tensor: Expr[D, S],
+      index: Index[S]
+  ): Expr[Double, Unit] = {
+    Apply1[D, S, Double, Unit](tensor, at(_, index))
+  }
+
   def broadcast[S <: Shape, D: TensorData](
       real: Real, shape: S
   ): Value[D, S] = TBroadcast(real, shape)
@@ -153,6 +177,12 @@ object Tensor {
     override def toString: String = {
       s"broadcast($upstream, $shape)"
     }
+  }
+
+  def broadcast[S <: Shape, D: TensorData](
+      real: Expr[Double, Unit], shape: S
+  ): Expr[D, S] = {
+    Apply1[Double, Unit, D, S](real, broadcast(_, shape))
   }
 
   def maxIndex[S <: Shape, D: TensorData](

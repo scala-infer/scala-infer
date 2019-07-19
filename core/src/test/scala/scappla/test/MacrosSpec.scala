@@ -342,4 +342,22 @@ class MacrosSpec extends FlatSpec {
     }
   }
 
+  it should "support multi-argument functions" in {
+    val model = infer {
+      def step(arg1: Boolean, arg2: Int): String = {
+        if (arg2 == 0) {
+          "end"
+        } else {
+          s"$arg2:" + step(arg1, arg2 - 1)
+        }
+      }
+      step(true, 5)
+    }
+
+    val sgd = new Adam(alpha = 0.1, epsilon = 1e-4)
+    val interpreter = new OptimizingInterpreter(sgd)
+
+    val result = model.sample(interpreter)
+    assert(result == "5:4:3:2:1:end")
+  }
 }

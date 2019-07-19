@@ -146,6 +146,25 @@ class TensorSpec extends FlatSpec {
     z.dv(ArrayTensor((c :#: a).sizes, Array(1f, 2f, 3f)))
   }
 
+  it should "read scalar" in {
+    val in: Value[ArrayTensor, Scalar] = Value(ArrayTensor(Nil, Array(0.3f)), Scalar)
+    val scalar = at(in, Index[Scalar](Nil))
+    assert(scalar.v == 0.3f)
+  }
+
+  it should "allow tensor construction in infer" in {
+    import scala.reflect._
+    case class OutState(size: Int) extends Dim[OutState]
+    val outState = OutState(2)
+    val model = infer {
+      val state = Constant[ArrayTensor, OutState](
+        ArrayTensor(outState.sizes, Array.fill[Float](outState.size)(0f)),
+        outState
+      )
+      true
+    }
+  }
+
   case class TParam[D: TensorData, S <: Shape](v: D, shape: S) extends Value[D, S] {
 
     override def field = implicitly[TensorField[D, S]]
