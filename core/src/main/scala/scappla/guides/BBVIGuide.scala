@@ -7,13 +7,14 @@ import scappla.optimization.Average
 // control variate
 // Since a constant delta between score_p and score_q has an expectation value of zero,
 // the average value can be subtracted in order to reduce the variance.
-case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double, Unit] = Average.param(0.0, ())) extends Guide[A] {
+case class BBVIGuide[A](posterior: Distribution[A], control: Expr[Double, Unit] = Param(0.0)) extends Guide[A] {
 
   // samples the guide (= the approximation to the posterior)
   // use BBVI (with Rao Blackwellization)
   override def sample(interpreter: Interpreter, prior: Distribution[A]): Variable[A] = {
 
     val value: A = posterior.sample(interpreter)
+    val controlVar: Real = interpreter.eval(control)
 
     val node: BayesNode = new BayesNode {
 
@@ -49,24 +50,24 @@ case class BBVIGuide[A](posterior: Distribution[A], control: Value[Double, Unit]
         modelScore.complete()
         guideScore.complete()
       }
+
+      /**
+        * Backprop using BBVI - the guide (prior) score gradient is backpropagated
+        * with as weight the Rao-Blackwellized delta between the model and guide
+        * (full) score.  The average difference is used as the control variate, to reduce
+        * variance of the gradient.
+        */
+      private def update(s: Score, logp: Score, logq: Score): Unit = {
+        val delta = logp.v - logq.v
+
+        val gradient = delta - controlVar.v
+        controlVar.dv(gradient)
+
+        s.dv(gradient)
+      }
+
     }
 
     Variable(value, node)
   }
-
-  /**
-    * Backprop using BBVI - the guide (prior) score gradient is backpropagated
-    * with as weight the Rao-Blackwellized delta between the model and guide
-    * (full) score.  The average difference is used as the control variate, to reduce
-    * variance of the gradient.
-    */
-  private def update(s: Score, logp: Score, logq: Score): Unit = {
-    val delta = logp.v - logq.v
-
-    val gradient = delta - control.v
-    control.dv(gradient)
-
-    s.dv(gradient)
-  }
-
 }
