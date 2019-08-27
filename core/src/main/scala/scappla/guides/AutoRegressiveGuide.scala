@@ -5,6 +5,17 @@ import scappla.distributions.Distribution
 import scappla.Interpreter
 import scappla.Functions._
 
+class ShiftedDistribution(orig: Distribution[Real], shift: Real) extends Distribution[Real] {
+
+  override def sample(interpreter: Interpreter): Real = {
+    orig.sample(interpreter) - shift
+  }
+
+  override def observe(interpreter: Interpreter, a: Real): Score = {
+    orig.observe(interpreter, a + shift)
+  }
+}
+
 trait AutoRegressiveGuideCreator {
 
   def orig: Guide[Real]
@@ -12,10 +23,10 @@ trait AutoRegressiveGuideCreator {
   protected def createGuide(params: Seq[RealExpr], values: Seq[Real]) = new Guide[Real] {
 
     override def sample(interpreter: Interpreter, prior: Distribution[Real]): scappla.Variable[Real] = {
-      val Variable(upstream, node) = orig.sample(interpreter, prior)
       val pv = params.zip(values).map { case (p, v) =>
         interpreter.eval(p) * v
       }.reduce { _ + _ }
+      val Variable(upstream, node) = orig.sample(interpreter, new ShiftedDistribution(prior, pv))
       Variable(upstream + pv, node)
     }
   }

@@ -44,7 +44,11 @@ object Expr {
   implicit def valueToConstant[X, S](vdv: Value[X, S])(implicit bf: BaseField[X, S]): Expr[X, S] = ConstantExpr(vdv)
 }
 
-case class ConstantExpr[X, S](value: Value[X, S]) extends Expr[X, S]
+case class ConstantExpr[X, S](value: Value[X, S]) extends Expr[X, S] {
+  override val hashCode: Int = {
+    value.v.hashCode()
+  }
+}
 
 class Param[X, S](
     val initial: X,
@@ -113,38 +117,40 @@ class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
     values(e) = value
 
   override def eval[X, S](expr: Expr[X, S]): Value[X, S] = {
-    if (!has(expr)) {
-      val value: Value[X, S] = expr match {
-        case cst: ConstantExpr[X, S] =>
-          cst.value
+    expr match {
+      case cst: ConstantExpr[X, S] =>
+        cst.value
+      case _ => if (!has(expr)) {
+        val value: Value[X, S] = expr match {
 
-        case param: Param[X, S] =>
-          val p = if (params.contains(expr)) {
-            params(expr).asInstanceOf[Value[X, S]]
-          } else {
-            val p = opt.param[X, S](
-              param.initial,
-              param.shape,
-              param.name
-            )(param.base)
+          case param: Param[X, S] =>
+            val p = if (params.contains(expr)) {
+              params(expr).asInstanceOf[Value[X, S]]
+            } else {
+              val p = opt.param[X, S](
+                param.initial,
+                param.shape,
+                param.name
+              )(param.base)
 
-            params(expr) = p
-            p
-          }
-          p.buffer
+              params(expr) = p
+              p
+            }
+            p.buffer
 
-        case app: Apply1[_, _, X, S] =>
-          val upstream = eval(app.in)
-          app.fn(upstream)
+          case app: Apply1[_, _, X, S] =>
+            val upstream = eval(app.in)
+            app.fn(upstream)
 
-        case app: Apply2[_, _, _, _, X, S] =>
-          val upA = eval(app.lhs)
-          val upB = eval(app.rhs)
-          app.fn(upA, upB)
+          case app: Apply2[_, _, _, _, X, S] =>
+            val upA = eval(app.lhs)
+            val upB = eval(app.rhs)
+            app.fn(upA, upB)
+        }
+        put(expr, value)
       }
-      put(expr, value)
+      get(expr)
     }
-    get(expr)
   }
 
   override def reset(): Unit = {

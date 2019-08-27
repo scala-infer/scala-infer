@@ -8,6 +8,7 @@ package object scappla {
 
   // API
 
+  type RealExpr = Expr[Double, Unit]
   type Real = Value[Double, Unit]
   type Score = Value[Double, Unit]
   type Model[X] = Sampleable[X]
@@ -136,5 +137,17 @@ package object scappla {
   object Variable extends LazyLogging {
 
     implicit def toConstant[A](value: A): Variable[A] = Variable[A](value, ConstantNode)
+  }
+
+  class Invocations extends Completeable {
+    private var nodes: List[Completeable] = Nil
+
+    def add(node: BayesNode): Unit = {
+      nodes = node :: nodes
+    }
+
+    def complete(): Unit = {
+      nodes.foreach(_.complete())
+    }
   }
 }
