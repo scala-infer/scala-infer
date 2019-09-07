@@ -62,7 +62,7 @@ class AutoRegressiveSpec extends FlatSpec {
     })
   }
 
-  it should "correlate backward" in {
+  it should "optimize prior" in {
 
     val z1M = Param(0.0)
     val z1S = exp(Param(0.0))
@@ -76,7 +76,7 @@ class AutoRegressiveSpec extends FlatSpec {
       gamma
     )
 
-    val s = 1.0
+    val s = exp(Param(0.0))
     val x = 3.0
     val model = infer {
       val z1 = sample(Normal(0.0, s), z1Post)
@@ -93,17 +93,19 @@ class AutoRegressiveSpec extends FlatSpec {
           interpreter.reset()
         }
 
+        val sv = interpreter.eval(s).v
         val z1Mv = interpreter.eval(z1M).v
         val z1Sv = interpreter.eval(z1S).v
         val z2Mv = interpreter.eval(z2M).v
         val z2Sv = interpreter.eval(z2S).v
         val gammav = interpreter.eval(gamma).v
         val epsilon = 0.02
-        println(s"$z1Mv, $z1Sv, $z2Mv, $z2Sv, $gammav")
-        assert(math.abs(z1Sv - math.sqrt(2 / 3.0) * s) < epsilon)
-        assert(math.abs(z2Sv - 1 / math.sqrt(1 / (s * s) + 1 / (s * s))) < epsilon)
-        assert(math.abs(gammav - z2Sv * z2Sv / (s * s)) < epsilon)
-        assert(math.abs(z2Mv - x * z2Sv * z2Sv / (s * s)) < epsilon)
+        println(s"$sv, $z1Mv, $z1Sv, $z2Mv, $z2Sv, $gammav")
+        assert(math.abs(sv - x / math.sqrt(3)) < epsilon)
+        assert(math.abs(z1Sv - math.sqrt(2 / 3.0) * sv) < epsilon)
+        assert(math.abs(z2Sv - 1 / math.sqrt(1 / (sv * sv) + 1 / (sv * sv))) < epsilon)
+        assert(math.abs(gammav - z2Sv * z2Sv / (sv * sv)) < epsilon)
+        assert(math.abs(z2Mv - x * z2Sv * z2Sv / (sv * sv)) < epsilon)
         assert(math.abs(z1Mv - (2 / 3.0) * z2Mv) < epsilon)
         true
       } catch {
