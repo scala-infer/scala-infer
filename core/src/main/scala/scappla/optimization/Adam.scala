@@ -2,7 +2,7 @@ package scappla.optimization
 
 import scappla.{BaseField, Value}
 
-class Adam(alpha: Double = 0.001, beta1: Double = 0.9, beta2: Double = 0.999, epsilon: Double = 1e-8, decay: Boolean = false) extends Optimizer {
+class Adam(alpha: Double = 0.001, beta1: Double = 0.9, beta2: Double = 0.999, epsilon: Double = 1e-8, decay: Double = 0.0) extends Optimizer {
 
   override def param[X, S](
     initial: X,
@@ -53,8 +53,8 @@ class Adam(alpha: Double = 0.001, beta1: Double = 0.9, beta2: Double = 0.999, ep
           base.fromDouble(1.0 - math.pow(beta2, iter), shape)
         )
 
-        val lr = if (decay) {
-          base.fromDouble(alpha / math.sqrt(iter), shp)
+        val lr = if (decay != 0.0) {
+          base.fromDouble(alpha / math.pow(iter, decay), shp)
         } else {
           alphaS
         }
