@@ -19,8 +19,9 @@ lazy val core = (project in file("core")).settings(
   ),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
   skip in publish := false,
-  licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0")) //,
+  licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0")),
 //  scalacOptions ++= Seq("-Xlog-implicits")
+  scalacOptions ++= Seq("-Ymacro-debug-lite")
 )
 
 lazy val nd4j = (project in file("nd4j")).settings(
@@ -37,7 +38,7 @@ lazy val app = (project in file("app")).settings(
   moduleName := "infer-app",
 //  mainClass in Compile := Some("scappla.app.TestChickweight"),
   // mainClass in Compile := Some("scappla.app.TestMixture"),
-  mainClass in Compile := Some("scappla.app.TestTicTacToe"),
+  mainClass in Compile := Some("scappla.app.RandomWalk"),
   libraryDependencies ++= Seq(
     "com.github.tototoshi"       %% "scala-csv"          % "1.3.5"
   ),
