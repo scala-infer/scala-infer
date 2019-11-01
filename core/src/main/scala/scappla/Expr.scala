@@ -8,6 +8,7 @@ import scala.collection.mutable
 import scala.collection.AbstractIterator
 import scala.collection.generic.MutableMapFactory
 import scala.collection.generic.CanBuildFrom
+import scappla.tensor.Tensor.TensorField
 
 sealed trait Expr[X, S] {
   type Type = X
@@ -96,7 +97,16 @@ object NoopInterpreter extends Interpreter {
   override def reset(): Unit = {}
 }
 
-class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
+/**
+ * A default optimizer (Adam, SGD or another first-order algorithm) takes care of
+ * handling parameters that do not have an optimizer assigned to them.
+ *
+ * Groups of parameters are optimized together, allowing the optimizer to leverage
+ * higher-order gradient (approximate Hessian) information.
+ */
+class OptimizingInterpreter(
+    val opt: Optimizer,
+) extends Interpreter {
 
   private val values = mutable.HashMap[Any, Any]()
 
@@ -157,6 +167,7 @@ class OptimizingInterpreter(val opt: Optimizer) extends Interpreter {
     for { (expr, value) <- values if expr.isInstanceOf[Param[_, _]] } {
         value.asInstanceOf[Completeable].complete()
     }
+    opt.step()
     values.clear()
   }
 }
