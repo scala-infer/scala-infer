@@ -1,3 +1,4 @@
+
 name := "scala-infer-parent"
 
 ThisBuild / organization := "scala-infer"
@@ -14,6 +15,9 @@ lazy val core = (project in file("core")).settings(
     "com.chuusai"                %% "shapeless"          % "2.3.2",
     "com.typesafe.scala-logging" %% "scala-logging"      % "3.9.0",
     "ch.qos.logback"              % "logback-classic"    % "1.2.3",
+    "org.scalanlp" %% "breeze" % "1.0",
+    "org.scalanlp" %% "breeze-natives" % "1.0",
+
 
     "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
   ),
@@ -21,7 +25,7 @@ lazy val core = (project in file("core")).settings(
   skip in publish := false,
   licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0")),
 //  scalacOptions ++= Seq("-Xlog-implicits")
-  scalacOptions ++= Seq("-Ymacro-debug-lite")
+//  scalacOptions ++= Seq("-Ymacro-debug-lite")
 )
 
 lazy val nd4j = (project in file("nd4j")).settings(
@@ -38,7 +42,8 @@ lazy val app = (project in file("app")).settings(
   moduleName := "infer-app",
 //  mainClass in Compile := Some("scappla.app.TestChickweight"),
   // mainClass in Compile := Some("scappla.app.TestMixture"),
-  mainClass in Compile := Some("scappla.app.RandomWalk"),
+  // mainClass in Compile := Some("scappla.app.RandomWalk"),
+  mainClass in Compile := Some("scappla.app.TestLBGFS"),
   libraryDependencies ++= Seq(
     "com.github.tototoshi"       %% "scala-csv"          % "1.3.5"
   ),
