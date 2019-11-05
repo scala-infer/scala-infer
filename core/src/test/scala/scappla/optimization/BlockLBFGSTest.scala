@@ -30,12 +30,12 @@ class BlockLBFGSTest extends FlatSpec {
 
   it should "converge" in {
     def f(x: Real, y: Real): Real = {
-      (y - x * x) * (y - x * x) + y * y
+      -(y - x * x) * (y - x * x) - y * y
     }
     val N = 1000
 
     {
-      val optimizer = new BlockLBFGS(histSize = 5, learningRate = 1.0)
+      val optimizer = new BlockLBFGS(histSize = 5, learningRate = 0.1)
       //val optimizer = new Adam(0.1)
       val xParam = optimizer.param(2.0, ())
       val yParam = optimizer.param(1.0, ())
