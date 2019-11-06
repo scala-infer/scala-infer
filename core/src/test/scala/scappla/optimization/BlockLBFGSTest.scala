@@ -35,7 +35,7 @@ class BlockLBFGSTest extends FlatSpec {
     val N = 1000
 
     {
-      val optimizer = new BlockLBFGS(histSize = 5, learningRate = 0.1)
+      val optimizer = new BlockLBFGS(histSize = 5, learningRate = 0.05)
       //val optimizer = new Adam(0.1)
       val xParam = optimizer.param(2.0, ())
       val yParam = optimizer.param(1.0, ())
