@@ -1,13 +1,15 @@
 package scappla.test
 
 import org.scalatest.FlatSpec
+import java.io.File
+import java.io.PrintWriter
 
 import scala.util.Random
 import scappla._
 import scappla.Functions._
 import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
-import scappla.optimization.Adam
+import scappla.optimization.{Adam, BlockLBFGS, SGDMomentum}
 import scappla.guides.Guide
 import scappla.guides.AutoRegressive
 
@@ -17,6 +19,7 @@ class RandomWalkSpec extends FlatSpec {
    * For the simple random walk case, we can integrate out the hidden variables exactly.
    * This leaves an exact free energy to optimize - make sure we can do at least that.
    */
+/*
   it should "optimize exact free energy" in {
     val hidden = (0 until 500).scanLeft(0.0) { case (v, _) =>
       v + Random.nextGaussian() * 0.1
@@ -46,10 +49,34 @@ class RandomWalkSpec extends FlatSpec {
     val two: Real = 2.0
     val N: Real = x.size
 
-    val adam = new Adam(1.0)
-    val lambda_e = logistic(Param(0.0))
-    val s_x_e = exp(Param(0.0))
-    val interpreter = new OptimizingInterpreter(adam)
+    {
+      val out = new File("/tmp/action.csv")
+      val writer = new PrintWriter(out)
+      writer.println("lambda,s_x,L")
+      for {
+        lp <- (0.02 until(1.0, step = 0.01))
+        sx <- (0.01 until(0.5, step = 0.005))
+      } {
+        val g = (1 - lp) / (1 + lp)
+        val L = -(diag - g * distWeights.map {
+          case (dist, weight) =>
+            pow(lp, dist.v) * weight
+        }.reduce {
+          _ + _
+        }) / (2 * sx * sx) + N.v * log(lp) / 2 - N.v * log(sx)
+        writer.println(s"$lp,$sx,$L")
+      }
+      writer.close()
+    }
+
+//    val optimizer = new Adam(1.0)
+//    val optimizer = new SGDMomentum(mass = 100, lr = 0.1)
+    val optimizer = new BlockLBFGS(histSize = 100, learningRate = 0.01)
+    val lambda_odds = Param(0.0)
+    val lambda_e = logistic(lambda_odds)
+    val s_x_log = Param(-1.0)
+    val s_x_e = exp(s_x_log)
+    val interpreter = new OptimizingInterpreter(optimizer)
     assert((0 until 10).exists { _ =>
       for {_ <- 0 until 1000} {
         val lambda = interpreter.eval(lambda_e)
@@ -71,19 +98,20 @@ class RandomWalkSpec extends FlatSpec {
       math.abs(s_x.v - 0.2) < 0.02 && math.abs(s_z_v - 0.1) < 0.02
     })
   }
+*/
 
-  /*
   it should "fit volatility" in {
+    val rng = new Random(0L)
 
     val hidden = (0 until 200).scanLeft(0.0) { case (v, _) =>
-      v + Random.nextGaussian() * 0.1
+      v + rng.nextGaussian() * 0.1
     }
     val data = hidden.map { v =>
-      (v, v + 0.2 * Random.nextGaussian())
+      (v, v + 0.2 * rng.nextGaussian())
     }
 
-    val volGuide = ReparamGuide(Normal(Param(-2.0), exp(Param(0.0))))
-    val errGuide = ReparamGuide(Normal(Param(-2.0), exp(Param(0.0))))
+    // val volGuide = ReparamGuide(Normal(Param(-2.0), exp(Param(0.0))))
+    // val errGuide = ReparamGuide(Normal(Param(-2.0), exp(Param(0.0))))
     val lambdaGuide = ReparamGuide(Normal(Param(0.0), exp(Param(0.0))))
 
     val dataGuideErr = exp(Param(-2.0))
@@ -115,8 +143,10 @@ class RandomWalkSpec extends FlatSpec {
       // (vol, err)
     }
 
-    val interpreter = new OptimizingInterpreter(new Adam(0.1, decay = true))
-    for { iter <- 0 until 100000 } {
+    // val optimizer = new Adam(0.1, decay = 0.5)
+    val optimizer = new BlockLBFGS(histSize = 100, learningRate = 0.001)
+    val interpreter = new OptimizingInterpreter(optimizer)
+    for { iter <- 0 until 10000 } {
       // val (vol, err, lambda) = model.sample(interpreter)
       val lambda = model.sample(interpreter)
       // val (vol, err) = model.sample(interpreter)
@@ -140,5 +170,4 @@ class RandomWalkSpec extends FlatSpec {
     }
 
   }
-  */
 }

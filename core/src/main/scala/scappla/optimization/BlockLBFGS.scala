@@ -11,7 +11,6 @@ import scappla.{BaseField, Value}
 case class CollectState(
     g_gram: DenseMatrix[Double], // (row, col): g_row dot g_col
     x_gram: DenseMatrix[Double], // (row, col): x_row dot x_col
-    xg: DenseMatrix[Double],     // (row, col): g_row dot x_col
 )
 
 // Shared state needed to calculated new position vectors
@@ -23,7 +22,8 @@ case class StepState(
 // State per parameter that tracks the historic positions and gradients
 case class ParamState[X](
     xs: List[X],
-    gs: List[X]
+    gs: List[X],
+    g_avg: X
 )
 
 class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimizer with LazyLogging {
@@ -38,7 +38,6 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
   )
 
   private var collectState = CollectState(
-    DenseMatrix.fill(1, 1)(0.0),
     DenseMatrix.fill(1, 1)(0.0),
     DenseMatrix.fill(1, 1)(0.0),
   )
@@ -68,7 +67,7 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
     logger.debug(Q.toString())
 
     // dim: 1 / xx
-    val delta_x = if (iteration > 1) {
+    val delta_x = if (iteration > 1 && x_nz_ev.length > 0 && g_nz_ev.length > 0) {
       val QI = pinv(Q, 0.01)
       logger.debug(s"  QI: ${QI.rows}, ${QI.cols}")
       pinv(Q, 0.01) * g_proj_avg
@@ -129,19 +128,16 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
 
     val next_g_gram = DenseMatrix.fill(nextSize, nextSize)(0.0)
     val next_x_gram = DenseMatrix.fill(nextSize, nextSize)(0.0)
-    val next_xg = DenseMatrix.fill(nextSize, nextSize)(0.0)
     for {
       i <- 1 until nextSize
       j <- 1 until nextSize
     } {
       next_g_gram(i, j) = collectState.g_gram(i - 1, j - 1)
       next_x_gram(i, j) = collectState.x_gram(i - 1, j - 1)
-      next_xg(i, j) = collectState.xg(i - 1, j - 1)
     }
     collectState = CollectState(
       g_gram = next_g_gram,
-      x_gram = next_x_gram,
-      xg = next_xg
+      x_gram = next_x_gram
     )
   }
 
@@ -165,7 +161,7 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
   def param[X, S](initial: X, shp: S, name: Option[String])(implicit base: BaseField[X, S]): Value[X, S] = {
     new Value[X, S] {
 
-      var state = ParamState[X](List(initial), List.empty)
+      var state = ParamState[X](List(initial), List.empty, base.fromInt(0, shp))
 
       val field = base
 
@@ -200,25 +196,46 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
         logger.debug(stepState.dg)
         */
 
+        val dg = (for {
+          i <- state.gs.indices
+        } yield {
+          field.times(
+            state.gs(i),
+            field.fromDouble(stepState.dg(i), shp)
+            // field.fromDouble(-learningRate * stepState.dg(i) / math.pow(iteration, 0.5), shp)
+          )
+        }).reduce(field.plus)
+
+        val new_g_avg = field.plus(
+          field.times(field.fromDouble(0.99, shp), state.g_avg),
+          field.times(field.fromDouble(0.01, shp), dg)
+        )
+        state = state.copy(
+          g_avg = new_g_avg
+        )
+
         // delta of x_0 - x_avg
         val dx = (for {
           i <- state.gs.indices
         } yield {
-          field.plus(
-            field.times(
-              field.minus(state.xs(i), x_avg),
-              field.fromDouble(-stepState.dx(i), shp)
-            ),
-            field.times(
-              state.gs(i),
-              field.fromDouble(-learningRate * stepState.dg(i), shp)
-            )
+          field.times(
+            field.minus(state.xs(i), x_avg),
+            field.fromDouble(-stepState.dx(i), shp)
           )
         }).reduce(field.plus)
-        logger.debug(s"  X_0 - X_avg: $dx")
+
+        val delta = field.plus(
+          dx,
+          field.times(
+            new_g_avg,
+            field.fromDouble(-learningRate, shp)
+          )
+        )
+
+        logger.debug(s"  X_0 - X_avg: $delta")
 
         val dx_head = field.plus(
-          dx,
+          delta,
           field.minus(x_avg, state.xs.head)
         )
         logger.debug(s"  dX_head: $dx_head")
@@ -227,7 +244,6 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
         field.plus(
           state.xs.head,
           dx_head
-          // field.times(dx_head, field.fromDouble(learningRate, shp))
         )
       }
 
@@ -244,19 +260,15 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
           val x_in = base.sumAll(base.times(v, state.xs(i)))
           collectState.x_gram(0, i) += x_in
           collectState.x_gram(i, 0) += x_in
-
-          collectState.xg(0, i) = base.sumAll(base.times(min_dv, state.xs(i)))
-          collectState.xg(i, 0) = base.sumAll(base.times(next_gs(i), v))
         }
         collectState.g_gram(0, 0) += base.sumAll(base.times(min_dv, min_dv))
         collectState.x_gram(0, 0) += base.sumAll(base.times(v, v))
-        collectState.xg(0, 0) += base.sumAll(base.times(min_dv, v))
 
         logger.debug(s"X: $v, DX: $dv")
 
         // update gradients in parameter state
         state = state.copy(
-          gs = next_gs
+          gs = next_gs,
         )
         curV = None
       }
