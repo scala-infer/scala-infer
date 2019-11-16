@@ -1,6 +1,6 @@
 package scappla.distributions
 
-import scappla.Functions.{log, sum}
+import scappla.Functions.{log, squared, sum}
 import scappla._
 
 case class Normal[D, S](
@@ -56,8 +56,10 @@ case class Normal[D, S](
         }
       }
 
+      private val id = hashCode()
+
       override def toString: String = {
-        s"NormalSample(${hashCode()})"
+        s"NormalSample(${id})"
       }
     }
   }
@@ -69,7 +71,7 @@ case class Normal[D, S](
     val two = Constant(numX.fromInt(2, shape), shape)
 
     val e = (x - muVal) / sigmaVal
-    sum(-log(sigmaVal) - e * e / two)
+    sum(-log(sigmaVal) - squared(e) / two)
   }
 
   override def reparam_score(interpreter: Interpreter, x: Value[D, S]): Score = {
@@ -79,6 +81,6 @@ case class Normal[D, S](
     val two = Constant(numX.fromInt(2, shape), shape)
 
     val e = (x - muVal.const) / sigmaVal.const
-    sum(-log(sigmaVal).const - e * e / two)
+    sum(-log(sigmaVal).const - squared(e) / two)
   }
 }

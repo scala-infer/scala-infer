@@ -34,7 +34,7 @@ class AutoRegressiveSpec extends FlatSpec {
       (z1, z2)
     }
 
-    val interpreter = new OptimizingInterpreter(new Adam(0.1, decay = true))
+    val interpreter = new OptimizingInterpreter(new Adam(0.1, decay = 0.5))
     assert((0 until 5).exists { _ =>
       try {
         for {_ <- 0 until 10000} {
@@ -78,18 +78,29 @@ class AutoRegressiveSpec extends FlatSpec {
 
     val s = exp(Param(0.0))
     val x = 3.0
+
+    val dataWithGuides = Seq(
+      (x, z2Post)
+    )
+
     val model = infer {
       val z1 = sample(Normal(0.0, s), z1Post)
-      val z2 = sample(Normal(z1, s), z2Post.guide(z1))
-      observe(Normal(z2, s), x: Real)
-      (z1, z2)
+      dataWithGuides.foldLeft(z1) {
+        case (prev, (value, ar)) =>
+        val next = sample(Normal(prev, s), ar.guide(prev))
+        observe(Normal(next, s), value: Real)
+        next
+      }
+      // val z2 = sample(Normal(z1, s), z2Post.guide(z1))
+      // observe(Normal(z2, s), x: Real)
+      // (z1, z2)
     }
 
-    val interpreter = new OptimizingInterpreter(new Adam(0.1, decay = true))
+    val interpreter = new OptimizingInterpreter(new Adam(0.1, decay = 0.5))
     assert((0 until 5).exists { _ =>
       try {
         for {_ <- 0 until 10000} {
-          val (z1, z2) = model.sample(interpreter)
+          val _ = model.sample(interpreter)
           interpreter.reset()
         }
 

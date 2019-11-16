@@ -110,7 +110,7 @@ class OptimizingInterpreter(
 
   private val values = mutable.HashMap[Any, Any]()
 
-  private val params: mutable.Map[Any, Any] = new mutable.HashMap[Any, Any]()
+  private val params: mutable.Map[Any, Any] = new mutable.LinkedHashMap[Any, Any]()
 
   @inline
   private def has[X, S](e: Expr[X, S]): Boolean = {
@@ -164,7 +164,7 @@ class OptimizingInterpreter(
   }
 
   override def reset(): Unit = {
-    for { (expr, value) <- values if expr.isInstanceOf[Param[_, _]] } {
+    for { (expr, value) <- values.toSeq.reverse if expr.isInstanceOf[Param[_, _]] } {
         value.asInstanceOf[Completeable].complete()
     }
     opt.step()

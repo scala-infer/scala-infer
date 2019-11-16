@@ -34,6 +34,9 @@ trait Value[X, S] {
 
   def const: Value[X, S] =
     Constant(this.v, this.shape)(field)
+
+  def name(name: String): Value[X, S] =
+    Named(this, name)
 }
 
 object Value {
@@ -52,6 +55,10 @@ class Constant[X, S](val v: X, val shape: S, val field: BaseField[X, S]) extends
   override def buffer: Buffered[X, S] = this
 
   override def complete(): Unit = {}
+
+  override def toString: String = {
+    s"Cst($v)"
+  }
 }
 
 object Constant {
@@ -119,10 +126,28 @@ case class VBuffer[D, S](upstream: Value[D, S])
 
   override val v: D = upstream.v
 
+//  println(s"  BUFFERING  $this")
+
   override def dv(gradient: D): Unit = {
     grad = grad.map {
       field.plus(_, gradient)
     }.orElse(Some(gradient))
+    /*
+    grad.get match {
+      case tensor: ArrayTensor =>
+        val finite = tensor.data.forall { f =>
+            !f.isNaN && !f.isInfinite
+          }
+        if (!finite) {
+          assert(false)
+        }
+      case f: Double =>
+        if (f.isNaN || f.isInfinite) {
+          assert(false)
+        }
+      case _ =>
+    }
+    */
   }
 
   /**
@@ -132,20 +157,20 @@ case class VBuffer[D, S](upstream: Value[D, S])
     * gradient be propagated further backwards.
     */
   override def buffer: VBuffer[D, S] = {
-//    println(s" BUFFERING $this")
+//    println(s"  BUFFERING  $this")
     refCount += 1
     this
   }
 
   override def complete(): Unit = {
-//    println(s"COMPLETING VBUFFER $this")
+//    println(s"  COMPLETING $this")
     refCount -= 1
     if (refCount == 0) {
       grad.foreach { g =>
         upstream.dv(g)
       }
+      grad = None
     }
-    grad = None
   }
 
   override def toString: String = {
