@@ -25,9 +25,9 @@ object Functions {
     }
 
     implicit def exprApply[A, AS, B, BS, C, CS](implicit fn: Apply[Value[A, AS], Value[B, BS], Value[C, CS]]):
-      Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] = new Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] {
-        override def apply(a: Expr[A, AS], b: Expr[B, BS]): Expr[C, CS] = Apply2(a, b, fn)
-      }
+    Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] = new Apply[Expr[A, AS], Expr[B, BS], Expr[C, CS]] {
+      override def apply(a: Expr[A, AS], b: Expr[B, BS]): Expr[C, CS] = Apply2(a, b, fn)
+    }
   }
 
   object log extends Op1 {
@@ -45,7 +45,7 @@ object Functions {
       override def field: BaseField[D, S] =
         upstream.field
 
-      override def shape: S = 
+      override def shape: S =
         upstream.shape
 
       override val v: D = {
@@ -130,6 +130,46 @@ object Functions {
 
       override def toString: String = {
         s"sqrt($upstream)"
+      }
+    }
+
+  }
+
+
+  object squared extends Op1 {
+
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(x: Double) = x * x
+    }
+
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      override def apply(x: Value[D, S]): Value[D, S] = TSquared(x)
+    }
+
+    case class TSquared[D, S](upstream: Value[D, S]) extends Value[D, S] {
+
+      override def field = upstream.field
+
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.times(upstream.v, upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        upstream.dv(
+          field.times(
+            field.times(
+              field.fromInt(2, shape),
+              dv
+            ),
+            upstream.v
+          )
+        )
+      }
+
+      override def toString: String = {
+        s"squared($upstream)"
       }
     }
 
@@ -280,6 +320,7 @@ object Functions {
         s"($base ^ $expo)"
       }
     }
+
   }
 
   object sum extends Op1 {
