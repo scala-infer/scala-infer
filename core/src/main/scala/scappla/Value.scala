@@ -34,9 +34,6 @@ trait Value[X, S] {
 
   def const: Value[X, S] =
     Constant(this.v, this.shape)(field)
-
-  def name(name: String): Value[X, S] =
-    Named(this, name)
 }
 
 object Value {
