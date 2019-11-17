@@ -4,7 +4,7 @@ import scappla.{BaseField, Value}
 
 class SGD(val debug: Boolean = false, lr: Double) extends Optimizer {
 
-  override def param[X, S](initial: X, shp: S, name: Option[String])(implicit ev: BaseField[X, S]): Value[X, S] = {
+  override def param[X, S](initial: X, shp: S, paramName: Option[String])(implicit ev: BaseField[X, S]): Value[X, S] = {
     new Value[X, S] {
 
       private var iter: Int = 0
@@ -26,7 +26,7 @@ class SGD(val debug: Boolean = false, lr: Double) extends Optimizer {
           field.times(dv, field.div(lrS, ev.fromInt(iter, shape)))
         )
         if (debug) {
-          println(s"    SGD (${name.getOrElse("")}) $iter: $value ($dv)")
+          println(s"    SGD (${paramName.getOrElse("")}) $iter: $value ($dv)")
           //          new Exception().printStackTrace()
         }
       }
