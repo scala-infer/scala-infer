@@ -94,10 +94,10 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
       0.1
     }
     */
-    // val scale: Double = if (iteration > 1)
-      // math.abs(breeze.linalg.sum(Q) / g_trace)
-    // else
-      // 0.001 / collectState.g_gram(0, 0)
+    val scale: Double = if (iteration > 1)
+      math.sqrt(math.abs(breeze.linalg.sum(x_nz_ev) / breeze.linalg.sum(g_nz_ev)))
+    else
+      0.1
     // val scale = 0.1
 
     // println(s"  scale: $scale")
@@ -113,7 +113,9 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
       val dist_x = delta_x.t * delta_x
       // val dist_g = delta_g.t * (g_nz_ev *:* delta_g)
       // 1.0 / (1.0 + math.sqrt(dist_x + dist_g) / 5)
-      1.0 / (1.0 + math.sqrt(dist_x) / 5)
+      // 1.0 / (1.0 + math.sqrt(dist_x) / histSize)
+      // 0.001 / math.sqrt(dist_x)
+      1.0
     }
     // println(s"  rescale: $rescale")
 
@@ -123,7 +125,7 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
 
     stepState = StepState(
       rescale * dx_proj.t * delta_x,
-      rescale * g_proj.t * delta_g
+      scale * g_proj.t * delta_g
     )
 
     val next_g_gram = DenseMatrix.fill(nextSize, nextSize)(0.0)
