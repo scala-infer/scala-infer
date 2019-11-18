@@ -23,7 +23,7 @@ class Nd4jTensorSpec extends FlatSpec {
 
     val data = Nd4j.create(
       Array(0.0f, 1.0f),
-      shape.sizes.toArray
+      shape.sizes: _*
     )
 
     val tensor: Value[INDArray, Batch] = Value(data, shape)
@@ -44,7 +44,7 @@ class Nd4jTensorSpec extends FlatSpec {
 
     val data: INDArray = Nd4j.create(
       Array(0f, 1f),
-      inputShape.sizes.toArray
+      inputShape.sizes: _*
     )
     val input = Value(data, inputShape)
 
@@ -53,7 +53,7 @@ class Nd4jTensorSpec extends FlatSpec {
         0f, 2f, 4f,
         1f, 3f, 5f
       ),
-      outShape.sizes.toArray
+      outShape.sizes: _*
     )
     val param = TParam(matrix, outShape)
 
@@ -67,14 +67,14 @@ class Nd4jTensorSpec extends FlatSpec {
   it should "put dimensions in order in tensordot" in {
     val data: INDArray = Nd4j.create(
       Array(0f, 1f),
-      Array(1, 2)
+      1, 2
     )
     val matrix = Nd4j.create(
       Array(
         0f, 2f, 4f,
         1f, 3f, 5f
       ),
-      Array(3, 2)
+      3, 2
     )
     val out = Nd4jTensor.ops.tensordot(data, matrix, List((1, 1)), List((0, 0)), List((1, 0)))
     assert(out.shape() sameElements Array[Long](3, 1))

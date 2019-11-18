@@ -16,7 +16,7 @@ object Nd4jTensor {
       Nd4j.valueArrayOf(shape.toArray, value)
 
     override def gaussian(shape: Int*): INDArray =
-      Nd4j.rand(shape.toArray)
+      Nd4j.rand(shape: _*)
 
     // bridge data to/from JVM
 

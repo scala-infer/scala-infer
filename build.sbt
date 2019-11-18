@@ -4,6 +4,7 @@ name := "scala-infer-parent"
 ThisBuild / organization := "scala-infer"
 ThisBuild / scalaVersion := "2.12.8"
 ThisBuild / skip in publish := true
+ThisBuild / useCoursier := false
 
 ThisBuild / bintrayOrganization := Some("scala-infer")
 
@@ -31,7 +32,7 @@ lazy val core = (project in file("core")).settings(
 lazy val nd4j = (project in file("nd4j")).settings(
   moduleName := "scala-infer-nd4j",
   libraryDependencies ++= Seq(
-    "org.nd4j"                    % "nd4j-native-platform" % "1.0.0-beta4",
+    "org.nd4j"                    % "nd4j-native-platform" % "1.0.0-beta5",
     "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
   ),
   skip in publish := false,
