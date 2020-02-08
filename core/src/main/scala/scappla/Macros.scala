@@ -128,6 +128,10 @@ class Macros(val c: blackbox.Context) {
       known.contains(v) || refs.contains(v)
     }
 
+    def isDeclared(v: TermName): Boolean = {
+      refs.contains(v)
+    }
+
     def reference(v: TermName): RichTree = {
       referenced += v
       if (isDefined(v)) {
@@ -191,9 +195,14 @@ class Macros(val c: blackbox.Context) {
       val tree = if (obs.isEmpty
           && vars.isEmpty
           && completeable.isEmpty
-          && result.vars.forall(scope.isPreDefined)
+          && result.vars.forall(v => !scope.isDeclared(v))
       ) {
         q"""scappla.Variable[${tpe.widen}](${result.tree}, scappla.ConstantNode)"""
+      } else if (obs.isEmpty
+          && vars.size == 1
+          && completeable.size == 1
+      ) {
+        q"""scappla.Variable[${tpe.widen}](${result.tree}, ${vars.head}.node)"""
       } else {
         q"""scappla.Variable[${tpe.widen}](${result.tree}, new scappla.BayesNode {
 
@@ -214,13 +223,13 @@ class Macros(val c: blackbox.Context) {
           }}
 
           def addObservation(score: scappla.Score) = {..${
-          result.vars.filter(!scope.isPreDefined(_)).toSeq.map { lv =>
+          result.vars.filter(scope.isDeclared).toSeq.map { lv =>
             q"$lv.node.addObservation(score)"
           }
           }}
 
           def addVariable(modelScore: scappla.Score, guideScore: scappla.Score) = {..${
-          result.vars.filter(!scope.isPreDefined(_)).toSeq.map { lv =>
+          result.vars.filter(scope.isDeclared).toSeq.map { lv =>
             q"$lv.node.addVariable(modelScore, guideScore)"
           }
           }}
@@ -232,7 +241,7 @@ class Macros(val c: blackbox.Context) {
           }}
         })"""
       }
-      RichTree(tree, Set.empty)
+      RichTree(tree, result.vars.filter(v => !scope.isDeclared(v)))
     }
   }
 
@@ -336,21 +345,27 @@ class Macros(val c: blackbox.Context) {
           // println(s"  IF TRUE $condRef: ${richTrue.vars}")
           val richFalse = visitSubExpr(fExpr)
           // println(s"  IF FALSE $condRef: ${richTrue.vars}")
-          val resultTree = q"$ifVar.get"
+
+          // branch and add the scores to the variables sampled in the current scope
+          // The scores of variables and observations in the branches are added
+          // to the variables defined in the current scope.
           val setup: Seq[Tree] = (
-            condRef.setup ++ Seq(
+            condRef.setup :+ 
               q"""val $ifVar = if (${condRef.result.tree})
                   ${richTrue.tree}
                 else
                   ${richFalse.tree}"""
-            ) ++ condRef.result.vars.toSeq.map { cv =>
+            ) ++ (condRef.result.vars ++ richTrue.vars ++ richFalse.vars)
+                .filter(scope.isDeclared)
+                .toSeq.map { cv =>
               q"$cv.node.addVariable($ifVar.node.modelScore, $ifVar.node.guideScore)"
-            })
+            }
+
           RichBlock(
             setup,
             RichTree(
               q"$ifVar.get",
-              condRef.result.vars ++ richTrue.vars ++ richFalse.vars
+              (condRef.result.vars ++ richTrue.vars ++ richFalse.vars) + ifVar
             )
           )
 
@@ -369,12 +384,18 @@ class Macros(val c: blackbox.Context) {
 
           // val fnResult = fn(RichTree(q"$matchVar.get"))
           RichBlock(
-            matchName.setup :+ 
+            (matchName.setup :+ 
               q"""val $matchVar = ${matchName.result.tree} match {
                   case ..${mappedCases.map{ _._2 }}
-                }"""
-            ,
-            RichTree(q"$matchVar.get", matchName.result.vars ++ caseVars)
+                }""") ++ (matchName.result.vars ++ caseVars)
+                  .filter(scope.isDeclared)
+                  .toSeq.map { cv =>
+              q"$cv.node.addVariable($matchVar.node.modelScore, $matchVar.node.guideScore)"
+            },
+            RichTree(
+              q"$matchVar.get",
+              (matchName.result.vars ++ caseVars) + matchVar
+            )
           )
 
         case q"scappla.`package`.sample[$tDist]($prior, $guide)" =>
@@ -388,8 +409,13 @@ class Macros(val c: blackbox.Context) {
           scope.declare(tVarName, RichTree(EmptyTree))
 
           RichBlock(
-            guideName.setup ++ priorName.setup :+
-              q"val $tVarName = ${guideName.result.tree}.sample(${interpreter.tree}, ${priorName.result.tree})",
+            guideName.setup ++
+            priorName.setup ++
+            Seq(q"val $tVarName = ${guideName.result.tree}.sample(${interpreter.tree}, ${priorName.result.tree})") ++
+            (priorName.result.vars ++ guideName.result.vars)
+                .toSeq.filter(scope.isDeclared).map { rv =>
+              q"$rv.node.addVariable($tVarName.node.modelScore, $tVarName.node.guideScore)"
+            },
             RichTree(q"$tVarName.get", Set(tVarName))
           )
 
@@ -434,6 +460,7 @@ class Macros(val c: blackbox.Context) {
               )
 
             case _ =>
+              // println(s"APPLYING UNKNOWN FN ${f}")
               val richFn = visitExpr(f)
               val richO = visitExpr(o)
               RichBlock(
@@ -489,7 +516,7 @@ class Macros(val c: blackbox.Context) {
 
           val richFn = visitExpr(f)
           RichBlock(
-            richFn.setup,
+            richFn.setup ++ defs,
             RichTree(
               q"${richFn.result.tree}.$m[..$tpts](...$newArgs)",
               richFn.result.vars ++ mRes.flatten.flatMap { _.result.vars }
@@ -617,6 +644,12 @@ class Macros(val c: blackbox.Context) {
         case q"scappla.`package`.observe[$tDist]($oDist, $o)" =>
           val richDistName = visitExpr(oDist)
           val richO = visitExpr(o)
+
+          // Don't know what to do in this case - does not appear to be an actual observation
+          if (richO.result.vars.nonEmpty) {
+            throw new IllegalArgumentException("Observation cannot be dependent on random variables")
+          }
+
           val obName = TermName(c.freshName())
           val interpreter = scope.reference(TermName("interpreter"))
           val resultTree = q"""
@@ -624,13 +657,14 @@ class Macros(val c: blackbox.Context) {
               scappla.observeImpl[$tDist](${interpreter.tree}, ${richDistName.result.tree}, ${richO.result.tree})
           """
 
+          // add the observation score to the model score of the current scope
           builder.observation(obName)
 
           // println(s"  VARIABLES in oDist: ${deps} => ${vars(deps.head) }")
 //              println(s" OBSERVE ${showRaw(resultTree)}")
 
           (richDistName.setup ++ richO.setup :+ resultTree) ++
-            richDistName.result.vars.toSeq.map { v =>
+            richDistName.result.vars.filter(scope.isDeclared).toSeq.map { v =>
               q"$v.node.addObservation($obName.score)"
             }
 
