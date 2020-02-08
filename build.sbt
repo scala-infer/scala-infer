@@ -2,7 +2,7 @@
 name := "scala-infer-parent"
 
 ThisBuild / organization := "scala-infer"
-ThisBuild / scalaVersion := "2.12.8"
+ThisBuild / scalaVersion := "2.12.10"
 ThisBuild / skip in publish := true
 ThisBuild / useCoursier := false
 
