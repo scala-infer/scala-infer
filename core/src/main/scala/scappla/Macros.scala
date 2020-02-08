@@ -80,6 +80,8 @@ class Macros(val c: blackbox.Context) {
     }
   }
 
+  case class RichBlock(stmts: Seq[RichTree])
+
   case class RichArg(
     mods: Modifiers,
     tpe: Tree,
@@ -225,21 +227,28 @@ class Macros(val c: blackbox.Context) {
 
     private val builder = new VariableAggregator()
 
-    def visitBlockStmts(stmts: Seq[Tree]): Seq[RichTree] = {
+    def visitBlockStmts(stmts: Seq[Tree]): RichBlock = {
 //      println(s"VISITINGN BLOCK ${showCode(q"{..$stmts}")}")
       val setup :+ last = stmts
       val richSetup = setup.flatMap(t => visitStmt(t))
 //      println(s"   TPE: ${last.tpe}")
-      richSetup ++ (if (last.tpe =:= definitions.UnitTpe) {
-        visitStmt(last) :+ builder.build(scope, RichTree(EmptyTree), definitions.UnitTpe)
+      (if (last.tpe =:= definitions.UnitTpe) {
+        RichBlock(
+          richSetup ++
+          visitStmt(last) :+
+          builder.build(scope, RichTree(EmptyTree), definitions.UnitTpe)
+        )
       } else {
-        visitExpr(last) { lastRt =>
-          Seq(builder.build(scope, lastRt, last.tpe))
-        }
+        RichBlock(
+          richSetup ++
+          visitExpr(last) { lastRt =>
+            RichBlock(Seq(builder.build(scope, lastRt, last.tpe)))
+          }.stmts
+        )
       })
     }
 
-    def visitApply(expr: Tree)(fn: RichTree => Seq[RichTree]): Seq[RichTree] = {
+    def visitApply(expr: Tree)(fn: RichTree => RichBlock): RichBlock = {
       expr match {
         case Ident(TermName(name)) if expr.tpe <:< typeOf[Function1[_, _]] =>
 //          println(s"   REFERNECE FN ${showRaw(expr, printTypes = true)}")
@@ -254,12 +263,14 @@ class Macros(val c: blackbox.Context) {
               q"""val $varFn : scappla.Variable[${TypeTree(typeArgs(0))}] => scappla.Variable[${TypeTree(typeArgs(1))}] =
                       in => scappla.Variable(${TermName(name)}(in.get), in.node)""")
             scope.declare(varFn, RichTree(q"$varFn", Set.empty))
-            Seq(richFn) ++ fn(scope.reference(varFn))
+            RichBlock(
+              Seq(richFn) ++ fn(scope.reference(varFn)).stmts
+            )
           }
       }
     }
 
-    def visitExpr(expr: Tree, resultVarName: Option[String] = None)(fn: RichTree => Seq[RichTree]): Seq[RichTree] = {
+    def visitExpr(expr: Tree, resultVarName: Option[String] = None)(fn: RichTree => RichBlock): RichBlock = {
       expr match {
         case Ident(TermName(name)) =>
 //          println(s"   REFERNECE ${showRaw(expr, printTypes = true)}")
@@ -273,7 +284,7 @@ class Macros(val c: blackbox.Context) {
         case q"{ ..$stmts }" if stmts.size > 1 =>
           // println(s"   BLOCK ${showCode(expr)}")
           val visitor = new BlockVisitor(scope.push())
-          val newStmts = visitor.visitBlockStmts(stmts)
+          val newStmts = visitor.visitBlockStmts(stmts).stmts
 
           // reduce list of variables to those known in the current scope
           val vars = newStmts.flatMap(_.vars).toSet.filter(scope.isDefined)
@@ -283,12 +294,14 @@ class Macros(val c: blackbox.Context) {
 
           val varDef = q"{ ..${newStmts.map(_.tree)}}"
           val varExpr = q"val $varName = $varDef"
-          Seq(RichTree(varExpr, vars)) ++
+          RichBlock(
+            Seq(RichTree(varExpr, vars)) ++
               (if (expr.tpe =:= definitions.UnitTpe) {
-                fn(RichTree(EmptyTree))
+                fn(RichTree(EmptyTree)).stmts
               } else {
-                fn(RichTree(q"$varName.get", Set(varName)))
+                fn(RichTree(q"$varName.get", Set(varName))).stmts
               })
+          )
 
         case q"if ($cond) $tExpr else $fExpr" =>
           visitExpr(cond) { condRef =>
@@ -302,20 +315,22 @@ class Macros(val c: blackbox.Context) {
             val richFalse = visitSubExpr(fExpr)
             // println(s"  IF FALSE $condRef: ${richTrue.vars}")
             val resultTree = q"$ifVar.get"
-            Seq(RichTree(
-              q"""val $ifVar = if (${condRef.tree})
-                    ${richTrue.tree}
-                  else
-                    ${richFalse.tree}""",
-              Set(ifVar)
-            )) ++ condRef.vars.map { cv =>
-              RichTree(q"$cv.node.addVariable($ifVar.node.modelScore, $ifVar.node.guideScore)")
-            } ++ fn(
-              RichTree.join(
-                resultTree,
-                RichTree.join(resultTree, richTrue, richFalse),
-                RichTree(condRef.tree, condRef.vars + ifVar)
-              )
+            RichBlock(
+              Seq(RichTree(
+                q"""val $ifVar = if (${condRef.tree})
+                      ${richTrue.tree}
+                    else
+                      ${richFalse.tree}""",
+                Set(ifVar)
+              )) ++ condRef.vars.map { cv =>
+                RichTree(q"$cv.node.addVariable($ifVar.node.modelScore, $ifVar.node.guideScore)")
+              } ++ fn(
+                RichTree.join(
+                  resultTree,
+                  RichTree.join(resultTree, richTrue, richFalse),
+                  RichTree(condRef.tree, condRef.vars + ifVar)
+                )
+              ).stmts
             )
           }
 
@@ -333,10 +348,12 @@ class Macros(val c: blackbox.Context) {
             val richResult = mappedCases.map { _._1 }.reduce(RichTree.join(result, _, _))
             val ref = RichTree.join(resultTree, matchName, richResult)
             scope.declare(matchVar, ref)
-            Seq(RichTree(
-              q"val $matchVar = $result",
-              Set(matchVar)
-            )) ++ fn(ref)
+            RichBlock(
+              Seq(RichTree(
+                q"val $matchVar = $result",
+                Set(matchVar)
+              )) ++ fn(ref).stmts
+            )
           }
 
         case q"scappla.`package`.sample[$tDist]($prior, $guide)" =>
@@ -348,12 +365,14 @@ class Macros(val c: blackbox.Context) {
               val interpreter = scope.reference(TermName("interpreter"))
               val ref = RichTree(q"$tVarName", (priorName.vars ++ guideName.vars) + tVarName)
               scope.declare(tVarName, ref)
-              Seq(
-                RichTree(
-                  q"val $tVarName = ${guideName.tree}.sample(${interpreter.tree}, ${priorName.tree})",
-                  priorName.vars ++ guideName.vars
-                )
-              ) ++ fn(ref.map { tree => q"$tree.get" })
+              RichBlock(
+                Seq(
+                  RichTree(
+                    q"val $tVarName = ${guideName.tree}.sample(${interpreter.tree}, ${priorName.tree})",
+                    priorName.vars ++ guideName.vars
+                  )
+                ) ++ fn(ref.map { tree => q"$tree.get" }).stmts
+              )
             }
           }
 
@@ -391,10 +410,12 @@ class Macros(val c: blackbox.Context) {
                   scope.declare(varResult, RichTree.join(q"$varResult", richFn, richO))
                   val result = q"$varResult.get"
                   val nodes = richO.vars.map { t => q"$t.node" }
-                  Seq(RichTree(
-                    q"val $varResult = ${richFn.tree}.apply(scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
-                  )) ++ fn(
-                    RichTree(result, richFn.vars ++ richO.vars + varResult)
+                  RichBlock(
+                    Seq(RichTree(
+                      q"val $varResult = ${richFn.tree}.apply(scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
+                    )) ++ fn(
+                      RichTree(result, richFn.vars ++ richO.vars + varResult)
+                    ).stmts
                   )
                 }
               }
@@ -425,42 +446,44 @@ class Macros(val c: blackbox.Context) {
             args.map { arg =>
               visitExpr(arg) { aName =>
                 if (!aName.isFn) {
-                  Seq(aName)
+                  RichBlock(Seq(aName))
                 } else {
                   val fnName = TermName(c.freshName())
                   needInvoVar = true
-                  Seq(
-                    RichTree(q"val $fnName = new ${aName.wrapper.get}($invoVar)"),
-                    RichTree(q"$fnName")
+                  RichBlock(
+                    Seq(
+                      RichTree(q"val $fnName = new ${aName.wrapper.get}($invoVar)"),
+                      RichTree(q"$fnName")
+                    )
                   )
                 }
               }
             }
           }
+
           val invoDefs = if (needInvoVar) {
             val invoDef = q"val $invoVar = new scappla.Invocations()"
             builder.function(invoVar)
             Seq(RichTree(invoDef))
           } else Seq.empty
           val defs = invoDefs ++ mRes.flatMap { res =>
-            res.flatMap {
-              _.dropRight(1)
-            }
+            res.flatMap { _.stmts.dropRight(1) }
           }
           val newArgs = mRes.map { res =>
-            res.map {
-              _.last.tree
-            }
+            res.map { _.stmts.last.tree }
           }
+
           visitExpr(f) { richFn =>
             val result = q"${richFn.tree}.$m[..$tpts](...$newArgs)"
-            defs ++ fn(RichTree.join(
-              result,
-              richFn,
-              mRes.flatten.flatten.reduceOption(
-                RichTree.join(result, _, _)
-              ).getOrElse(RichTree(EmptyTree))
-            ))
+            RichBlock(
+              defs ++ fn(RichTree.join(
+                result,
+                richFn,
+                mRes.flatten.map { _.stmts }.flatten.reduceOption(
+                  RichTree.join(result, _, _)
+                ).getOrElse(RichTree(EmptyTree))
+              )).stmts
+            )
           }
 
         case q"$f(..$args)" =>
@@ -469,8 +492,8 @@ class Macros(val c: blackbox.Context) {
               // println(s"APPLYING KNOWN METHOD ${fname}")
               val newArgs = args.map { o =>
                 val exprs = visitExpr(o) { richO =>
-                  Seq(richO)
-                }
+                  RichBlock(Seq(richO))
+                }.stmts
                 val richO = exprs.last
                 val nodes = richO.vars.map { t => q"$t.node" }
                 (
@@ -479,6 +502,7 @@ class Macros(val c: blackbox.Context) {
                   richO.vars
                 )
               }
+
               visitExpr(f) { richFn =>
                   val varResult = TermName(c.freshName())
                   builder.variable(varResult)
@@ -488,28 +512,35 @@ class Macros(val c: blackbox.Context) {
                     richFn.vars ++ argVars
                   ))
                   val result = q"$varResult.get"
-                  newArgs.map { _._1 }.flatten ++ Seq(RichTree(
-                    q"val $varResult = ${richFn.tree}(..${newArgs.map { _._2 }})"
-                      // scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
-                  )) ++ fn(
-                    RichTree(result, richFn.vars ++ newArgs.flatMap { _._3 } + varResult)
+                  RichBlock(
+                    newArgs.map { _._1 }.flatten ++ Seq(RichTree(
+                      q"val $varResult = ${richFn.tree}(..${newArgs.map { _._2 }})"
+                        // scappla.Variable(${richO.tree}, new scappla.Dependencies(Seq(..$nodes))))"
+                    )) ++ fn(
+                      RichTree(result, richFn.vars ++ newArgs.flatMap { _._3 } + varResult)
+                    ).stmts
                   )
               }
+
             case _ =>
               // println(s"APPLYING UNNOWN FUNCTION ${showRaw(f)}")
               val newArgs = args.map { o =>
                 val exprs = visitExpr(o) { richO =>
-                  Seq(richO)
-                }
+                  RichBlock(Seq(richO))
+                }.stmts
                 (
                   exprs.dropRight(1),
                   exprs.last
                 )
               }
+
               visitExpr(f) { richFn =>
                 val result = q"${richFn.tree}(..${newArgs.map { _._2.tree }})"
-                newArgs.map { _._1 }.flatten ++ fn(
-                  RichTree.join(result, richFn, newArgs.map { _._2 }.reduce(RichTree.join(result, _, _)))
+                RichBlock(
+                  newArgs.map { _._1 }.flatten ++
+                  fn(
+                    RichTree.join(result, richFn, newArgs.map { _._2 }.reduce(RichTree.join(result, _, _)))
+                  ).stmts
                 )
               }
           }
@@ -580,12 +611,14 @@ class Macros(val c: blackbox.Context) {
               // println(s"  VARIABLES in oDist: ${deps} => ${vars(deps.head) }")
 //              println(s" OBSERVE ${showRaw(resultTree)}")
 
-              RichTree(resultTree, richDistName.vars) +:
+              RichBlock(
+                RichTree(resultTree, richDistName.vars) +:
                   richDistName.vars.toSeq.map { v =>
                     RichTree(q"$v.node.addObservation($obName.score)")
                   }
+              )
             }
-          }
+          }.stmts
 
         // allow function name to be used when expanding rhs
         // full definition (with expanded tree) follows later
@@ -594,31 +627,31 @@ class Macros(val c: blackbox.Context) {
           val TermName(name) = tname
           val newName = TypeName(c.freshName(name))
           scope.declare(TermName(name), RichTree(q"${TermName(name)}", Set.empty, Some(newName)))
-          visitMethod(TermName(name), bargs, body)
+          Seq(visitMethod(TermName(name), bargs, body))
 
         // rewrite non-function assignments
         case q"$mods val $tname : $tpt = $rhs" =>
           val TermName(name) = tname
           visitExpr(rhs) { exprName =>
-              val fullExpr = if (rhs.tpe <:< typeOf[scappla.Value[_, _]]) {
-                builder.buffer(TermName(name))
-                exprName.map { t => q"$t.buffer"}
-              } else {
-                exprName
-              }
+            val fullExpr = if (rhs.tpe <:< typeOf[scappla.Value[_, _]]) {
+              builder.buffer(TermName(name))
+              exprName.map { t => q"$t.buffer"}
+            } else {
+              exprName
+            }
             scope.declare(TermName(name), fullExpr.copy(tree = q"${TermName(name)}"))
-            Seq(
-              fullExpr.map { t => q"val ${TermName(name)} = $t" }
+            RichBlock(
+              Seq(fullExpr.map { t => q"val ${TermName(name)} = $t" })
             )
-          }
+          }.stmts
 
         case _ if expr.tpe =:= definitions.UnitTpe =>
-          visitExpr(expr)(Seq(_))
+          visitExpr(expr)(rt => RichBlock(Seq(rt))).stmts
       }
 
     }
 
-    def visitMethod(varName: TermName, bargs: Seq[Tree], body: Tree): Seq[RichTree] = {
+    def visitMethod(varName: TermName, bargs: Seq[Tree], body: Tree): RichTree = {
       val newArgs = parseArgs(bargs)
 
       val newScope = scope.push()
@@ -633,19 +666,19 @@ class Macros(val c: blackbox.Context) {
       }
 
       val q"{..$stmts}" = body
-      val newStmts = argDecls ++ visitor.visitBlockStmts(stmts)
+      val newStmts = argDecls ++ visitor.visitBlockStmts(stmts).stmts
       val newBody = q"{..${newStmts.map { _.tree }}}"
       val newVars = newStmts.flatMap { _.vars }.toSet.filter(scope.isDefined)
     
       val newDefTree = q"def $varName(..${newArgs.map(_.newArgDecl)}): scappla.Variable[${body.tpe}] = $newBody"
-      Seq(RichTree.join(
-          newDefTree,
-          RichTree(newDefTree, newVars),
-          newArgs.map {_.inlTree}.reduce(RichTree.join(newDefTree, _, _))
-        ))
+      RichTree.join(
+        newDefTree,
+        RichTree(newDefTree, newVars),
+        newArgs.map {_.inlTree}.reduce(RichTree.join(newDefTree, _, _))
+      )
     }
 
-    def visitFunction(varName: TermName, bargs: Seq[Tree], body: Tree)(fn: RichTree => Seq[RichTree]): Seq[RichTree] = {
+    def visitFunction(varName: TermName, bargs: Seq[Tree], body: Tree)(fn: RichTree => RichBlock): RichBlock = {
       val newArgs = parseArgs(bargs)
 
       val newScope = scope.push()
@@ -666,7 +699,7 @@ class Macros(val c: blackbox.Context) {
       }
 
       val q"{..$stmts}" = body
-      val newStmts = argDecls ++ visitor.visitBlockStmts(stmts)
+      val newStmts = argDecls ++ visitor.visitBlockStmts(stmts).stmts
       val newBody = q"{..${newStmts.map { _.tree }}}"
       val newVars = newStmts.flatMap { _.vars }.toSet.filter(scope.isDefined)
       // println(s"NEW VARS: ${newVars}")
@@ -681,14 +714,16 @@ class Macros(val c: blackbox.Context) {
 
       val newDefTree = q"val $varName : $fnTpe = (..${newArgs.map(_.newArgDecl)}) => $newBody"
       // println(s"NEW DEF: ${showCode(newDefTree)}")
-      Seq(
-        RichTree.join(
-          newDefTree,
-          RichTree(newDefTree, newVars),
-          newArgs.map {_.inlTree}.reduce(RichTree.join(newDefTree, _, _))
-        ),
-        RichTree(wrapperDef)
-      ) ++ fn(scope.reference(varName))
+      RichBlock(
+        Seq(
+          RichTree.join(
+            newDefTree,
+            RichTree(newDefTree, newVars),
+            newArgs.map {_.inlTree}.reduce(RichTree.join(newDefTree, _, _))
+          ),
+          RichTree(wrapperDef)
+        ) ++ fn(scope.reference(varName)).stmts
+      )
     }
 
     def fnWrapper(varName: TermName, newArgs: Seq[RichArg], bodyTpe: Type): (TypeName, Tree) = {
@@ -724,7 +759,7 @@ class Macros(val c: blackbox.Context) {
           // println(s"    FN VALDEF ${showRaw(arg)}")
           val TermName(tname) = arg
           val newArgName = TermName(c.freshName(tname))
-          val inlExpr = toExpr(visitExpr(argExpr)(Seq(_)), scope)
+          val inlExpr = toExpr(visitExpr(argExpr)(rt => RichBlock(Seq(rt))), scope)
           RichArg(
             mods,
             tpt,
@@ -764,19 +799,23 @@ class Macros(val c: blackbox.Context) {
       }
     }
 
-    def visitSubExpr(tExpr: Tree) = {
+    def visitSubExpr(tExpr: Tree): RichTree = {
       // println(s"VISITING SUB EXPR ${showCode(tExpr)} (${tExpr.tpe})")
       val newScope = scope.push()
       val subVisitor = new BlockVisitor(newScope)
       val newSubStmts = if (tExpr.tpe =:= definitions.UnitTpe) {
         // println(s"   UNIT TPE EXPR (${tExpr.tpe})")
-        subVisitor.visitStmt(tExpr) :+
+        RichBlock(
+          subVisitor.visitStmt(tExpr) :+
             subVisitor.builder.build(newScope, RichTree(EmptyTree), definitions.UnitTpe)
+        )
       } else {
         // println(s"   NON UNIT TPE EXPR (${tExpr.tpe})")
         subVisitor.visitExpr(tExpr) { rtLast =>
           // println(s"LAST EXPR IN SUB EXPR: ${showCode(rtLast.tree)}")
-          Seq(subVisitor.builder.build(newScope, rtLast, tExpr.tpe))
+          RichBlock(
+            Seq(subVisitor.builder.build(newScope, rtLast, tExpr.tpe))
+          )
         }
       }
       val result = toExpr(newSubStmts, scope)
@@ -800,7 +839,8 @@ class Macros(val c: blackbox.Context) {
       }
     }
 
-    def toExpr(exprs: Seq[RichTree], scope: Scope): RichTree = {
+    def toExpr(block: RichBlock, scope: Scope): RichTree = {
+      val exprs = block.stmts
       if (exprs.size == 1) {
         val head = exprs.head
         RichTree(
@@ -824,7 +864,7 @@ class Macros(val c: blackbox.Context) {
 
     val q"{..$stmts}" = fn.tree
     val visitor = new BlockVisitor(new Scope(Map(TermName("interpreter") -> RichTree(q"interpreter"))))
-    val newStmts = visitor.visitBlockStmts(stmts)
+    val newStmts = visitor.visitBlockStmts(stmts).stmts
     val newBody =
       q"""new scappla.Model[$xType] {
 
