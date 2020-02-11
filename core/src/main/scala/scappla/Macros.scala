@@ -40,7 +40,11 @@ class Macros(val c: blackbox.Context) {
       // has type
       //   f': Variable[A] => Variable[B]
       // the wrapper then again has type A => B
-      wrapper: Option[TypeName] = None
+      wrapper: Option[TypeName] = None,
+
+      // arguments that the tree depends on
+      // only available when the tree is a function
+      args: Set[Int] = Set.empty
   ) {
 
     val isFn = {
@@ -360,7 +364,9 @@ class Macros(val c: blackbox.Context) {
             setup,
             RichTree(
               q"$ifVar.get",
-              (condRef.result.vars ++ richTrue.vars ++ richFalse.vars) + ifVar
+              (condRef.result.vars ++ richTrue.vars ++ richFalse.vars)
+                .filter(rv => !scope.isDeclared(rv)) +
+                ifVar
             )
           )
 
@@ -441,23 +447,23 @@ class Macros(val c: blackbox.Context) {
             case Ident(TermName(fname))
                 if scope.isDefined(fname) && scope.reference(fname).isFn =>
               // println(s"APPLYING FN ${fname}")
-              val richFn = visitExpr(f)
+              val richFn = scope.reference(fname)
               val richO = visitExpr(o)
               val varResult = TermName(c.freshName())
               builder.variable(varResult)
               scope.declare(varResult, RichTree(EmptyTree))
 
-              val vars = richFn.result.vars ++ richO.result.vars
+              val vars = richFn.vars ++ richO.result.vars
+              val argVars = Seq(richO.result.vars)
               RichBlock(
-                (richFn.setup ++
-                  richO.setup :+
-                  q"val $varResult = ${richFn.result.tree}.apply(${richO.result.tree})") ++
+                (richO.setup :+
+                  q"val $varResult = ${richFn.tree}.apply(${richO.result.tree})") ++
                   vars.filter(scope.isDeclared).toSeq.map { rv =>
                     q"$rv.node.addVariable($varResult.node.modelScore, $varResult.node.guideScore)"
                   },
                 RichTree(
                   q"$varResult.get",
-                  vars.filter(rv => !scope.isDeclared(rv)) + varResult
+                  richFn.args.flatMap { i => argVars(i) } + varResult
                 )
               )
 
@@ -723,14 +729,14 @@ class Macros(val c: blackbox.Context) {
     def visitFunction(varName: TermName, bargs: Seq[Tree], body: Tree): RichBlock = {
       val newArgs = parseArgs(bargs)
 
-      val newScope = scope.push()
-
-      val visitor = new BlockVisitor(newScope)
+      val argScope = scope.push()
       newArgs.foreach { arg =>
-        newScope.declare(arg.origName, RichTree(q"${arg.origName}", Set.empty))
+        argScope.declare(arg.origName, RichTree(q"${arg.origName}", Set(arg.origName)))
       }
+      val newScope = argScope.push()
 
       val q"{..$stmts}" = body
+      val visitor = new BlockVisitor(newScope)
       val block = visitor.visitBlockStmts(stmts)
       val newStmts = block.setup :+ block.result.tree
       val newBody = q"{..${newStmts}}"
@@ -748,7 +754,17 @@ class Macros(val c: blackbox.Context) {
 
       val (wrapperName, wrapperDef) = newFnWrapper(varName, newArgs, body.tpe)
       // println(s"WRAPPER: ${showCode(wrapper)}")
-      scope.declare(varName, RichTree(q"$varName", block.result.vars, Some(wrapperName)))
+      scope.declare(
+        varName,
+        RichTree(
+          q"$varName",
+          block.result.vars.filter(v => !argScope.isDeclared(v)),
+          Some(wrapperName),
+          newArgs.zipWithIndex.filter {
+            case (arg, index) => block.result.vars.contains(arg.origName)
+          }.map { _._2 }.toSet
+        )
+      )
 
       val newDefTree = q"val $varName : $fnTpe = (..${newArgs.map(_.oldArgDecl)}) => $newBody"
       // println(s"NEW DEF: ${showCode(newDefTree)}")
