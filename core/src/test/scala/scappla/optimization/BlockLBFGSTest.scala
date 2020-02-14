@@ -42,7 +42,7 @@ class BlockLBFGSTest extends FlatSpec {
       for {iter <- 0 until N} {
         val xBuf = xParam.buffer
         val yBuf = yParam.buffer
-        println(s"x: ${xBuf.v}, y: ${yBuf.v} (iter $iter)")
+        // println(s"x: ${xBuf.v}, y: ${yBuf.v} (iter $iter)")
         val value = f(xBuf, yBuf)
         value.dv(1.0)
         xBuf.complete()
