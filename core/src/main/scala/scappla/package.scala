@@ -113,34 +113,30 @@ package object scappla {
     override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
   }
 
-  class Dependencies(upstream: Seq[BayesNode]) extends BayesNode {
+  class AccumulatorNode extends BayesNode with Completeable {
+    private var nodes: List[BayesNode] = Nil
 
-    val modelScore = 0.0
-
-    val guideScore = 0.0
-
-    override def addObservation(score: Score): Unit = {
-      for { v <- upstream } v.addObservation(score)
-    }
-
-    override def addVariable(modelScore: Score, guideScore: Score): Unit = {
-      for { v <- upstream } {
-        v.addVariable(modelScore, guideScore)
+    override def modelScore: Score = {
+      nodes.foldLeft(0.0: Real) {
+        case (sum, node) =>
+          sum + node.modelScore
       }
     }
 
-    override def complete(): Unit = {}
-  }
+    override def guideScore: Score = {
+      nodes.foldLeft(0.0: Real) {
+        case (sum, node) =>
+          sum + node.guideScore
+      }
+    }
 
-  case class Variable[A](get: A, node: BayesNode)
+    override def addObservation(score: Score): Unit = {
+      nodes.foreach(_.addObservation(score))
+    }
 
-  object Variable extends LazyLogging {
-
-    implicit def toConstant[A](value: A): Variable[A] = Variable[A](value, ConstantNode)
-  }
-
-  class Invocations extends Completeable {
-    private var nodes: List[Completeable] = Nil
+    override def addVariable(modelScore: Score, guideScore: Score): Unit = {
+      nodes.foreach(_.addVariable(modelScore, guideScore))
+    }
 
     def add(node: BayesNode): Unit = {
       nodes = node :: nodes
@@ -150,4 +146,12 @@ package object scappla {
       nodes.foreach(_.complete())
     }
   }
+
+  case class Variable[A](get: A, node: BayesNode)
+
+  object Variable extends LazyLogging {
+
+    implicit def toConstant[A](value: A): Variable[A] = Variable[A](value, ConstantNode)
+  }
+
 }
