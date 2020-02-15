@@ -113,21 +113,48 @@ package object scappla {
     override def addVariable(modelScore: Score, guideScore: Score): Unit = {}
   }
 
-  class AccumulatorNode extends BayesNode with Completeable {
+  class Accumulator {
     private var nodes: List[BayesNode] = Nil
 
-    override def modelScore: Score = {
-      nodes.foldLeft(0.0: Real) {
-        case (sum, node) =>
-          sum + node.modelScore
-      }
+    def add(node: BayesNode): Unit = {
+      nodes = node :: nodes
     }
 
-    override def guideScore: Score = {
-      nodes.foldLeft(0.0: Real) {
-        case (sum, node) =>
-          sum + node.guideScore
+    def toVariable[A](value: A): Variable[A] = {
+      Variable(
+        value,
+        new AccumulatorNode(nodes)
+      )
+    }
+  }
+
+  class AccumulatorNode(nodes: List[BayesNode]) extends BayesNode with Completeable {
+
+    private var model: Option[Buffered[Double, Unit]] = None
+    private var guide: Option[Buffered[Double, Unit]] = None
+
+    override def modelScore: Score = {
+      if (model.isEmpty) {
+        model = Some({
+          nodes.foldLeft(0.0: Real) {
+            case (sum, node) =>
+              sum + node.modelScore
+          }
+        }.buffer)
       }
+      model.get
+    }
+
+    override def guideScore: Buffered[Double, Unit] = {
+      if (guide.isEmpty) {
+        guide = Some({
+          nodes.foldLeft(0.0: Real) {
+            case (sum, node) =>
+              sum + node.guideScore
+          }
+        }.buffer)
+      }
+      guide.get
     }
 
     override def addObservation(score: Score): Unit = {
@@ -138,11 +165,9 @@ package object scappla {
       nodes.foreach(_.addVariable(modelScore, guideScore))
     }
 
-    def add(node: BayesNode): Unit = {
-      nodes = node :: nodes
-    }
-
     def complete(): Unit = {
+      model.foreach { _.complete() }
+      guide.foreach { _.complete() }
       nodes.foreach(_.complete())
     }
   }
