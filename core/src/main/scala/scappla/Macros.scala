@@ -186,11 +186,6 @@ class Macros(val c: blackbox.Context) {
       this
     }
 
-    def function(o: TermName): VariableAggregator = {
-      completeable += q"$o"
-      this
-    }
-
     def buffer(o: TermName): VariableAggregator = {
       completeable += q"$o"
       this
@@ -520,10 +515,10 @@ class Macros(val c: blackbox.Context) {
 
           val resultName = TermName(c.freshName())
           val accumulatorPrePostDefs = if (needAccumulator) {
-            builder.function(accumulator)
+            builder.variable(accumulatorVar)
             Some((
-              q"val $accumulator = new scappla.AccumulatorNode()",
-              q"val $accumulatorVar = scappla.Variable($resultName, $accumulator)"
+              q"val $accumulator = new scappla.Accumulator()",
+              q"val $accumulatorVar = $accumulator.toVariable($resultName)"
             ))
           } else None
 
@@ -545,7 +540,7 @@ class Macros(val c: blackbox.Context) {
               ) ++ accumulatorPrePostDefs.toSeq.flatMap { case (_, vardef) =>
                 vardef +:
                   vars.filter(scope.isDeclared).toSeq.map { rv =>
-                    q"$rv.node.addVariable($accumulator.modelScore, $accumulator.guideScore)"
+                    q"$rv.node.addVariable($accumulatorVar.node.modelScore, $accumulatorVar.node.guideScore)"
                   }
               },
               RichTree(
@@ -819,7 +814,7 @@ class Macros(val c: blackbox.Context) {
       val newName = TypeName(c.freshName(tName))
       (
         newName,
-        q"""class ${newName}(accumulator: scappla.AccumulatorNode) extends $fnWrapperTpe {
+        q"""class ${newName}(accumulator: scappla.Accumulator) extends $fnWrapperTpe {
 
             def apply(..${newArgs.map { arg =>
                 q"${arg.mods} val ${arg.origName}: ${arg.tpe}"
@@ -844,7 +839,7 @@ class Macros(val c: blackbox.Context) {
       val newName = TypeName(c.freshName(tName))
       (
         newName,
-        q"""class ${newName}(accumulator: scappla.AccumulatorNode) extends $fnWrapperTpe {
+        q"""class ${newName}(accumulator: scappla.Accumulator) extends $fnWrapperTpe {
 
             def apply(..${newArgs.map { arg =>
                 q"${arg.mods} val ${arg.origName}: ${arg.tpe}"
