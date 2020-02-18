@@ -131,7 +131,7 @@ class Macros(val c: blackbox.Context) {
 
   class Scope(known: Map[TermName, RichTree]) {
 
-    private val refs: mutable.HashMap[TermName, RichTree] = mutable.HashMap.empty
+    val refs: mutable.HashMap[TermName, RichTree] = mutable.HashMap.empty
     private val referenced: mutable.Set[TermName] = mutable.Set.empty
 
     def isDefined(v: TermName): Boolean = {
@@ -174,24 +174,41 @@ class Macros(val c: blackbox.Context) {
 
     private val completeable: mutable.ListBuffer[Tree] = new mutable.ListBuffer()
 
+    private var built = false
+
     def variable(v: TermName): VariableAggregator = {
+      if (built) {
+        throw new RuntimeException("Builder already complete - cannot add variable")
+      }
       vars += v
       completeable += q"$v.node"
       this
     }
 
     def observation(o: TermName): VariableAggregator = {
+      if (built) {
+        throw new RuntimeException("Builder already complete - cannot add observation")
+      }
       obs += o
       completeable += q"$o"
       this
     }
 
     def buffer(o: TermName): VariableAggregator = {
+      if (built) {
+        throw new RuntimeException("Builder already complete - cannot add buffer")
+      }
       completeable += q"$o"
       this
     }
 
+    override def toString(): String = {
+      s"  VARS: ${vars.mkString(",")}; OBS: ${obs.mkString(",")}"
+    }
+
     def build(scope: Scope, result: RichTree, tpe: Type): RichTree = {
+      built = true
+      // println(s"    BUILDING $this (${scope.refs}) - ${result.vars.filter(scope.isDeclared)}")
       val tree = if (obs.isEmpty
           && vars.isEmpty
           && completeable.isEmpty
@@ -258,20 +275,21 @@ class Macros(val c: blackbox.Context) {
       val setup :+ last = stmts
       val richSetup = setup.flatMap(t => visitStmt(t))
 //      println(s"   TPE: ${last.tpe}")
-      (if (last.tpe =:= definitions.UnitTpe) {
+      /*if (last.tpe =:= definitions.UnitTpe) {
+        val lastSetup = visitStmt(last)
         val lastVar = builder.build(scope, RichTree(EmptyTree), definitions.UnitTpe)
         RichBlock(
-          richSetup ++ visitStmt(last),
+          richSetup ++ lastSetup,
           lastVar
         )
-      } else {
+      } else { */
         val lastBlock = visitExpr(last) 
         val lastExpr = builder.build(scope, lastBlock.result, last.tpe)
         RichBlock(
           richSetup ++ lastBlock.setup,
           lastExpr
         )
-      })
+      //}
     }
 
     def visitApply(expr: Tree): RichBlock = {
@@ -320,12 +338,12 @@ class Macros(val c: blackbox.Context) {
           val vars = newStmts.result.vars.toSet.filter(scope.isDefined)
 
           val varDef = q"{ ..${newStmts.setup :+ newStmts.result.tree}}"
-          if (expr.tpe =:= definitions.UnitTpe) {
+          /*if (expr.tpe =:= definitions.UnitTpe) {
             RichBlock(
               Seq(varDef),
-              RichTree(EmptyTree)
+              RichTree(EmptyTree, vars)
             )
-          } else {
+          } else { */
             val varName = TermName(c.freshName())
             builder.variable(varName)
             scope.declare(varName, RichTree(EmptyTree))
@@ -335,7 +353,7 @@ class Macros(val c: blackbox.Context) {
               Seq(varExpr),
               RichTree(q"$varName.get", vars)
             )
-          }
+          // }
 
         case q"if ($cond) $tExpr else $fExpr" =>
           for {
@@ -381,12 +399,13 @@ class Macros(val c: blackbox.Context) {
           val mappedCases = cases.map { c =>
             val cq"$when => $result" = c
             val richResult = visitSubExpr(result)
-            (richResult, cq"${reIdentPat(when)} => ${richResult.tree}")
+            // println(s"   CASE (${richResult.vars}): ${showCode(richResult.tree)}")
+            (richResult.vars, cq"${reIdentPat(when)} => ${richResult.tree}")
           }
 
           val matchName = visitExpr(expr)
           val matchVar = TermName(c.freshName())
-          val caseVars = mappedCases.map { _._1.vars }.flatten
+          val caseVars = mappedCases.map { _._1 }.flatten
           builder.variable(matchVar)
           scope.declare(matchVar, RichTree(EmptyTree))
 
@@ -495,7 +514,6 @@ class Macros(val c: blackbox.Context) {
         case q"$f.$m[..$tpts](...$mArgs)" if mArgs.size > 0 =>
           // println(s"  FN MATCH (TYPE: ${expr.tpe}) ${showCode(expr)}")
           val accumulator = TermName(c.freshName())
-          val accumulatorVar = TermName(c.freshName())
           var needAccumulator = false
           val mRes = (mArgs: List[List[Tree]]).map { args =>
             args.map { arg =>
@@ -513,41 +531,44 @@ class Macros(val c: blackbox.Context) {
             }
           }
 
-          val resultName = TermName(c.freshName())
-          val accumulatorPrePostDefs = if (needAccumulator) {
-            builder.variable(accumulatorVar)
-            Some((
-              q"val $accumulator = new scappla.Accumulator()",
-              q"val $accumulatorVar = $accumulator.toVariable($resultName)"
-            ))
-          } else None
-
-          val defs = accumulatorPrePostDefs.map { _._1 } ++ mRes.flatMap { res =>
-            res.flatMap { _.setup }
-          }
-          val newArgs = mRes.map { res =>
-            res.map { _.result.tree }
-          }
-
           for {
             richFn <- visitExpr(f)
           } yield {
+            val defs = mRes.flatMap { res =>
+              res.flatMap { _.setup }
+            }
+            val newArgs = mRes.map { res =>
+              res.map { _.result.tree }
+            }
             val vars = richFn.vars ++ mRes.flatten.flatMap { _.result.vars }
-            RichBlock(
-              (
-                defs.toSeq :+
-                q"val $resultName = ${richFn.tree}.$m[..$tpts](...$newArgs)"
-              ) ++ accumulatorPrePostDefs.toSeq.flatMap { case (_, vardef) =>
-                vardef +:
-                  vars.filter(scope.isDeclared).toSeq.map { rv =>
-                    q"$rv.node.addVariable($accumulatorVar.node.modelScore, $accumulatorVar.node.guideScore)"
-                  }
-              },
-              RichTree(
-                q"$resultName",
-                vars + accumulatorVar
+
+            if (!needAccumulator) {
+              RichBlock(
+                defs.toSeq,
+                RichTree(
+                  q"${richFn.tree}.$m[..$tpts](...$newArgs)",
+                  vars
+                )
               )
-            )
+            } else {
+              val resultName = TermName(c.freshName())
+              val accumulatorVar = TermName(c.freshName())
+              builder.variable(accumulatorVar)
+              scope.declare(accumulatorVar, RichTree(EmptyTree))
+
+              RichBlock(
+                (q"val $accumulator = new scappla.Accumulator()" +: defs.toSeq :+
+                q"val $resultName = ${richFn.tree}.$m[..$tpts](...$newArgs)" :+ 
+                q"val $accumulatorVar = $accumulator.toVariable($resultName)") ++
+                vars.filter(scope.isDeclared).toSeq.map { rv =>
+                  q"$rv.node.addVariable($accumulatorVar.node.modelScore, $accumulatorVar.node.guideScore)"
+                },
+                RichTree(
+                  q"$resultName",
+                  vars + accumulatorVar
+                )
+              )
+            }
           }
 
         case q"$f(..$args)" =>
@@ -577,7 +598,7 @@ class Macros(val c: blackbox.Context) {
               }
 
             case _ =>
-              // println(s"APPLYING UNNOWN FUNCTION ${showRaw(f)}")
+              println(s"APPLYING UNNOWN FUNCTION ${showRaw(f)}")
               for {
                 richFn <- visitExpr(f)
               } yield {
@@ -724,7 +745,7 @@ class Macros(val c: blackbox.Context) {
 
         case _ if expr.tpe =:= definitions.UnitTpe =>
           val rt = visitExpr(expr)
-          rt.setup
+          rt.setup :+ rt.result.tree
       }
 
     }
@@ -909,15 +930,17 @@ class Macros(val c: blackbox.Context) {
       val subVisitor = new BlockVisitor(newScope)
       val newSubStmts = if (tExpr.tpe =:= definitions.UnitTpe) {
         // println(s"   UNIT TPE EXPR (${tExpr.tpe})")
-        val result = subVisitor.builder.build(newScope, RichTree(EmptyTree), definitions.UnitTpe)
+        val stmts = subVisitor.visitStmt(tExpr)
+        // println(s" (UNIT TPE) BUILDER: ${subVisitor.builder}")
         RichBlock(
-          subVisitor.visitStmt(tExpr),
-          result
+          stmts,
+          subVisitor.builder.build(newScope, RichTree(EmptyTree), definitions.UnitTpe)
         )
       } else {
         // println(s"   NON UNIT TPE EXPR (${tExpr.tpe})")
         val rtLast = subVisitor.visitExpr(tExpr)
-        // println(s"LAST EXPR IN SUB EXPR: ${showCode(rtLast.tree)}")
+        // println(s"LAST EXPR IN SUB EXPR: ${showCode(rtLast.result.tree)}")
+        // println(s" (NUNIT TPE) BUILDER: ${subVisitor.builder}")
         RichBlock(
           rtLast.setup,
           subVisitor.builder.build(newScope, rtLast.result, tExpr.tpe)
