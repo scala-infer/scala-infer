@@ -16,7 +16,13 @@ case class Categorical[S <: Dim[_], D: TensorData](pExpr: Expr[D, S]) extends Di
     val totalv = interpreter.eval(total)
     val draw = Random.nextDouble() * totalv.v
     val cs = cumsum(p, p.shape)
-    count(cs, GreaterThan(draw.toFloat))
+    val index = p.shape.size - count(cs, GreaterThan(draw.toFloat))
+    if (index == p.shape.size) {
+      // rounding error - should occur only very rarely
+      p.shape.size - 1
+    } else {
+      index
+    }
   }
 
   override def observe(interpreter: Interpreter, index: Int): Score = {
