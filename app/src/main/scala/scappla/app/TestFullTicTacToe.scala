@@ -114,23 +114,27 @@ object TestFullTicTacToe extends App {
   case class BoardDim(size: Int) extends Dim[BoardDim]
 
   case class Guide(
-      prior_param: Expr[ArrayTensor, BoardDim],
-      posterior_param: Expr[ArrayTensor, BoardDim],
-      size: Int
+    initial: ArrayTensor,
+    prior_param: Value[ArrayTensor, BoardDim],
+    boardDim: BoardDim,
+    size: Int
   ) {
-    // implicit val gridField = implicitly[TensorField[ArrayTensor, BoardDim]]
-    // val posterior = DiscreteGuide(Categorical(posterior_param), size)
-    val posterior = BBVIGuide(Categorical(posterior_param))
-    def prior = Categorical(prior_param)
+    def prior = Categorical(ConstantExpr(exp(prior_param)))
+
+    val posterior_param = Param(initial, boardDim)
+    val posterior = BBVIGuide(Categorical(exp(posterior_param)))
+
+    def step(interpreter: Interpreter): Unit = {
+      val pp_value = interpreter.eval(posterior_param)
+      prior_param.dv((pp_value - prior_param).v)
+    }
   }
 
   object Guide {
     private val guides: scala.collection.mutable.Map[Board, Guide] =
       scala.collection.mutable.Map.empty
 
-    def reset: Unit = {
-      guides.clear()
-    }
+    private val learner = new Learner(0.5)
 
     def size: Int = guides.size
 
@@ -147,9 +151,7 @@ object TestFullTicTacToe extends App {
       val boardDim = BoardDim(free.size)
       val initial = ArrayTensor(boardDim.sizes, Array.fill(free.size)(0f))
 
-      val prior_param = ConstantExpr(exp(Constant(initial, boardDim)))
-      val posterior_param = exp(Param(initial, boardDim))
-      Guide(prior_param, posterior_param, free.size)
+      Guide(initial, learner.param(initial, boardDim), boardDim, free.size)
     }
   }
 
@@ -193,7 +195,6 @@ object TestFullTicTacToe extends App {
   val board = Board()
   val optimizer = new Adam(0.01)
   val interpreter = new scappla.OptimizingInterpreter(optimizer)
-  Guide.reset
   var wins = Map.empty[Tag, Int].withDefaultValue(0)
   var sequences = Map.empty[Seq[Tuple2[Int, Int]], Int].withDefaultValue(0)
   // for { iter <- 1 until 1000001 } {
@@ -201,6 +202,11 @@ object TestFullTicTacToe extends App {
   while (true) {
     interpreter.reset()
     val (sequence: Seq[Tuple2[Int, Int]], winner) = model.sample(interpreter)
+    sequence.foldLeft((startBoard, startTag: Tag)) {
+      case ((board, tag), (x, y)) =>
+        Guide(board).step(interpreter)
+        (board.play(x, y, tag.switch), tag.switch)
+    }
     wins = wins + (winner -> (wins(winner) + 1))
     sequences = sequences + (sequence -> (sequences(sequence) + 1))
     if (iter % 10000 == 0) {
@@ -227,6 +233,30 @@ object TestFullTicTacToe extends App {
       // lastBoard.strLines.foreach(println _)
     }
     iter += 1
+  }
+
+}
+
+class Learner(lr: Double) extends Optimizer {
+
+  override def param[X, S](initial: X, shp: S, name: Option[String])(implicit bf: BaseField[X, S]): Value[X, S] = {
+    new Value[X, S] {
+
+      private var value = initial
+
+      override def field = bf
+
+      override val shape = shp
+
+      def v: X = value
+
+      def dv(delta: X): Unit = {
+        value = bf.plus(
+          value,
+          field.times(delta, bf.fromDouble(lr, shp))
+        )
+      }
+    }
   }
 
 }
