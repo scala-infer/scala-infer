@@ -1,7 +1,5 @@
 package scappla.test
 
-import scala.reflect.runtime.universe._
-
 import scappla._
 import scappla.distributions._
 import scala.collection.compat.BuildFrom
@@ -57,33 +55,48 @@ class CompiledInference {
     def apply(t: Option[T]): DataType
   }
 
-  trait LowPrioDataFactory {
+  object DataFactory {
 
-    implicit def aux[T](
+    def apply[T](
         implicit o: DataFactory[T]
     ): DataFactory.Aux[T, o.DataType] = o
-  }
 
-  object DataFactory extends LowPrioDataFactory {
-
-    type Aux[T, ET0] = DataFactory[T] {
+    type Aux[T, ET0 <: Data[T]] = DataFactory[T] {
       type DataType = ET0
     }
 
-    implicit val realFactory: DataFactory[Real] = new DataFactory[Real] {
+    implicit val boolFactory: DataFactory.Aux[Boolean, BoolData] = new DataFactory[Boolean] {
+
+      type DataType = BoolData
+
+      def apply(b: Option[Boolean]) = new BoolData(b)
+    }
+
+    implicit val realFactory: DataFactory.Aux[Real, RealData] = new DataFactory[Real] {
 
       type DataType = RealData
 
       def apply(t: Option[Real]): RealData = new RealData(t)
     }
 
-    implicit def listFactory[T, ET <: Data[T]](
-        implicit edf: DataFactory.Aux[T, ET]
-    ): DataFactory[List[T]] = new DataFactory[List[T]] {
+    implicit def listFactory[T](
+        implicit edf: DataFactory[T]
+    ): DataFactory.Aux[List[T], ListData[T, edf.DataType]] = new DataFactory[List[T]] {
 
-      type DataType = ListData[T, ET]
+      type DataType = ListData[T, edf.DataType]
 
       def apply(t: Option[List[T]]): DataType = new ListData(t)(edf)
+    }
+
+    implicit def tupleFactory[T1, T2](
+        implicit
+        edf1: DataFactory[T1],
+        edf2: DataFactory[T2]
+    ): DataFactory.Aux[(T1, T2), TupleData[T1, T2, edf1.DataType, edf2.DataType]] = new DataFactory[(T1, T2)] {
+
+      type DataType = TupleData[T1, T2, edf1.DataType, edf2.DataType]
+
+      def apply(v: Option[(T1, T2)]): DataType = new TupleData(v)(edf1, edf2)
     }
   }
 
@@ -99,14 +112,14 @@ class CompiledInference {
 
     lazy val value: List[T] = observation.getOrElse(builder.get.build)
 
-    def isEmpty: BoolData = {
+    lazy val isEmpty: BoolData = {
       if (observation.isEmpty)
         builder.get.empty
       else
         new BoolData(Some(observation.get.isEmpty))
     }
 
-    def head: ET = {
+    lazy val head: ET = {
       if (observation.isDefined) {
         elFactory(observation.map { _.head })
       } else {
@@ -114,7 +127,7 @@ class CompiledInference {
       }
     }
 
-    def tail: ListData[T, ET] = {
+    lazy val tail: ListData[T, ET] = {
       if (observation.isDefined) {
         new ListData(Some(observation.get.tail))
       } else {
@@ -122,7 +135,7 @@ class CompiledInference {
       }
     }
 
-    private case class ObsBuilder() {
+    private class ObsBuilder() {
       lazy val empty: BoolData = new BoolData(None)
       lazy val head: ET = elFactory(None)
       lazy val tail: ListData[T, ET] = new ListData(None)
@@ -134,6 +147,44 @@ class CompiledInference {
           head.value :: tail.value
         }
       }
+    }
+  }
+
+  class TupleData[T1, T2, ET1 <: Data[T1], ET2 <: Data[T2]](
+      observation: Option[(T1, T2)]
+  )(
+      implicit
+      elf1: DataFactory.Aux[T1, ET1],
+      elf2: DataFactory.Aux[T2, ET2]
+  ) extends Data[(T1, T2)] {
+
+    private val builder: Option[Builder] =
+      if (observation.isEmpty) Some(new Builder()) else None
+
+    lazy val value: (T1, T2) =
+      observation.getOrElse(builder.get.build)
+
+    lazy val _1: ET1 = {
+      if (observation.isDefined) {
+        elf1(observation.map { _._1 })
+      } else {
+        builder.get._1
+      }
+    }
+
+    lazy val _2: ET2 = {
+      if (observation.isDefined) {
+        elf2(observation.map { _._2 })
+      } else {
+        builder.get._2
+      }
+    }
+
+    private class Builder {
+      lazy val _1: ET1 = elf1(None)
+      lazy val _2: ET2 = elf2(None)
+
+      def build: (T1, T2) = (_1.value, _2.value)
     }
   }
 
@@ -151,6 +202,7 @@ class CompiledInference {
 
   val obs = Data(List(1.0: Real, 2.0: Real))
   val realData = Data(1.0: Real)
+  val tupleData = Data((1.0: Real, false))
 
   val values = generate(obs)
 }
