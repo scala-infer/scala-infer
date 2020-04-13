@@ -33,7 +33,7 @@ lazy val nd4j = (project in file("nd4j")).settings(
   moduleName := "scala-infer-nd4j",
   libraryDependencies ++= Seq(
     "org.nd4j"                    % "nd4j-native-platform" % "1.0.0-beta5",
-    "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
+    "org.scalatest"              %% "scalatest"          % "3.1.1" % "test"
   ),
   skip in publish := false,
   licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0")) //,

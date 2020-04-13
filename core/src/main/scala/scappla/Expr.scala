@@ -6,7 +6,6 @@ import scappla.optimization.Optimizer
 
 import scala.collection.mutable
 import scala.collection.AbstractIterator
-import scala.collection.generic.CanBuildFrom
 import scappla.tensor.Tensor.TensorField
 
 sealed trait Expr[X, S] {

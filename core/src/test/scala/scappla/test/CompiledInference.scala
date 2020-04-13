@@ -6,7 +6,9 @@ import scala.collection.compat.BuildFrom
 
 class CompiledInference {
 
-  trait Data[T] {
+  trait Data {
+
+    type Type
 
     /**
       * The value of the data.  Known when used to wrap observational data,
@@ -18,23 +20,27 @@ class CompiledInference {
       * known when the forward pass has completed and sufficient information
       * has been provided.
       */
-    def value: T
+    def value: Type
   }
 
   object Data {
 
-    def apply[T, DT <: Data[T]](
+    def apply[T, DT <: Data.Aux[T]](
         value: T
     )(implicit df: DataFactory.Aux[T, DT]): DT =
       df(Some(value))
+
+    type Aux[T] = Data { type Type = T }
   }
 
   /**
     * Primitive data types can be sampled directly from (or observed for) elemental
     * probability distributions that are able to calculate (normalized) likelihoods.
     */
-  class Primitive[T](observation: Option[T]) extends Data[T] {
+  class Primitive[T](observation: Option[T]) extends Data {
     private var sample: Option[T] = None
+
+    type Type = T
 
     lazy val value: T = observation.getOrElse(sample.get)
 
@@ -44,82 +50,86 @@ class CompiledInference {
     }
   }
 
-  type RealData = Primitive[Real]
+  type RealD = Primitive[Real]
 
-  type BoolData = Primitive[Boolean]
+  type BoolD = Primitive[Boolean]
 
-  trait DataFactory[T] {
+  trait DataFactory[DT] {
 
-    type DataType <: Data[T]
+    type Type
 
-    def apply(t: Option[T]): DataType
+    def apply(t: Option[Type]): DT
   }
 
   object DataFactory {
 
-    def apply[T](
-        implicit o: DataFactory[T]
-    ): DataFactory.Aux[T, o.DataType] = o
+    def apply[T, DT <: Data.Aux[T]](
+        implicit o: DataFactory.Aux[T, DT]
+    ): DataFactory.Aux[T, DT] = o
 
-    type Aux[T, ET0 <: Data[T]] = DataFactory[T] {
-      type DataType = ET0
-    }
+    type Aux[T, DT] = DataFactory[DT] { type Type = T }
 
-    implicit val boolFactory: DataFactory.Aux[Boolean, BoolData] = new DataFactory[Boolean] {
+    implicit val boolFactory: DataFactory.Aux[Boolean, BoolD] =
+      new DataFactory[BoolD] {
 
-      type DataType = BoolData
+        type Type = Boolean
 
-      def apply(b: Option[Boolean]) = new BoolData(b)
-    }
+        def apply(b: Option[Boolean]) = new BoolD(b)
+      }
 
-    implicit val realFactory: DataFactory.Aux[Real, RealData] = new DataFactory[Real] {
+    implicit val realFactory: DataFactory.Aux[Real, RealD] =
+      new DataFactory[RealD] {
 
-      type DataType = RealData
+        type Type = Real
 
-      def apply(t: Option[Real]): RealData = new RealData(t)
-    }
+        def apply(t: Option[Real]): RealD = new RealD(t)
+      }
 
-    implicit def listFactory[T](
-        implicit edf: DataFactory[T]
-    ): DataFactory.Aux[List[T], ListData[T, edf.DataType]] = new DataFactory[List[T]] {
+    implicit def listFactory[T, DT <: Data.Aux[T]](
+        implicit edf: DataFactory.Aux[T, DT]
+    ): DataFactory.Aux[List[T], ListD[DT] { type Type = List[T] }] =
+      new DataFactory[ListD[DT] { type Type = List[T] }] {
 
-      type DataType = ListData[T, edf.DataType]
+        type Type = List[T]
 
-      def apply(t: Option[List[T]]): DataType = new ListData(t)(edf)
-    }
+        def apply(t: Option[List[T]]) = new ListD[DT](t)(edf)
+      }
 
-    implicit def tupleFactory[T1, T2](
+    implicit def tupleFactory[T1, T2, DT1 <: Data.Aux[T1], DT2 <: Data.Aux[T2]](
         implicit
-        edf1: DataFactory[T1],
-        edf2: DataFactory[T2]
-    ): DataFactory.Aux[(T1, T2), TupleData[T1, T2, edf1.DataType, edf2.DataType]] = new DataFactory[(T1, T2)] {
+        edf1: DataFactory.Aux[T1, DT1],
+        edf2: DataFactory.Aux[T2, DT2]
+    ): DataFactory.Aux[(T1, T2), TupleD[DT1, DT2] { type Type = (T1, T2) }] =
+      new DataFactory[TupleD[DT1, DT2] { type Type = (T1, T2) }] {
 
-      type DataType = TupleData[T1, T2, edf1.DataType, edf2.DataType]
+        type Type = (T1, T2)
 
-      def apply(v: Option[(T1, T2)]): DataType = new TupleData(v)(edf1, edf2)
-    }
+        def apply(v: Option[(T1, T2)]) = new TupleD[DT1, DT2](v)(edf1, edf2)
+      }
   }
 
-  class ListData[T, ET <: Data[T]](
-      observation: Option[List[T]]
+  class ListD[DT <: Data](
+      observation: Option[List[DT#Type]]
   )(
       implicit
-      elFactory: DataFactory.Aux[T, ET]
-  ) extends Data[List[T]] {
+      elFactory: DataFactory.Aux[DT#Type, DT]
+  ) extends Data {
 
     private val builder: Option[ObsBuilder] =
       if (observation.isEmpty) Some(new ObsBuilder()) else None
 
-    lazy val value: List[T] = observation.getOrElse(builder.get.build)
+    type Type = List[DT#Type]
 
-    lazy val isEmpty: BoolData = {
+    lazy val value: List[DT#Type] = observation.getOrElse(builder.get.build)
+
+    lazy val isEmpty: BoolD = {
       if (observation.isEmpty)
         builder.get.empty
       else
-        new BoolData(Some(observation.get.isEmpty))
+        new BoolD(Some(observation.get.isEmpty))
     }
 
-    lazy val head: ET = {
+    lazy val head: DT = {
       if (observation.isDefined) {
         elFactory(observation.map { _.head })
       } else {
@@ -127,20 +137,20 @@ class CompiledInference {
       }
     }
 
-    lazy val tail: ListData[T, ET] = {
+    lazy val tail: ListD[DT] = {
       if (observation.isDefined) {
-        new ListData(Some(observation.get.tail))
+        new ListD(Some(observation.get.tail))
       } else {
         builder.get.tail
       }
     }
 
     private class ObsBuilder() {
-      lazy val empty: BoolData = new BoolData(None)
-      lazy val head: ET = elFactory(None)
-      lazy val tail: ListData[T, ET] = new ListData(None)
+      lazy val empty: BoolD = new BoolD(None)
+      lazy val head: DT = elFactory(None)
+      lazy val tail: ListD[DT] = new ListD(None)
 
-      lazy val build: List[T] = {
+      lazy val build: List[DT#Type] = {
         if (empty.value) {
           Nil
         } else {
@@ -150,21 +160,23 @@ class CompiledInference {
     }
   }
 
-  class TupleData[T1, T2, ET1 <: Data[T1], ET2 <: Data[T2]](
-      observation: Option[(T1, T2)]
+  class TupleD[DT1 <: Data, DT2 <: Data](
+      observation: Option[(DT1#Type, DT2#Type)]
   )(
       implicit
-      elf1: DataFactory.Aux[T1, ET1],
-      elf2: DataFactory.Aux[T2, ET2]
-  ) extends Data[(T1, T2)] {
+      elf1: DataFactory.Aux[DT1#Type, DT1],
+      elf2: DataFactory.Aux[DT2#Type, DT2]
+  ) extends Data {
 
     private val builder: Option[Builder] =
       if (observation.isEmpty) Some(new Builder()) else None
 
-    lazy val value: (T1, T2) =
+    type Type = (DT1#Type, DT2#Type)
+
+    lazy val value: (DT1#Type, DT2#Type) =
       observation.getOrElse(builder.get.build)
 
-    lazy val _1: ET1 = {
+    lazy val _1: DT1 = {
       if (observation.isDefined) {
         elf1(observation.map { _._1 })
       } else {
@@ -172,7 +184,7 @@ class CompiledInference {
       }
     }
 
-    lazy val _2: ET2 = {
+    lazy val _2: DT2 = {
       if (observation.isDefined) {
         elf2(observation.map { _._2 })
       } else {
@@ -181,16 +193,16 @@ class CompiledInference {
     }
 
     private class Builder {
-      lazy val _1: ET1 = elf1(None)
-      lazy val _2: ET2 = elf2(None)
+      lazy val _1: DT1 = elf1(None)
+      lazy val _2: DT2 = elf2(None)
 
-      def build: (T1, T2) = (_1.value, _2.value)
+      def build: (DT1#Type, DT2#Type) = (_1.value, _2.value)
     }
   }
 
   def observe[T, DT <: Primitive[T]](dist: Distribution[T], obs: DT): T = ???
 
-  def generate(obs: ListData[Real, RealData]): List[Real] = {
+  def generate(obs: ListD[RealD]): List[Real] = {
     val last = observe(Bernoulli(0.5), obs.isEmpty)
     if (last) {
       Nil
