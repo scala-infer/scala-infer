@@ -38,14 +38,14 @@ trait Value[X, S] {
 
 object Value {
 
-  def apply[X, S](value: X, shape: S)(implicit bf: BaseField[X, S]): Value[X, S] = Constant(value, shape)
+  def apply[@specialized(Float, Double) X, S](value: X, shape: S)(implicit bf: BaseField[X, S]): Value[X, S] = Constant(value, shape)
 
   implicit def apply(value: Double): Value[Double, Unit] = Constant(value, ())
 }
 
 trait Buffered[X, S] extends Value[X, S] with Completeable
 
-class Constant[X, S](val v: X, val shape: S, val field: BaseField[X, S]) extends Buffered[X, S] {
+class Constant[@specialized(Float, Double) X, S](val v: X, val shape: S, val field: BaseField[X, S]) extends Buffered[X, S] {
 
   override def dv(v: X): Unit = {}
 
@@ -60,7 +60,7 @@ class Constant[X, S](val v: X, val shape: S, val field: BaseField[X, S]) extends
 
 object Constant {
 
-  def apply[X, S](v: X, shape: S)(implicit bf: BaseField[X, S]): Constant[X, S] = new Constant(v, shape, bf)
+  def apply[@specialized(Float, Double) X, S](v: X, shape: S)(implicit bf: BaseField[X, S]): Constant[X, S] = new Constant(v, shape, bf)
 }
 
 trait BaseField[X, S] extends Elemwise[X] {
@@ -110,7 +110,7 @@ object BaseField {
 
 }
 
-case class VBuffer[D, S](upstream: Value[D, S])
+case class VBuffer[@specialized(Float, Double) D, S](upstream: Value[D, S])
     extends Value[D, S] with Buffered[D, S] {
 
   private var refCount: Int = 1
@@ -175,7 +175,7 @@ case class VBuffer[D, S](upstream: Value[D, S])
   }
 }
 
-case class VNegate[D, S](upstream: Value[D, S])
+case class VNegate[@specialized(Float, Double) D, S](upstream: Value[D, S])
     extends Value[D, S] {
 
   override def field: BaseField[D,S] =
@@ -195,7 +195,7 @@ case class VNegate[D, S](upstream: Value[D, S])
   }
 }
 
-case class VPlus[D, S](left: Value[D, S], right: Value[D, S])
+case class VPlus[@specialized(Float, Double) D, S](left: Value[D, S], right: Value[D, S])
     extends Value[D, S] {
 
   assert(left.shape == right.shape)
@@ -221,7 +221,7 @@ case class VPlus[D, S](left: Value[D, S], right: Value[D, S])
   }
 }
 
-case class VMinus[D, S](left: Value[D, S], right: Value[D, S])
+case class VMinus[@specialized(Float, Double) D, S](left: Value[D, S], right: Value[D, S])
     extends Value[D, S] {
 
   assert(left.shape == right.shape)
@@ -248,7 +248,7 @@ case class VMinus[D, S](left: Value[D, S], right: Value[D, S])
   }
 }
 
-case class VTimes[D, S](left: Value[D, S], right: Value[D, S])
+case class VTimes[@specialized(Float, Double) D, S](left: Value[D, S], right: Value[D, S])
     extends Value[D, S] {
 
   assert(left.shape == right.shape)
@@ -275,7 +275,7 @@ case class VTimes[D, S](left: Value[D, S], right: Value[D, S])
   }
 }
 
-case class VDiv[D, S](left: Value[D, S], right: Value[D, S])
+case class VDiv[@specialized(Float, Double) D, S](left: Value[D, S], right: Value[D, S])
     extends Value[D, S] {
 
   assert(left.shape == right.shape)
