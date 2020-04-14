@@ -3,7 +3,7 @@ package scappla.distributions
 import scappla.Functions.{log, squared, sum}
 import scappla._
 
-case class Normal[D, S](
+case class Normal[@specialized(Float, Double) D, S](
     mu: Expr[D, S],
     sigma: Expr[D, S]
 )(implicit

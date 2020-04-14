@@ -4,7 +4,7 @@ import scappla.{BaseField, Value}
 
 class Adam(alpha: Double = 0.001, beta1: Double = 0.9, beta2: Double = 0.999, epsilon: Double = 1e-8, decay: Double = 0.0) extends Optimizer {
 
-  override def param[X, S](
+  override def param[@specialized(Float, Double) X, S](
     initial: X,
     shp: S,
     name: Option[String]

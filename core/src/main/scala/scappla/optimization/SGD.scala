@@ -4,7 +4,7 @@ import scappla.{BaseField, Value}
 
 class SGD(val debug: Boolean = false, lr: Double) extends Optimizer {
 
-  override def param[X, S](initial: X, shp: S, paramName: Option[String])(implicit ev: BaseField[X, S]): Value[X, S] = {
+  override def param[@specialized(Float, Double) X, S](initial: X, shp: S, paramName: Option[String])(implicit ev: BaseField[X, S]): Value[X, S] = {
     new Value[X, S] {
 
       private var iter: Int = 0

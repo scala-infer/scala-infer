@@ -160,7 +160,7 @@ class BlockLBFGS(histSize: Int = 5, learningRate: Double = 0.5) extends Optimize
 
   def nextSize = if (iteration >= histSize) histSize else iteration + 1
 
-  def param[X, S](initial: X, shp: S, name: Option[String])(implicit base: BaseField[X, S]): Value[X, S] = {
+  def param[@specialized(Float, Double) X, S](initial: X, shp: S, name: Option[String])(implicit base: BaseField[X, S]): Value[X, S] = {
     new Value[X, S] {
 
       var state = ParamState[X](List(initial), List.empty, base.fromInt(0, shp))

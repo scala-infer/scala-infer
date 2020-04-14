@@ -6,7 +6,7 @@ import scappla.{BaseField, Value, Real}
  */
 object Average extends Optimizer {
 
-  override def param[X, S](initial: X, shp: S, name: Option[String])(implicit bf: BaseField[X, S]): Value[X, S] = {
+  override def param[@specialized(Float, Double) X, S](initial: X, shp: S, name: Option[String])(implicit bf: BaseField[X, S]): Value[X, S] = {
     new Value[X, S] {
 
       private var iter = 0

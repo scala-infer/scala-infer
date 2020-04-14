@@ -4,7 +4,7 @@ import scappla.{BaseField, Value}
 
 trait Optimizer {
 
-  def param[X, S](
+  def param[@specialized(Float, Double) X, S](
       initial: X,
       shape: S,
       name: Option[String] = None
