@@ -21,6 +21,10 @@ trait Elemwise[D] {
 
   def exp(a: D): D
 
+  def cos(a: D): D
+
+  def sin(a: D): D
+
   def logistic(a: D): D
 
   def softplus(a: D): D
@@ -58,6 +62,12 @@ object ElemwiseOps {
 
     override def exp(a: Double): Double =
       scala.math.exp(a)
+
+    override def cos(a: Double): Double =
+      scala.math.cos(a)
+
+    override def sin(a: Double): Double =
+      scala.math.sin(a)
 
     override def logistic(a: Double): Double =
       if (a > 0.0) {

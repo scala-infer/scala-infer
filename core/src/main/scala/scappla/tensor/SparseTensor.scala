@@ -167,6 +167,14 @@ object SparseTensor {
       unary(a, scala.math.exp(_).toFloat)
     }
 
+    def cos(a: SparseTensor): SparseTensor = {
+      unary(a, scala.math.cos(_).toFloat)
+    }
+
+    def sin(a: SparseTensor): SparseTensor = {
+      unary(a, scala.math.sin(_).toFloat)
+    }
+
     def logistic(a: SparseTensor): SparseTensor = {
       unary(a, { x => 1f / (1f + scala.math.exp(-x).toFloat)})
     }

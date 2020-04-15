@@ -244,6 +244,14 @@ object Tensor {
       ops.exp(x)
     }
 
+    override def cos(x: D):D = {
+      ops.cos(x)
+    }
+
+    override def sin(x: D):D = {
+      ops.sin(x)
+    }
+
     override def log(x: D):D = {
       ops.log(x)
     }

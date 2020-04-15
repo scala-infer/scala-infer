@@ -335,4 +335,77 @@ object Functions {
 
   }
 
+  object cos extends Op1 {
+
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(x: Double): Double = math.cos(x)
+    }
+
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      def apply(x: Value[D, S]): Value[D, S] = {
+        val field = x.field
+        TCos(x)
+      }
+    }
+
+    case class TCos[D, S](upstream: Value[D, S]) extends Value[D, S] {
+
+      override def field = upstream.field
+
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.cos(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        upstream.dv(field.times(
+          field.negate(dv),
+          field.sin(upstream.v)
+        ))
+      }
+
+      override def toString: String = {
+        s"cos($upstream)"
+      }
+    }
+  }
+
+
+  object sin extends Op1 {
+
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(x: Double): Double = math.sin(x)
+    }
+
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      def apply(x: Value[D, S]): Value[D, S] = {
+        val field = x.field
+        TSin(x)
+      }
+    }
+
+    case class TSin[D, S](upstream: Value[D, S]) extends Value[D, S] {
+
+      override def field = upstream.field
+
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.sin(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        upstream.dv(field.times(
+          dv,
+          field.cos(upstream.v)
+        ))
+      }
+
+      override def toString: String = {
+        s"sin($upstream)"
+      }
+    }
+  }
+
 }

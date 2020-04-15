@@ -76,6 +76,12 @@ object Nd4jTensor {
     override def exp(a: INDArray): INDArray =
       Transforms.exp(a)
 
+    override def cos(a: INDArray): INDArray =
+      Transforms.cos(a)
+
+    override def sin(a: INDArray): INDArray =
+      Transforms.sin(a)
+
     override def logistic(a: INDArray): INDArray =
       Transforms.sigmoid(a, true)
 

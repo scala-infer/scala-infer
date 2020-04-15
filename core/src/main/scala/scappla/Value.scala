@@ -99,6 +99,10 @@ object BaseField {
 
       override def exp(x: Double): Double = math.exp(x)
 
+      override def cos(x: Double): Double = math.cos(x)
+
+      override def sin(x: Double): Double = math.sin(x)
+
       override def pow(x: Double, y: Double): Double = math.pow(x, y)
 
       override def logistic(x: Double): Double = 1.0 / (1.0 + math.exp(-x))

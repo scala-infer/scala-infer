@@ -201,6 +201,30 @@ object TensorData {
       ArrayTensor(a.shape, result)
     }
 
+    override def cos(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = scala.math.cos(ad(i)).toFloat
+        i += 1
+      }
+      ArrayTensor(a.shape, result)
+    }
+
+    override def sin(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = scala.math.sin(ad(i)).toFloat
+        i += 1
+      }
+      ArrayTensor(a.shape, result)
+    }
+
     override def logistic(a: ArrayTensor): ArrayTensor = {
       val ad = a.data
       val len = ad.length
