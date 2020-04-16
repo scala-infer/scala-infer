@@ -25,6 +25,10 @@ trait Elemwise[D] {
 
   def softplus(a: D): D
 
+  def lgamma(a: D): D
+
+  def digamma(a: D): D
+
   def sumAll(a: D): Float
 }
 
@@ -69,6 +73,12 @@ object ElemwiseOps {
 
     override def softplus(a: Double): Double =
       math.log1p(math.exp(a))
+
+    override def lgamma(a: Double): Double =
+      breeze.numerics.lgamma(a)
+
+    override def digamma(a: Double): Double =
+      breeze.numerics.digamma(a)
 
     override def sumAll(a: Double): Float =
       a.toFloat

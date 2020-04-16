@@ -90,7 +90,9 @@ trait Interpreter {
 object NoopInterpreter extends Interpreter {
 
   // intentionally not implemented
-  override def eval[X, S](expr: Expr[X, S]): Value[X, S] = ???
+  override def eval[X, S](expr: Expr[X, S]): Value[X, S] = expr match {
+    case ConstantExpr(value) => value
+  }
 
   override def reset(): Unit = {}
 }

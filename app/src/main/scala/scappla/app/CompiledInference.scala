@@ -1,10 +1,12 @@
-package scappla.test
+package scappla.app
 
 import scappla._
+import scappla.NoopInterpreter
 import scappla.distributions._
 import scala.collection.compat.BuildFrom
+import scappla.distributions.Poisson
 
-class CompiledInference {
+object CompiledInference extends App {
 
   trait Data {
 
@@ -30,6 +32,8 @@ class CompiledInference {
     )(implicit df: DataFactory.Aux[T, DT]): DT =
       df(Some(value))
 
+    def empty[T](implicit df: DataFactory[T]): T = df(None)
+
     type Aux[T] = Data { type Type = T }
   }
 
@@ -37,10 +41,15 @@ class CompiledInference {
     * Primitive data types can be sampled directly from (or observed for) elemental
     * probability distributions that are able to calculate (normalized) likelihoods.
     */
-  class Primitive[T](observation: Option[T]) extends Data {
-    private var sample: Option[T] = None
+  trait Primitive[T] extends Data {
 
     type Type = T
+
+    def set(v: T): Unit
+  }
+
+  class PrimitiveD[T](observation: Option[T]) extends Primitive[T] {
+    private var sample: Option[T] = None
 
     lazy val value: T = observation.getOrElse(sample.get)
 
@@ -50,9 +59,9 @@ class CompiledInference {
     }
   }
 
-  type RealD = Primitive[Real]
+  type RealD = PrimitiveD[Real]
 
-  type BoolD = Primitive[Boolean]
+  type BoolD = PrimitiveD[Boolean]
 
   trait DataFactory[DT] {
 
@@ -145,6 +154,30 @@ class CompiledInference {
       }
     }
 
+    def size: SizeD = {
+      new SizeD
+    }
+
+    class SizeD extends Primitive[Int] {
+
+      lazy val value = {
+        if (observation.isDefined) {
+          observation.get.size
+        } else {
+          builder.get.size
+        }
+      }
+
+      def set(size: Int): Unit = {
+        if (size == 0) {
+          builder.get.empty.set(true)
+        } else {
+          builder.get.empty.set(false)
+          tail.size.set(size - 1)
+        }
+      }
+    }
+
     private class ObsBuilder() {
       lazy val empty: BoolD = new BoolD(None)
       lazy val head: DT = elFactory(None)
@@ -155,6 +188,14 @@ class CompiledInference {
           Nil
         } else {
           head.value :: tail.value
+        }
+      }
+
+      def size: Int = {
+        if (empty.value) {
+          0
+        } else {
+          1 + tail.size.value
         }
       }
     }
@@ -200,21 +241,78 @@ class CompiledInference {
     }
   }
 
-  def observe[T, DT <: Primitive[T]](dist: Distribution[T], obs: DT): T = ???
+  def observe_train[T, DT <: Primitive[T]](dist: Distribution[T], obs: DT)(
+      implicit interpreter: Interpreter
+  ): T = {
+    val t = dist.sample(interpreter)
+    obs.set(t)
+    t
+  }
 
-  def generate(obs: ListD[RealD]): List[Real] = {
-    val last = observe(Bernoulli(0.5), obs.isEmpty)
+  def observe_test[T, DT <: Primitive[T]](dist: Distribution[T], obs: DT)(
+      implicit interpreter: Interpreter
+  ): T = {
+    dist.observe(interpreter, obs.value)
+    obs.value
+  }
+
+  /*
+  def foreach[T <: Data](sizeDist: Distribution[Int], list: ListD[T])(
+      fn: T => Unit
+  ): Unit = {
+    val size = observe(sizeDist, list.size)
+    var current = list
+    while (!current.isEmpty.value) {
+      fn(current.head)
+      current = current.tail
+    }
+  }
+   */
+
+  def foldLeft[T <: Data, S](sizeDist: Distribution[Int], list: ListD[T])(
+      zero: S
+  )(fn: (S, T) => S)(implicit interpreter: Interpreter): S = {
+    val size = observe_train(sizeDist, list.size)
+    var current = list
+    var value = zero
+    while (!current.isEmpty.value) {
+      value = fn(value, current.head)
+      current = current.tail
+    }
+    value
+  }
+
+  def generate(
+      obs: ListD[RealD]
+  )(implicit interpreter: Interpreter): List[Real] = {
+    val last = observe_test(Bernoulli(0.5), obs.isEmpty)
     if (last) {
       Nil
     } else {
-      val value = observe(Normal(0.5, 1.0), obs.head)
+      val value = observe_test(Normal(0.5, 1.0), obs.head)
       value :: generate(obs.tail)
     }
+  }
+
+  {
+    implicit val interpreter: Interpreter = NoopInterpreter
+    val total = foldLeft(
+      Poisson(25.0: Real),
+      Data.empty[ListD[RealD]]
+    )(0) {
+      case (num, value) =>
+        observe_train(Normal(1.0, 0.2), value)
+        num + 1
+    }
+    println(s"Total: $total")
   }
 
   val obs = Data(List(1.0: Real, 2.0: Real))
   val realData = Data(1.0: Real)
   val tupleData = Data((1.0: Real, false))
 
-  val values = generate(obs)
+  {
+    implicit val interpreter: Interpreter = NoopInterpreter
+    val values = generate(obs)
+  }
 }

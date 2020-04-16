@@ -270,6 +270,41 @@ object Functions {
 
   }
 
+  object lgamma extends Op1 {
+
+    implicit val forDouble: Apply[Double, Double] = new Apply[Double, Double] {
+      def apply(x: Double): Double = breeze.numerics.lgamma(x)
+    }
+
+    implicit def forValue[D, S]: Apply[Value[D, S], Value[D, S]] = new Apply[Value[D, S], Value[D, S]] {
+      def apply(x: Value[D, S]): Value[D, S] = VLGamma(x)
+    }
+
+    case class VLGamma[D, S](upstream: Value[D, S]) extends Value[D, S] {
+
+      override def field = upstream.field
+
+      override def shape = upstream.shape
+
+      override val v: D = {
+        field.lgamma(upstream.v)
+      }
+
+      override def dv(dv: D): Unit = {
+        val tv = this.v
+        upstream.dv(field.times(
+          dv,
+          field.digamma(v)
+        ))
+      }
+
+      override def toString: String = {
+        s"lgamma($upstream)"
+      }
+    }
+
+  }
+
   object pow extends Op2 {
 
     implicit val forDouble: Apply[Double, Double, Double] = new Apply[Double, Double, Double] {

@@ -236,6 +236,30 @@ object TensorData {
       ArrayTensor(a.shape, result)
     }
 
+    override def lgamma(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = breeze.numerics.lgamma(ad(i).toDouble).toFloat
+        i += 1
+      }
+      ArrayTensor(a.shape, result)
+    }
+
+    override def digamma(a: ArrayTensor): ArrayTensor = {
+      val ad = a.data
+      val len = ad.length
+      val result = new Array[Float](len)
+      var i = 0
+      while (i < len) {
+        result(i) = breeze.numerics.digamma.apply(ad(i).toDouble).toFloat
+        i += 1
+      }
+      ArrayTensor(a.shape, result)
+    }
+
     override def sum(a: ArrayTensor, dimIndex: Int): ArrayTensor = {
       val (shape, data) = (a.shape, a.data)
       val dimSize = shape(dimIndex)

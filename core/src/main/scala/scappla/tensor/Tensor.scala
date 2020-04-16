@@ -266,6 +266,14 @@ object Tensor {
       ops.softplus(x)
     }
 
+    override def lgamma(x: D):D = {
+      ops.lgamma(x)
+    }
+
+    override def digamma(x: D):D = {
+      ops.digamma(x)
+    }
+
     override def pow(x: D, y: D):D = {
       ops.pow(x, y)
     }

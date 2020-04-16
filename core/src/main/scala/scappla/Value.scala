@@ -3,6 +3,7 @@ package scappla
 import scappla.tensor.ArrayTensor
 
 import scala.util.Random
+import breeze.numerics.lgamma
 
 trait Value[X, S] {
 
@@ -104,6 +105,10 @@ object BaseField {
       override def logistic(x: Double): Double = 1.0 / (1.0 + math.exp(-x))
 
       override def softplus(x: Double): Double = math.log1p(math.exp(x))
+
+      override def lgamma(x: Double): Double = breeze.numerics.lgamma(x)
+
+      override def digamma(x: Double): Double = breeze.numerics.digamma(x)
 
       override def sumAll(x: Double): Float = x.toFloat
     }
