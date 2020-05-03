@@ -154,6 +154,16 @@ object Tensor {
     Apply1[D, S, Double, Unit](tensor, at(_, index))
   }
 
+  def value[D: TensorData](
+    tensor: Value[D, Scalar]
+  ): Value[Double, Unit] = TAt(tensor, Index[Scalar](Nil))
+
+  def value[D: TensorData](
+    tensor: Expr[D, Scalar]
+  ): Expr[Double, Unit] = {
+    Apply1[D, Scalar, Double, Unit](tensor, t => value(t))
+  }
+
   def broadcast[S <: Shape, D: TensorData](
       real: Real, shape: S
   ): Value[D, S] = TBroadcast(real, shape)

@@ -4,6 +4,7 @@ import scappla.Elemwise
 
 import scala.collection.mutable
 import scala.util.Random
+import java.{util => ju}
 
 sealed trait Condition
 case class GreaterThan(value: Float) extends Condition
@@ -35,7 +36,11 @@ trait TensorData[D] extends Elemwise[D] {
   def tensordot(a: D, b: D, ab: List[(Int, Int)], bc: List[(Int, Int)], ca: List[(Int, Int)]): D
 }
 
-case class ArrayTensor(shape: Seq[Int], data: Array[Float])
+case class ArrayTensor(shape: Seq[Int], data: Array[Float]) {
+  override def toString() = {
+    s"[${shape}]: ${data.map { f => String.format("%.3f", new java.lang.Float(f)) }.mkString(", ")}"
+  }
+}
 
 object TensorData {
 

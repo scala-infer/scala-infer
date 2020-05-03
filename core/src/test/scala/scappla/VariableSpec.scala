@@ -208,7 +208,7 @@ class VariableSpec extends FlatSpec {
             val Variable(((x1, x2), y), node) = entry
             val observation = observeImpl(interpreter, Normal(a + x1 * b1 + x2 * b2, err), y: Real)
             node.addObservation(observation.score)
-            Variable(Unit, new BayesNode {
+            Variable((), new BayesNode {
 
               override def modelScore: Score = 0.0
 
