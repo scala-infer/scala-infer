@@ -2,7 +2,7 @@
 name := "scala-infer-parent"
 
 ThisBuild / organization := "scala-infer"
-ThisBuild / scalaVersion := "2.12.10"
+ThisBuild / scalaVersion := "2.13.1"
 ThisBuild / skip in publish := true
 ThisBuild / useCoursier := false
 
@@ -13,18 +13,18 @@ lazy val core = (project in file("core")).settings(
   libraryDependencies ++= Seq(
     "org.scala-lang"              % "scala-reflect"      % scalaVersion.value,
     "org.scala-lang"              % "scala-compiler"     % scalaVersion.value,
-    "com.chuusai"                %% "shapeless"          % "2.3.2",
-    "com.typesafe.scala-logging" %% "scala-logging"      % "3.9.0",
+    "com.chuusai"                %% "shapeless"          % "2.3.3",
+    "com.typesafe.scala-logging" %% "scala-logging"      % "3.9.2",
     "ch.qos.logback"              % "logback-classic"    % "1.2.3",
     "org.scalanlp" %% "breeze" % "1.0",
     "org.scalanlp" %% "breeze-natives" % "1.0",
 
 
-    "org.scalatest"              %% "scalatest"          % "3.0.1" % "test"
+    "org.scalatest"              %% "scalatest"          % "3.1.1" % "test"
   ),
-  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
   skip in publish := false,
   licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0")),
+  scalacOptions ++= Seq("-Ymacro-annotations"),
 //  scalacOptions ++= Seq("-Xlog-implicits")
 //  scalacOptions ++= Seq("-Ymacro-debug-lite")
 )
@@ -46,9 +46,9 @@ lazy val app = (project in file("app")).settings(
   mainClass in Compile := Some("scappla.app.TestFullTicTacToe"),
   // mainClass in Compile := Some("scappla.app.TestTicTacToe"),
   libraryDependencies ++= Seq(
-    "com.github.tototoshi"       %% "scala-csv"          % "1.3.5"
+    "com.github.tototoshi"       %% "scala-csv"          % "1.3.6"
   ),
+  scalacOptions ++= Seq("-Ymacro-annotations"),
   // scalacOptions ++= Seq("-Ymacro-debug-lite", "-Xlog-implicits"),
-  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 ) dependsOn core
 

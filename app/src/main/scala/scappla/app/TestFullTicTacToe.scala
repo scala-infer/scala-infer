@@ -42,18 +42,14 @@ object TestFullTicTacToe extends App {
       ((0 until 3).exists { y =>
         (0 until 3).forall(eq(_, y))
       }) ||
-      ((0 until 3).exists { x =>
-        (0 until 3).forall(eq(x, _))
-      }) ||
+      ((0 until 3).exists { x => (0 until 3).forall(eq(x, _)) }) ||
       (0 until 3).forall(x => eq(x, x)) ||
       (0 until 3).forall(x => eq(x, 2 - x))
     }
 
     val isFull: Boolean = {
       (0 until 3).forall { y =>
-        (0 until 3).forall { x =>
-          tags(index(x, y)) != Neither
-        }
+        (0 until 3).forall { x => tags(index(x, y)) != Neither }
       }
     }
 
@@ -86,7 +82,7 @@ object TestFullTicTacToe extends App {
     override def equals(other: Any): Boolean = {
       other match {
         case that: Board =>
-          this.tags.deep == that.tags.deep
+          this.tags sameElements that.tags
         case _ => false
       }
     }
@@ -114,10 +110,10 @@ object TestFullTicTacToe extends App {
   case class BoardDim(size: Int) extends Dim[BoardDim]
 
   case class Guide(
-    initial: ArrayTensor,
-    prior_param: Value[ArrayTensor, BoardDim],
-    boardDim: BoardDim,
-    size: Int
+      initial: ArrayTensor,
+      prior_param: Value[ArrayTensor, BoardDim],
+      boardDim: BoardDim,
+      size: Int
   ) {
     def prior = Categorical(ConstantExpr(exp(prior_param)))
 
@@ -156,10 +152,10 @@ object TestFullTicTacToe extends App {
   }
 
   val startBoard = Board()
-    // .play(1, 1, Cross)
-    // .play(2, 1, Cross)
-    // .play(1, 0, Circle)
-    // .play(1, 2, Circle)
+  // .play(1, 1, Cross)
+  // .play(2, 1, Cross)
+  // .play(1, 0, Circle)
+  // .play(1, 2, Circle)
   val startTag = Circle
 // val startTag = Cross
 
@@ -239,7 +235,11 @@ object TestFullTicTacToe extends App {
 
 class Learner(lr: Double) extends Optimizer {
 
-  override def param[@specialized(Float, Double) X, S](initial: X, shp: S, name: Option[String])(implicit bf: BaseField[X, S]): Value[X, S] = {
+  override def param[@specialized(Float, Double) X, S](
+      initial: X,
+      shp: S,
+      name: Option[String]
+  )(implicit bf: BaseField[X, S]): Value[X, S] = {
     new Value[X, S] {
 
       private var value = initial
