@@ -175,6 +175,14 @@ object SparseTensor {
       unary(a, { x => scala.math.log1p(scala.math.exp(x)).toFloat})
     }
 
+    def lgamma(a: SparseTensor): SparseTensor = {
+      unary(a, { x => breeze.numerics.lgamma(x.toDouble).toFloat})
+    }
+
+    def digamma(a: SparseTensor): SparseTensor = {
+      unary(a, { x => breeze.numerics.digamma(x.toDouble).toFloat})
+    }
+
     private def unary(in: SparseTensor, fn: Float => Float): SparseTensor = {
       SparseTensor(in.shape, in.data.map(fn), in.coordinates)
     }
