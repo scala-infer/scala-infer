@@ -275,21 +275,21 @@ class Macros(val c: blackbox.Context) {
       val setup :+ last = stmts
       val richSetup = setup.flatMap(t => visitStmt(t))
 //      println(s"   TPE: ${last.tpe}")
-      /*if (last.tpe =:= definitions.UnitTpe) {
+      if (last.tpe =:= definitions.UnitTpe) {
         val lastSetup = visitStmt(last)
         val lastVar = builder.build(scope, RichTree(EmptyTree), definitions.UnitTpe)
         RichBlock(
           richSetup ++ lastSetup,
           lastVar
         )
-      } else { */
+      } else {
         val lastBlock = visitExpr(last) 
         val lastExpr = builder.build(scope, lastBlock.result, last.tpe)
         RichBlock(
           richSetup ++ lastBlock.setup,
           lastExpr
         )
-      //}
+      }
     }
 
     def visitApply(expr: Tree): RichBlock = {

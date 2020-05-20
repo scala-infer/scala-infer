@@ -1,5 +1,6 @@
 package scappla.tensor.nd4j
 
+import scala.collection.convert.AsJavaConverters
 import scappla.tensor._
 
 import org.nd4j.linalg.api.ndarray.INDArray
@@ -7,6 +8,8 @@ import org.nd4j.linalg.api.ops.impl.reduce.longer.MatchCondition
 import org.nd4j.linalg.factory.Nd4j
 import org.nd4j.linalg.indexing.conditions.Conditions
 import org.nd4j.linalg.ops.transforms.Transforms
+import org.nd4j.linalg.api.ops.custom.Lgamma
+import org.nd4j.linalg.api.ops.custom.Digamma
 
 object Nd4jTensor {
 
@@ -31,7 +34,7 @@ object Nd4jTensor {
     }
 
     override def get(d: INDArray, indices: Int*): Float = {
-      d.getFloat(indices.toArray)
+      d.getFloat(indices: _*)
     }
 
     override def put(d: INDArray, value: Float, indices: Int*): Unit = {
@@ -78,6 +81,16 @@ object Nd4jTensor {
 
     override def logistic(a: INDArray): INDArray =
       Transforms.sigmoid(a, true)
+
+    override def digamma(a: INDArray): INDArray = {
+      val out = Nd4j.exec(new Digamma(a))
+      out(0)
+    }
+
+    override def lgamma(a: INDArray): INDArray = {
+      val out = Nd4j.exec(new Lgamma(a))
+      out(0)
+    }
 
     override def softplus(a: INDArray): INDArray =
       Transforms.softPlus(a, true)
