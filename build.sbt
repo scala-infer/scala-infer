@@ -2,7 +2,7 @@
 name := "scala-infer-parent"
 
 ThisBuild / organization := "scala-infer"
-ThisBuild / scalaVersion := "2.13.1"
+ThisBuild / scalaVersion := "2.13.4"
 ThisBuild / skip in publish := true
 ThisBuild / useCoursier := false
 
@@ -41,9 +41,10 @@ lazy val nd4j = (project in file("nd4j")).settings(
 
 lazy val app = (project in file("app")).settings(
   moduleName := "infer-app",
+  mainClass in Compile := Some("scappla.app.TestSprinkler"),
   // mainClass in Compile := Some("scappla.app.TestChickweight"),
   // mainClass in Compile := Some("scappla.app.TestMixture"),
-  mainClass in Compile := Some("scappla.app.TestFullTicTacToe"),
+  // mainClass in Compile := Some("scappla.app.TestFullTicTacToe"),
   // mainClass in Compile := Some("scappla.app.TestTicTacToe"),
   libraryDependencies ++= Seq(
     "com.github.tototoshi"       %% "scala-csv"          % "1.3.6"

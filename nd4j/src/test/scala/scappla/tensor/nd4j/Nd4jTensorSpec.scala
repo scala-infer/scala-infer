@@ -23,7 +23,7 @@ class Nd4jTensorSpec extends FlatSpec {
 
     val data = Nd4j.create(
       Array(0.0f, 1.0f),
-      shape.sizes: _*
+      shape.sizes.toArray[Int]
     )
 
     val tensor: Value[INDArray, Batch] = Value(data, shape)
@@ -44,7 +44,7 @@ class Nd4jTensorSpec extends FlatSpec {
 
     val data: INDArray = Nd4j.create(
       Array(0f, 1f),
-      inputShape.sizes: _*
+      inputShape.sizes.toArray[Int]
     )
     val input = Value(data, inputShape)
 
@@ -53,7 +53,7 @@ class Nd4jTensorSpec extends FlatSpec {
         0f, 2f, 4f,
         1f, 3f, 5f
       ),
-      outShape.sizes: _*
+      outShape.sizes.toArray[Int]
     )
     val param = TParam(matrix, outShape)
 

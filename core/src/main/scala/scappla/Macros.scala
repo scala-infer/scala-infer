@@ -129,21 +129,19 @@ class Macros(val c: blackbox.Context) {
   )
 */
 
-  class Scope(known: Map[TermName, RichTree]) {
+  class Scope(known: Map[Name, RichTree]) {
 
-    val refs: mutable.HashMap[TermName, RichTree] = mutable.HashMap.empty
-    private val referenced: mutable.Set[TermName] = mutable.Set.empty
+    private val refs: mutable.HashMap[Name, RichTree] = mutable.HashMap.empty
 
-    def isDefined(v: TermName): Boolean = {
+    def isDefined(v: Name): Boolean = {
       known.contains(v) || refs.contains(v)
     }
 
-    def isDeclared(v: TermName): Boolean = {
+    def isDeclared(v: Name): Boolean = {
       refs.contains(v)
     }
 
-    def reference(v: TermName): RichTree = {
-      referenced += v
+    def reference(v: Name): RichTree = {
       if (isDefined(v)) {
         if (refs.contains(v)) {
           refs(v)
@@ -301,7 +299,7 @@ class Macros(val c: blackbox.Context) {
             val ref = scope.reference(tname)
             RichBlock(Seq.empty, ref)
           } else {
-            val varFn = c.freshName()
+            val varFn = TermName(c.freshName())
             val typeArgs = expr.tpe.widen.typeArgs
 //            println(s"n args: ${typeArgs.size}")
             val richFn =
@@ -335,7 +333,7 @@ class Macros(val c: blackbox.Context) {
           val newStmts = visitor.visitBlockStmts(stmts)
 
           // reduce list of variables to those known in the current scope
-          val vars = newStmts.result.vars.toSet.filter(scope.isDefined)
+          val vars: Set[TermName] = newStmts.result.vars.toSet.filter(scope.isDefined)
 
           val varDef = q"{ ..${newStmts.setup :+ newStmts.result.tree}}"
           /*if (expr.tpe =:= definitions.UnitTpe) {
@@ -469,8 +467,9 @@ class Macros(val c: blackbox.Context) {
          * can we invoke functions with their dependencies passed along?
          */
         case q"$f.apply($o)" =>
+          // println(s"  FN APPLY (TYPE: ${expr.tpe}) ${showCode(expr)}")
           f match {
-            case Ident(TermName(fname))
+            case Ident(fname)
                 if scope.isDefined(fname) && scope.reference(fname).isFn =>
               for {
                 richO <- visitExpr(o)
@@ -572,8 +571,9 @@ class Macros(val c: blackbox.Context) {
           }
 
         case q"$f(..$args)" =>
+          // println(s"  FN VAL (TYPE: ${expr.tpe}) ${showCode(expr)}")
           f match {
-            case Ident(TermName(fname))
+            case Ident(fname)
                 if scope.isDefined(fname) && scope.reference(fname).isFn =>
               for {
                 richFn <- visitExpr(f)
@@ -589,16 +589,20 @@ class Macros(val c: blackbox.Context) {
                 RichBlock(
                   newArgs.map { _.setup }.flatten ++ Seq(
                     q"val $varResult = ${richFn.tree}(..${newArgs.map { _.result.tree }})"
-                  ),
+                  ) ++ newArgs.flatMap { _.result.vars }
+                    .filter{ scope.isDeclared }
+                    .map { v =>
+                      q"$v.node.addVariable($varResult.node.modelScore, $varResult.node.guideScore)"
+                    },
                   RichTree(
                     q"$varResult.get",
-                    richFn.vars ++ newArgs.flatMap { _.result.vars }
+                    richFn.vars ++ newArgs.flatMap { _.result.vars } ++ Set(varResult)
                   )
                 )
               }
 
             case _ =>
-              println(s"APPLYING UNNOWN FUNCTION ${showRaw(f)}")
+              // println(s"APPLYING UNNOWN FUNCTION ${showRaw(f)}")
               for {
                 richFn <- visitExpr(f)
               } yield {

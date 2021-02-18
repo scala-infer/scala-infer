@@ -64,7 +64,6 @@ class VariableSpec extends FlatSpec {
           sprinkleInRainGuide.sample(interpreter, Bernoulli(0.01))
         else
           sprinkleNoRainGuide.sample(interpreter, Bernoulli(0.4))
-        node.addVariable(sprinkledVar.node.modelScore, sprinkledVar.node.guideScore)
 
         sprinkledVar
     }
@@ -76,6 +75,7 @@ class VariableSpec extends FlatSpec {
         val Variable(rain, rainNode) = rainVar
 
         val Variable(sprinkled, sprinkledNode) = sprinkle(interpreter, rainVar)
+        rainNode.addVariable(sprinkledNode.modelScore, sprinkledNode.guideScore)
 
         val p_wet = (rain, sprinkled) match {
           case (true, true) => 0.99
