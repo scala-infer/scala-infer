@@ -4,8 +4,11 @@ import scappla._
 import scappla.guides._
 import scappla.optimization._
 import scappla.tensor._
+import scappla.tensor.Tensor._
 import scappla.distributions._
 import scappla.Functions._
+
+import scala.util.Random
 
 object TestFullTicTacToe extends App {
 
@@ -113,12 +116,23 @@ object TestFullTicTacToe extends App {
       initial: ArrayTensor,
       prior_param: Value[ArrayTensor, BoardDim],
       boardDim: BoardDim,
-      size: Int
+      size: Int,
+      negate: Boolean
   ) {
-    def prior = Categorical(ConstantExpr(exp(prior_param)))
+    def prior = {
+      if (negate) {
+        InvCategorical(ConstantExpr(exp(prior_param)))
+      } else {
+        Categorical(ConstantExpr(exp(prior_param)))
+      }
+    }
 
     val posterior_param = Param(initial, boardDim)
-    val posterior = BBVIGuide(Categorical(exp(posterior_param)))
+    val posterior = if (negate) {
+      BBVIGuide(InvCategorical(exp(posterior_param)))
+    } else {
+      BBVIGuide(Categorical(exp(posterior_param)))
+    }
 
     def step(interpreter: Interpreter): Unit = {
       val pp_value = interpreter.eval(posterior_param)
@@ -134,20 +148,20 @@ object TestFullTicTacToe extends App {
 
     def size: Int = guides.size
 
-    def apply(board: Board): Guide = {
+    def apply(board: Board, tag: Tag): Guide = {
       if (!guides.contains(board)) {
-        guides(board) = newGuide(board)
+        guides(board) = newGuide(board, tag == Circle)
       }
       guides(board)
     }
 
-    private def newGuide(board: Board): Guide = {
+    private def newGuide(board: Board, negate: Boolean): Guide = {
       val free = board.empty
       // println(s"free: ${free}")
       val boardDim = BoardDim(free.size)
       val initial = ArrayTensor(boardDim.sizes, Array.fill(free.size)(0f))
 
-      Guide(initial, learner.param(initial, boardDim), boardDim, free.size)
+      Guide(initial, learner.param(initial, boardDim), boardDim, free.size, negate)
     }
   }
 
@@ -159,27 +173,32 @@ object TestFullTicTacToe extends App {
   val startTag = Circle
 // val startTag = Cross
 
+
   val model = infer {
 
     def next(board: Board, player: Player): (Seq[(Int, Int)], Tag) = {
       if (board.hasWon(Cross)) {
+        observe(Bernoulli(1 / 0.01), true)
         (Seq.empty, Cross)
       } else if (board.hasWon(Circle)) {
+        observe(Bernoulli(0.01), true)
         (Seq.empty, Circle)
       } else if (board.isFull) {
         (Seq.empty, Neither)
       } else {
-        val guide = Guide(board)
+        val guide = Guide(board, player.tag)
         val options = board.empty
         val pos = sample(guide.prior, guide.posterior)
         val (x, y) = options(pos)
         val (sequence, winner) =
           next(board.play(x, y, player.tag), player.other)
+        /*
         if (winner == Neither) {
-          observe(Bernoulli(0.9), false)
+          observe(Bernoulli(0.6), false)
         } else if (winner != player.tag) {
-          observe(Bernoulli(0.99), false)
+          observe(Bernoulli(0.8), false)
         }
+        */
         ((x, y) +: sequence, winner)
       }
     }
@@ -200,8 +219,8 @@ object TestFullTicTacToe extends App {
     val (sequence: Seq[Tuple2[Int, Int]], winner) = model.sample(interpreter)
     sequence.foldLeft((startBoard, startTag: Tag)) {
       case ((board, tag), (x, y)) =>
-        Guide(board).step(interpreter)
-        (board.play(x, y, tag.switch), tag.switch)
+        Guide(board, tag).step(interpreter)
+        (board.play(x, y, tag), tag.switch)
     }
     wins = wins + (winner -> (wins(winner) + 1))
     sequences = sequences + (sequence -> (sequences(sequence) + 1))
@@ -210,6 +229,18 @@ object TestFullTicTacToe extends App {
         s"X: ${wins(Cross) / iter.toFloat}, O: ${wins(Circle) / iter.toFloat}, -: ${wins(Neither) / iter.toFloat}"
       )
       println(s"$winner (${Guide.size} guides)")
+
+      val currentSeq = sequence.scanLeft((startBoard, startTag: Tag)) {
+        case ((board, tag), (x, y)) =>
+          Guide(board, tag).step(interpreter)
+          val nextBoard = board.play(x, y, tag)
+          (nextBoard, tag.switch)
+      }.drop(1)
+      (for { y <- 0 until 3 } yield {
+        (for { (board, _) <- currentSeq } yield {
+          board.strLines(y)
+        }).mkString("   ")
+      }).foreach(println _)
 
       // sequence.head
       val boards = (for {
@@ -257,6 +288,38 @@ class Learner(lr: Double) extends Optimizer {
         )
       }
     }
+  }
+
+}
+
+/**
+  * Categorical variant that has a mis-alignment between sampling and (log) probability.
+  * It is intended for the adverserial player - the one who's chances of winning we want to 
+  * minimize.
+  */
+case class InvCategorical[S <: Dim[_], D: TensorData](pExpr: Expr[D, S]) extends Distribution[Int] {
+
+  private val total = sum(pExpr)
+
+  override def sample(interpreter: Interpreter): Int = {
+    val p = interpreter.eval(pExpr)
+    val totalv = interpreter.eval(total)
+    val draw = Random.nextDouble() * totalv.v
+    val cs = cumsum(p, p.shape)
+    val index = p.shape.size - count(cs, GreaterThan(draw.toFloat))
+    if (index == p.shape.size) {
+      // rounding error - should occur only very rarely
+      p.shape.size - 1
+    } else {
+      index
+    }
+  }
+
+  override def observe(interpreter: Interpreter, index: Int): Score = {
+    val p = interpreter.eval(pExpr)
+    val totalv = interpreter.eval(total)
+    val value = at(p, Index[S](List(index)))
+    -log(value / totalv)
   }
 
 }

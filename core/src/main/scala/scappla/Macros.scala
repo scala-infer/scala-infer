@@ -656,9 +656,17 @@ class Macros(val c: blackbox.Context) {
 
         case q"$v: $tpt" =>
           val richV = visitExpr(v)
+          // println(s"   TYPED ${v} : ${showRaw(tpt)}")
+          val newtree = tpt match {
+            case tq"$base @$annot" => 
+              val newtpt = tq"${richV.result.tree} @$annot"
+              q"${richV.result.tree}: $newtpt"
+            case _ => 
+              q"${richV.result.tree}: $tpt"
+          }
           RichBlock(
             richV.setup,
-            RichTree(q"${richV.result.tree}: $tpt", richV.result.vars)
+            RichTree(newtree, richV.result.vars)
           )
 
         case _ =>
