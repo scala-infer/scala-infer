@@ -10,7 +10,7 @@ package object scappla {
 
   type RealExpr = Expr[Double, Unit]
   type Real = Value[Double, Unit]
-  type Score = Value[Double, Unit]
+  type Score = Buffered[Double, Unit]
   type Model[X] = Sampleable[X]
 
   /**
@@ -42,7 +42,7 @@ package object scappla {
     new Observation {
 
       val score: Buffered[Double, Unit] =
-        distribution.observe(interpreter, value).buffer
+        distribution.observe(interpreter, value)
 
       override def complete(): Unit = {
         score.dv(1.0)

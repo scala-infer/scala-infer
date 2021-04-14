@@ -12,11 +12,11 @@ case class ReparamGuide[D, S](posterior: DDistribution[D, S]) extends Guide[Valu
     val node = new BayesNode {
 
       override val modelScore: Buffered[Double, Unit] = {
-        prior.observe(interpreter, value).buffer
+        prior.observe(interpreter, value)
       }
 
       override val guideScore: Buffered[Double, Unit] = {
-        posterior.reparam_score(interpreter, value).buffer
+        posterior.reparam_score(interpreter, value)
       }
 
       override def addObservation(score: Score): Unit = {}

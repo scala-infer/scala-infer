@@ -19,15 +19,15 @@ case class BBVIGuide[A](posterior: Distribution[A], control: Expr[Double, Unit] 
     val node: BayesNode = new BayesNode {
 
       override val modelScore: Buffered[Double, Unit] = {
-        prior.observe(interpreter, value).buffer
+        prior.observe(interpreter, value)
       }
 
       override val guideScore: Buffered[Double, Unit] = {
-        posterior.observe(interpreter, value).buffer
+        posterior.observe(interpreter, value)
       }
 
-      private var logp: Score = modelScore
-      private var logq: Score = guideScore
+      private var logp: Real = modelScore
+      private var logq: Real = guideScore
 
       override def addObservation(score: Score): Unit = {
         logp = logp + score
@@ -57,7 +57,7 @@ case class BBVIGuide[A](posterior: Distribution[A], control: Expr[Double, Unit] 
         * (full) score.  The average difference is used as the control variate, to reduce
         * variance of the gradient.
         */
-      private def update(s: Score, logp: Score, logq: Score): Unit = {
+      private def update(s: Score, logp: Real, logq: Real): Unit = {
         val delta = logp.v - logq.v
 
         val gradient = delta - controlVar.v

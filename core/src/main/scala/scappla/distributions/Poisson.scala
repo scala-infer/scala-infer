@@ -14,7 +14,7 @@ case class Poisson(lambdaExpr: Expr[Double, Unit]) extends Distribution[Int] {
 
   override def observe(interpreter: Interpreter, value: Int): Score = {
     val lambda = interpreter.eval(lambdaExpr)
-    value.toDouble * log(lambda) - lambda - lgamma(value + 1.0)
+    (value.toDouble * log(lambda) - lambda - lgamma(value + 1.0)).buffer
   }
   
 }

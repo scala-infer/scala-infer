@@ -15,7 +15,7 @@ trait Value[X, S] {
 
   def dv(v: X): Unit
 
-  def unary_-(): Value[X, S] =
+  def unary_- : Value[X, S] =
     VNegate(this)
 
   def +(other: Value[X, S]): Value[X, S] =
@@ -41,7 +41,7 @@ object Value {
 
   def apply[@specialized(Float, Double) X, S](value: X, shape: S)(implicit bf: BaseField[X, S]): Value[X, S] = Constant(value, shape)
 
-  implicit def apply(value: Double): Value[Double, Unit] = Constant(value, ())
+  implicit def apply(value: Double): Constant[Double, Unit] = Constant(value, ())
 }
 
 trait Buffered[X, S] extends Value[X, S] with Completeable

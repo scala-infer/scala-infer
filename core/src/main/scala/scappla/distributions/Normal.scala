@@ -71,7 +71,7 @@ case class Normal[@specialized(Float, Double) D, S](
     val two = Constant(numX.fromInt(2, shape), shape)
 
     val e = (x - muVal) / sigmaVal
-    sum(-log(sigmaVal) - squared(e) / two)
+    sum(-log(sigmaVal) - squared(e) / two).buffer
   }
 
   override def reparam_score(interpreter: Interpreter, x: Value[D, S]): Score = {
@@ -81,6 +81,6 @@ case class Normal[@specialized(Float, Double) D, S](
     val two = Constant(numX.fromInt(2, shape), shape)
 
     val e = (x - muVal.const) / sigmaVal.const
-    sum(-log(sigmaVal).const - squared(e) / two)
+    sum(-log(sigmaVal).const - squared(e) / two).buffer
   }
 }

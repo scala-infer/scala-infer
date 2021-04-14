@@ -319,7 +319,7 @@ case class InvCategorical[S <: Dim[_], D: TensorData](pExpr: Expr[D, S]) extends
     val p = interpreter.eval(pExpr)
     val totalv = interpreter.eval(total)
     val value = at(p, Index[S](List(index)))
-    -log(value / totalv)
+    (-log(value / totalv)).buffer
   }
 
 }

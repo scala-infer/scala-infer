@@ -225,7 +225,7 @@ object Functions {
       def apply(x: Value[D, S]): Value[D, S] = {
         val field = x.field
         val two = Constant(field.fromInt(2, x.shape), x.shape)(field)
-        val one = Constant(field.fromInt(2, x.shape), x.shape)(field)
+        val one = Constant(field.fromInt(1, x.shape), x.shape)(field)
         VMinus(
           VTimes(two, logistic(VTimes(two, x))),
           one
@@ -365,7 +365,7 @@ object Functions {
     }
 
     implicit val forReal: Apply[Real, Real] = new Apply[Real, Real] {
-      override def apply(value: Score): Real = value
+      override def apply(value: Real): Real = value
     }
 
   }
