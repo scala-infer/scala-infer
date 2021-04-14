@@ -67,7 +67,7 @@ class RandomWalkSpec extends FlatSpec {
     val volParam = exp(Param(-1.0, "s_z"))
     val errParam = exp(Param(-1.0, "s_x"))
     val model = infer {
-      val last_hidden = dataWithGuides.foldLeft(Value(0.0)) {
+      val last_hidden = dataWithGuides.foldLeft(0.0: Real) {
         case (prev, (x, ar, _)) =>
           // prior: (z_i - z_{i-1})^2 / 2 vol^2
           // posterior: (z_i - (\alpha z_{i-1} + mu_i))^2 / 2 \hat vol^2
