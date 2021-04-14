@@ -23,13 +23,13 @@ package object scappla {
     * Sampling in an infer block.
     * This implementation will be overridden by a macro.
     */
-  def sample[X](prior: Distribution[X], guide: Guide[X]): X =
+  def sample[X](prior: Likelihood[X], guide: Guide[X]): X =
     guide.sample(NoopInterpreter, prior).get
 
   /**
     * Register an observation in an infer block.
     */
-  def observe[A](distribution: Distribution[A], value: A): Unit = {}
+  def observe[A](distribution: Likelihood[A], value: A): Unit = {}
 
   // IMPLEMENTATION
 

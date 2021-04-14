@@ -5,7 +5,7 @@ import scappla.distributions.{DDistribution, Distribution}
 
 case class ReparamGuide[D, S](posterior: DDistribution[D, S]) extends Guide[Value[D, S]] {
 
-  override def sample(interpreter: Interpreter, prior: Distribution[Value[D, S]]): Variable[Value[D, S]] = {
+  override def sample(interpreter: Interpreter, prior: Likelihood[Value[D, S]]): Variable[Value[D, S]] = {
 
     val value = posterior.sample(interpreter)
 

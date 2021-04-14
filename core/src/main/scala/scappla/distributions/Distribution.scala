@@ -1,8 +1,7 @@
 package scappla.distributions
 
 import scappla.{Interpreter, Sampleable, Score}
+import scappla.Likelihood
 
-trait Distribution[A] extends Sampleable[A] {
-
-  def observe(interpreter: Interpreter, a: A): Score
+trait Distribution[A] extends Sampleable[A] with Likelihood[A] {
 }

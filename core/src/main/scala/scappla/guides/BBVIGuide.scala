@@ -11,7 +11,7 @@ case class BBVIGuide[A](posterior: Distribution[A], control: Expr[Double, Unit] 
 
   // samples the guide (= the approximation to the posterior)
   // use BBVI (with Rao Blackwellization)
-  override def sample(interpreter: Interpreter, prior: Distribution[A]): Variable[A] = {
+  override def sample(interpreter: Interpreter, prior: Likelihood[A]): Variable[A] = {
 
     val value: A = posterior.sample(interpreter)
     val controlVar: Real = interpreter.eval(control)
