@@ -38,7 +38,7 @@ package object scappla {
     def score: Score
   }
 
-  def observeImpl[A](interpreter: Interpreter, distribution: Distribution[A], value: A): Observation =
+  def observeImpl[A](interpreter: Interpreter, distribution: Likelihood[A], value: A): Observation =
     new Observation {
 
       val score: Buffered[Double, Unit] =
