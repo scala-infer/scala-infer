@@ -5,7 +5,7 @@ import org.scalatest.exceptions.TestFailedException
 import scappla.Functions.exp
 import scappla._
 import scappla.distributions.Normal
-import scappla.guides.{AutoRegressive, ReparamGuide}
+import scappla.guides.{AutoRegressiveGuide, ReparamGuide}
 import scappla.optimization.Adam
 
 
@@ -20,7 +20,7 @@ class AutoRegressiveSpec extends FlatSpec {
     val z2M = Param(0.0)
     val z2S = exp(Param(0.0))
     val gamma = Param(0.0)
-    val z2Post = AutoRegressive(
+    val z2Post = AutoRegressiveGuide(
       ReparamGuide(Normal(z2M, z2S)),
       gamma
     )
@@ -71,7 +71,7 @@ class AutoRegressiveSpec extends FlatSpec {
     val z2M = Param(0.0)
     val z2S = exp(Param(0.0))
     val gamma = Param(0.0)
-    val z2Post = AutoRegressive(
+    val z2Post = AutoRegressiveGuide(
       ReparamGuide(Normal(z2M, z2S)),
       gamma
     )

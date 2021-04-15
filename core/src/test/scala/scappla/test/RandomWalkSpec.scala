@@ -11,7 +11,7 @@ import scappla.distributions.Normal
 import scappla.guides.ReparamGuide
 import scappla.optimization.{Adam, BlockLBFGS, SGDMomentum}
 import scappla.guides.Guide
-import scappla.guides.AutoRegressive
+import scappla.guides.AutoRegressiveGuide
 import scappla.optimization.Optimizer
 
 class RandomWalkSpec extends FlatSpec {
@@ -61,7 +61,7 @@ class RandomWalkSpec extends FlatSpec {
     val dataWithGuides = dataWithY.zipWithIndex.map { case ((z, x, y), i) =>
       val mu = Param(0.0, s"y-$i")
       val guide = ReparamGuide(Normal(mu, dataGuideErr))
-      (x, AutoRegressive(guide, alphaParam), (z, mu, y))
+      (x, AutoRegressiveGuide(guide, alphaParam), (z, mu, y))
     }
 
     val volParam = exp(Param(-1.0, "s_z"))
